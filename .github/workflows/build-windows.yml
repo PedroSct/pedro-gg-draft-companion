@@ -47,12 +47,15 @@ jobs:
       - run: pnpm test
 
       # O repositório de atualizações entra no app sozinho (GITHUB_REPOSITORY) e o latest.yml sai junto do .exe.
-      - run: pnpm exec electron-vite build
-      - run: >
-          pnpm exec electron-builder --win --publish never
-          -c.publish.provider=github
-          -c.publish.owner=${{ github.repository_owner }}
-          -c.publish.repo=${{ github.event.repository.name }}
+      # shell: bash de propósito: o PowerShell (padrão do Windows) quebra argumentos como -c.publish.owner=...
+      - name: Gerar o instalador
+        shell: bash
+        run: |
+          pnpm exec electron-vite build
+          pnpm exec electron-builder --win --publish never \
+            --config.publish.provider=github \
+            --config.publish.owner="${{ github.repository_owner }}" \
+            --config.publish.repo="${{ github.event.repository.name }}"
 
       - uses: actions/upload-artifact@v4
         with:
