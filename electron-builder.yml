@@ -1,0 +1,38 @@
+# electron-builder.yml — gera UM instalador para Windows: dist/Pedro.gg-Setup-<versão>.exe
+#
+#   npm run build:win
+#
+appId: gg.pedro.draft-companion
+productName: Pedro.gg
+
+directories:
+  output: dist
+  buildResources: build   # icon.ico / icon.png
+
+files:
+  - out/**                # saída do electron-vite (main, preload, renderer)
+
+extraResources:           # chega em process.resourcesPath
+  - from: resources/meta.sample.json
+    to: meta.sample.json
+  - from: build/icon.png
+    to: icon.png
+
+asar: true
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: Pedro.gg-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false                          # assistente simples (próximo, próximo)
+  perMachine: false                        # instala só para o usuário: NÃO pede administrador
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  deleteAppDataOnUninstall: false          # desinstalar não apaga perfis nem Pools

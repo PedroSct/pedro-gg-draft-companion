@@ -1,0 +1,545 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import App from '../src/renderer/src/App'
+import { useApp } from '../src/renderer/src/store/useApp'
+import { recommend } from '../src/main/data/recommender'
+import { validateDataset } from '../src/main/data/meta'
+import type { DraftPlayer, DraftState, LcuStatus } from '../src/shared/types'
+import type { AppSettings, Catalog, FriendProfile, UpdateState } from '../src/shared/dataTypes'
+import type { DecodeResult } from '../src/shared/poolShare'
+import type { LolApi, ProfileInput } from '../src/shared/api'
+
+const dataset = validateDataset(JSON.parse(readFileSync(join(process.cwd(), 'resources', 'meta.sample.json'), 'utf8')))
+
+const NAMES: [number, string, string, string[]][] = [
+  [103, 'Ahri', 'Ahri', ['Mage', 'Assassin']],
+  [134, 'Syndra', 'Syndra', ['Mage']],
+  [61, 'Orianna', 'Orianna', ['Mage', 'Support']],
+  [157, 'Yasuo', 'Yasuo', ['Fighter', 'Assassin']],
+  [238, 'Zed', 'Zed', ['Assassin']],
+  [86, 'Garen', 'Garen', ['Fighter', 'Tank']],
+  [89, 'Leona', 'Leona', ['Tank', 'Support']]
+]
+
+const catalog: Catalog = {
+  version: '16.20.1',
+  locale: 'pt_BR',
+  champions: NAMES.map(([id, key, name, tags]) => ({ id, key, name, iconUrl: `https://img.test/${key}.png`, tags })),
+  items: {}
+}
+
+const makeProfile = (): FriendProfile => ({
+  id: 'p1',
+  nickname: 'Pedro',
+  mainRoles: ['MIDDLE'],
+  createdAt: '2026-10-27T00:00:00Z',
+  updatedAt: '2026-10-27T00:00:00Z',
+  pool: {
+    TOP: [],
+    JUNGLE: [],
+    BOTTOM: [],
+    UTILITY: [],
+    MIDDLE: [
+      { championId: 103, championKey: 'Ahri', comfort: 4 },
+      { championId: 157, championKey: 'Yasuo', comfort: 2 },
+      { championId: 134, championKey: 'Syndra', comfort: 5 },
+      { championId: 61, championKey: 'Orianna', comfort: 3 }
+    ]
+  }
+})
+
+const player = (cellId: number, championId: number, status: DraftPlayer['status'], role: DraftPlayer['role'] = null): DraftPlayer => ({
+  cellId,
+  championId,
+  status,
+  role
+})
+
+const draftWithZed = (): DraftState => ({
+  phase: 'BAN_PICK',
+  localPlayerCellId: 1,
+  localRole: 'MIDDLE',
+  allies: [player(0, 0, 'none', 'TOP'), player(1, 0, 'none', 'MIDDLE')],
+  enemies: [player(5, 238, 'locked')],
+  bans: { allies: [], enemies: [] }
+})
+
+interface Fake {
+  api: LolApi
+  pushUpdate(u: UpdateState): void
+  installUpdate: ReturnType<typeof vi.fn>
+  decodeShare: ReturnType<typeof vi.fn>
+  copyText: ReturnType<typeof vi.fn>
+  pushStatus(s: LcuStatus): void
+  pushDraft(d: DraftState): void
+  endDraft(): void
+  saveProfile: ReturnType<typeof vi.fn>
+}
+
+function installApi(opts: { profiles?: FriendProfile[] } = {}): Fake {
+  let profiles = opts.profiles ?? [makeProfile()]
+  let draft: DraftState | null = null
+  let status: LcuStatus = 'connected'
+  let settings: AppSettings = {
+    lockfilePath: null,
+    ddragonVersion: 'auto',
+    locale: 'pt_BR',
+    lastActiveProfileId: profiles[0]?.id ?? null,
+    metaUrl: null,
+    metaAutoUpdate: true,
+    pickMode: 'balanced'
+  }
+  let update: UpdateState = { status: 'idle', current: '0.1.0' }
+  const updateCbs = new Set<(s: UpdateState) => void>()
+  const setUpdate = (u: UpdateState): UpdateState => {
+    update = u
+    updateCbs.forEach((cb) => cb(u))
+    return u
+  }
+  const statusCbs = new Set<(s: LcuStatus) => void>()
+  const draftCbs = new Set<(d: DraftState) => void>()
+  const endedCbs = new Set<() => void>()
+
+  const saveProfile = vi.fn(async (input: ProfileInput): Promise<FriendProfile> => {
+    const saved = { ...makeProfile(), ...input, id: input.id ?? 'p-new', createdAt: 'x', updatedAt: 'y' } as FriendProfile
+    profiles = profiles.some((p) => p.id === saved.id) ? profiles.map((p) => (p.id === saved.id ? saved : p)) : [...profiles, saved]
+    if (!settings.lastActiveProfileId) settings = { ...settings, lastActiveProfileId: saved.id }
+    return saved
+  })
+
+  const installUpdate = vi.fn(async () => true)
+  const decodeShare = vi.fn(async (_text: string): Promise<DecodeResult> => ({ ok: false, message: 'Não reconheci isso como uma Pool do Pedro.gg.' }))
+  const copyText = vi.fn(async (_text: string) => {})
+
+  const api: LolApi = {
+    onMetaUpdated: () => () => {},
+    onUpdateState: (cb) => (updateCbs.add(cb), () => updateCbs.delete(cb)),
+    getUpdateState: async () => update,
+    checkForUpdates: async () => update,
+    downloadUpdate: async () => setUpdate({ ...update, status: 'ready' }),
+    installUpdate,
+    encodeShare: async () => 'PGG1:codigo-de-teste',
+    decodeShare,
+    exportShareFile: async () => ({ ok: true, path: '/tmp/x.json' }),
+    importShareFile: async () => ({ ok: false, reason: 'canceled' }),
+    copyText,
+    readClipboardText: async () => 'PGG1:colado',
+    onLcuStatus: (cb) => (statusCbs.add(cb), () => statusCbs.delete(cb)),
+    onDraftUpdate: (cb) => (draftCbs.add(cb), () => draftCbs.delete(cb)),
+    onDraftEnded: (cb) => (endedCbs.add(cb), () => endedCbs.delete(cb)),
+    getLcuStatus: async () => status,
+    getCurrentDraft: async () => draft,
+    recommend: async (req) => {
+      const profile = profiles.find((p) => p.id === req.profileId)
+      return profile && draft ? recommend({ draft, profile, dataset, role: req.role, mode: settings.pickMode }) : null
+    },
+    getSettings: async () => settings,
+    setSettings: async (patch) => (settings = { ...settings, ...patch }),
+    pickGameDir: async () => ({ ok: false, reason: 'canceled' }),
+    listProfiles: async () => structuredClone(profiles),
+    saveProfile,
+    deleteProfile: async (id) => {
+      profiles = profiles.filter((p) => p.id !== id)
+      return true
+    },
+    getCatalog: async () => catalog,
+    getSpells: async () => [],
+    getMetaInfo: async () => ({ source: 'sample', patch: 'sample', generatedAt: '', isSample: true, champions: 7 }),
+    getBuild: async ({ championId, role }) => dataset.champions[String(championId)]?.roles[role]?.build ?? null,
+    importMeta: async () => ({ ok: false, reason: 'canceled' }),
+    updateMeta: async () => ({ ok: false, reason: 'no-url' })
+  }
+  window.api = api
+
+  return {
+    api,
+    saveProfile,
+    installUpdate,
+    decodeShare,
+    copyText,
+    pushUpdate: (u) => act(() => void setUpdate(u)),
+    pushStatus: (s) => {
+      status = s
+      statusCbs.forEach((cb) => cb(s))
+    },
+    pushDraft: (d) => {
+      draft = d
+      draftCbs.forEach((cb) => cb(d))
+    },
+    endDraft: () => {
+      draft = null
+      endedCbs.forEach((cb) => cb())
+    }
+  }
+}
+
+beforeEach(() => {
+  useApp.setState({
+    ready: false,
+    lcuStatus: 'searching',
+    draft: null,
+    profiles: [],
+    settings: null,
+    catalog: null,
+    catalogError: null,
+    champById: new Map(),
+    metaInfo: null,
+    recommendation: null,
+    roleOverride: null,
+    previewChampionId: null,
+    poolOpen: false,
+    settingsOpen: false,
+    update: null,
+    updateDismissed: null
+  })
+})
+
+describe('Companion App', () => {
+  it('mostra a tela de espera quando não há draft e avisa que os dados são de amostra', async () => {
+    installApi()
+    render(<App />)
+    expect(await screen.findByText('Conectado. Entre em uma fila.')).toBeInTheDocument()
+    expect(screen.getByText(/dados de amostra, que não refletem o meta real/)).toBeInTheDocument()
+  })
+
+  it('sem perfis, convida a criar o primeiro', async () => {
+    installApi({ profiles: [] })
+    render(<App />)
+    expect(await screen.findByRole('button', { name: 'Criar o primeiro perfil' })).toBeInTheDocument()
+  })
+
+  it('quando o draft chega, destaca o melhor pick da Pool e lista as alternativas', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+
+    act(() => fake.pushDraft(draftWithZed()))
+
+    const verdict = await screen.findByTestId('verdict')
+    expect(verdict).toHaveTextContent('Orianna') // mesmo ranking do Módulo 3: [61, 134, 103, 157]
+    expect(verdict).toHaveTextContent('Melhor pick da sua Pool')
+
+    const alts = screen.getByRole('list', { name: 'Outras opções da Pool' })
+    const names = within(alts)
+      .getAllByRole('button')
+      .map((b) => b.textContent ?? '')
+    expect(names).toHaveLength(3)
+    expect(names[0]).toContain('Syndra')
+    expect(names[1]).toContain('Ahri')
+    expect(names[2]).toContain('Yasuo')
+
+    // O time inimigo mostra o Zed travado
+    expect(screen.getByRole('list', { name: 'Time inimigo' })).toHaveTextContent('Zed')
+  })
+
+  it('clicar em uma alternativa mostra a build e a ordem das habilidades dela', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+    const alts = await screen.findByRole('list', { name: 'Outras opções da Pool' })
+
+    await user.click(within(alts).getByRole('button', { name: /Ahri/ }))
+
+    const build = await screen.findByRole('region', { name: 'Build' })
+    expect(await within(build).findByRole('img', { name: 'R > Q > E > W' })).toBeInTheDocument()
+    expect(within(build).getByText('Opção selecionada, Meio')).toBeInTheDocument()
+    expect(within(build).getByText('contra assassinos (Zed, Akali)')).toBeInTheDocument()
+  })
+
+  it('quando o jogador trava um campeão, a build passa a ser a dele', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    const locked = draftWithZed()
+    locked.allies[1] = player(1, 103, 'locked', 'MIDDLE')
+    act(() => fake.pushDraft(locked))
+
+    const build = await screen.findByRole('region', { name: 'Build' })
+    expect(await within(build).findByText('Seu campeão, Meio')).toBeInTheDocument()
+    expect(await within(build).findByRole('img', { name: 'R > Q > E > W' })).toBeInTheDocument()
+  })
+
+  it('sem rota atribuída, pede a rota e recomenda depois da escolha', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    const blind = draftWithZed()
+    blind.localRole = null
+    blind.allies = [player(0, 0, 'none'), player(1, 0, 'none')]
+    act(() => fake.pushDraft(blind))
+
+    const group = await screen.findByRole('group', { name: 'Rota que você vai jogar' })
+    await user.click(within(group).getByRole('button', { name: 'Mid' }))
+
+    expect(await screen.findByTestId('verdict')).toHaveTextContent('Orianna')
+  })
+
+  it('o fim do draft volta para a tela de espera', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+    await screen.findByTestId('verdict')
+
+    act(() => fake.endDraft())
+    expect(await screen.findByText('Conectado. Entre em uma fila.')).toBeInTheDocument()
+    expect(screen.queryByTestId('verdict')).not.toBeInTheDocument()
+  })
+
+  it('mostra o estado do cliente em tempo real', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado ao cliente')
+    act(() => fake.pushStatus('disconnected'))
+    expect(await screen.findByText('Cliente fechado')).toBeInTheDocument()
+  })
+
+  it('editor de Pool: adiciona um campeão, ajusta o conforto e salva só o que mudou', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+
+    await user.click(screen.getByRole('button', { name: 'Pools' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Perfis e Pools' })
+    const save = within(dialog).getByRole('button', { name: 'Salvar perfil' })
+    expect(save).toBeDisabled() // nada mudou ainda
+
+    await user.type(within(dialog).getByLabelText('Buscar campeão'), 'zed')
+    await user.click(await within(dialog).findByRole('button', { name: 'Zed' }))
+    expect(save).toBeEnabled()
+
+    const poolList = within(dialog).getByRole('list', { name: 'Pool de Meio' })
+    const zedRow = within(poolList).getByText('Zed').closest('li') as HTMLElement
+    await user.click(within(zedRow).getByRole('button', { name: '5 de 5' }))
+
+    await user.click(save)
+    await waitFor(() => expect(fake.saveProfile).toHaveBeenCalledTimes(1))
+    const sent = fake.saveProfile.mock.calls[0][0] as ProfileInput
+    expect(sent.id).toBe('p1')
+    expect(sent.pool?.MIDDLE.map((e) => [e.championId, e.comfort])).toContainEqual([238, 5])
+    expect(sent.pool?.MIDDLE).toHaveLength(5)
+    await waitFor(() => expect(save).toBeDisabled()) // salvo: volta ao estado limpo
+  })
+
+  it('editor de Pool: não deixa salvar sem apelido', async () => {
+    const user = userEvent.setup()
+    const fake = installApi({ profiles: [] })
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'Criar o primeiro perfil' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Perfis e Pools' })
+
+    await user.type(within(dialog).getByLabelText(/Notas do perfil/), 'teste') // sujo, mas sem apelido
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar perfil' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Dê um apelido ao perfil antes de salvar.')
+    expect(fake.saveProfile).not.toHaveBeenCalled()
+  })
+})
+
+describe('Pools: filtros, importação e compartilhamento', () => {
+  async function openPool() {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('button', { name: 'Pools' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Perfis e Pools' })
+    return { user, fake, dialog }
+  }
+  const grid = (dialog: HTMLElement) => within(within(dialog).getByRole('list', { name: 'Campeões' })).queryAllByRole('button').map((b) => b.getAttribute('aria-label'))
+
+  it('por padrão mostra só os campeões da rota; "Todos" libera os outros', async () => {
+    const { user, dialog } = await openPool()
+    // Meio: Ahri, Syndra, Orianna, Yasuo, Zed. Garen (topo), Leona (suporte) ficam de fora.
+    expect(grid(dialog)).toEqual(expect.arrayContaining(['Ahri', 'Syndra', 'Orianna', 'Yasuo', 'Zed']))
+    expect(grid(dialog)).not.toContain('Garen')
+    expect(grid(dialog)).not.toContain('Leona')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Todos' }))
+    expect(grid(dialog)).toEqual(expect.arrayContaining(['Garen', 'Leona', 'Ahri']))
+
+    // trocar de aba muda a lista do modo "Só de ..."
+    await user.click(within(dialog).getByRole('button', { name: 'Só de Meio' }))
+    await user.click(within(dialog).getByRole('tab', { name: /Topo/ }))
+    expect(grid(dialog)).toContain('Garen')
+    expect(grid(dialog)).not.toContain('Ahri')
+  })
+
+  it('filtra por classe e por função, e "Limpar filtros" desfaz', async () => {
+    const { user, dialog } = await openPool()
+    await user.click(within(dialog).getByRole('button', { name: 'Todos' }))
+
+    await user.click(within(within(dialog).getByRole('group', { name: 'Filtrar por classe' })).getByRole('button', { name: 'Tanque' }))
+    expect(grid(dialog).sort()).toEqual(['Garen', 'Leona'])
+
+    await user.click(within(within(dialog).getByRole('group', { name: 'Filtrar por função' })).getByRole('button', { name: 'Vanguarda' }))
+    expect(grid(dialog)).toEqual(['Leona'])
+
+    await user.click(within(dialog).getByRole('button', { name: 'Limpar filtros' }))
+    expect(grid(dialog)).toHaveLength(7)
+
+    // filtro por rota (só aparece em "Todos")
+    await user.click(within(within(dialog).getByRole('group', { name: 'Filtrar por rota' })).getByRole('button', { name: 'Suporte' }))
+    expect(grid(dialog)).toEqual(['Leona']) // Suporte, sem filtro de classe/função
+    expect(grid(dialog)).not.toContain('Ahri')
+  })
+
+  it('importar um código mostra a prévia e carrega como perfil novo, sem salvar sozinho', async () => {
+    const { user, fake, dialog } = await openPool()
+    fake.decodeShare.mockResolvedValue({
+      ok: true,
+      shared: {
+        nickname: 'Amigo',
+        mainRoles: ['TOP'],
+        pool: { TOP: [{ championId: 86, championKey: 'Garen', comfort: 4 }], JUNGLE: [], MIDDLE: [], BOTTOM: [], UTILITY: [] }
+      }
+    })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Importar de um amigo' }))
+    const imp = await screen.findByRole('dialog', { name: 'Importar Pool' })
+    await user.click(within(imp).getByRole('button', { name: 'Colar da área de transferência' }))
+    expect(await within(imp).findByText('Pool de Amigo')).toBeInTheDocument()
+    expect(within(imp).getByText(/1 campeão no total/)).toBeInTheDocument()
+
+    await user.click(within(imp).getByRole('button', { name: 'Importar' }))
+    expect(screen.queryByRole('dialog', { name: 'Importar Pool' })).not.toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Apelido')).toHaveValue('Amigo')
+    expect(fake.saveProfile).not.toHaveBeenCalled() // só salva quando a pessoa clica em Salvar
+    expect(within(dialog).getByRole('button', { name: 'Salvar perfil' })).toBeEnabled()
+  })
+
+  it('importar "juntando" mantém o que já existe e acrescenta o que falta', async () => {
+    const { user, fake, dialog } = await openPool()
+    fake.decodeShare.mockResolvedValue({
+      ok: true,
+      shared: {
+        nickname: 'Amigo',
+        mainRoles: [],
+        pool: { TOP: [], JUNGLE: [], BOTTOM: [], UTILITY: [], MIDDLE: [{ championId: 103, championKey: 'Ahri', comfort: 1 }, { championId: 238, championKey: 'Zed', comfort: 5 }] }
+      }
+    })
+    await user.click(within(dialog).getByRole('button', { name: 'Importar de um amigo' }))
+    const imp = await screen.findByRole('dialog', { name: 'Importar Pool' })
+    await user.click(within(imp).getByRole('button', { name: 'Colar da área de transferência' }))
+    await user.click(await within(imp).findByLabelText(/Juntar com o perfil Pedro.*1 campeão novo/))
+    await user.click(within(imp).getByRole('button', { name: 'Importar' }))
+
+    await user.click(within(dialog).getByRole('button', { name: 'Salvar perfil' }))
+    await waitFor(() => expect(fake.saveProfile).toHaveBeenCalled())
+    const sent = fake.saveProfile.mock.calls[0][0] as ProfileInput
+    expect(sent.id).toBe('p1')
+    expect(sent.nickname).toBe('Pedro')
+    const mid = Object.fromEntries(sent.pool!.MIDDLE.map((e) => [e.championId, e.comfort]))
+    expect(mid[103]).toBe(4) // o conforto do Ahri continua o seu
+    expect(mid[238]).toBe(5) // Zed veio do amigo
+    expect(Object.keys(mid)).toHaveLength(5)
+  })
+
+  it('mostra o motivo quando o código não vale', async () => {
+    const { user, dialog } = await openPool()
+    await user.click(within(dialog).getByRole('button', { name: 'Importar de um amigo' }))
+    const imp = await screen.findByRole('dialog', { name: 'Importar Pool' })
+    await user.type(within(imp).getByLabelText(/Cole o código/), 'lixo')
+    expect(await within(imp).findByRole('alert')).toHaveTextContent('Não reconheci isso como uma Pool do Pedro.gg.')
+    expect(within(imp).queryByRole('button', { name: 'Importar' })).not.toBeInTheDocument()
+  })
+
+  it('compartilhar gera o código e copia', async () => {
+    const { user, fake, dialog } = await openPool()
+    await user.click(within(dialog).getByRole('button', { name: 'Compartilhar esta Pool' }))
+    const share = await screen.findByRole('dialog', { name: 'Compartilhar Pool' })
+    await waitFor(() => expect(within(share).getByLabelText('Código da Pool')).toHaveValue('PGG1:codigo-de-teste'))
+    await user.click(within(share).getByRole('button', { name: 'Copiar código' }))
+    expect(fake.copyText).toHaveBeenCalledWith('PGG1:codigo-de-teste')
+    expect(await within(share).findByText(/Código copiado/)).toBeInTheDocument()
+  })
+})
+
+describe('sugestão: risco, prioridade e composição', () => {
+  it('troca a prioridade e mostra a composição dos times', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+    await screen.findByTestId('verdict')
+
+    const group = screen.getByRole('group', { name: 'Prioridade da sugestão' })
+    expect(within(group).getByRole('button', { name: 'Equilibrado' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(within(group).getByRole('button', { name: 'Conforto' }))
+    await waitFor(() => expect(within(group).getByRole('button', { name: 'Conforto' })).toHaveAttribute('aria-pressed', 'true'))
+    // com muito peso em conforto, Syndra (5 estrelas) passa a Orianna (3)
+    await waitFor(() => expect(screen.getByTestId('verdict')).toHaveTextContent('Syndra'))
+
+    expect(screen.getByRole('region', { name: 'Composição do time inimigo' })).toHaveTextContent('Físico')
+  })
+})
+
+describe('atualização do app', () => {
+  it('avisa de versão nova, só baixa quando aceita e deixa reiniciar depois do download', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    expect(screen.queryByRole('status', { name: 'Atualização do app' })).not.toBeInTheDocument()
+
+    fake.pushUpdate({ status: 'available', current: '0.1.0', latest: '0.2.0', notes: 'Filtros novos' })
+    const banner = await screen.findByRole('status', { name: 'Atualização do app' })
+    expect(banner).toHaveTextContent('0.2.0')
+    await user.click(within(banner).getByRole('button', { name: 'Ver novidades' }))
+    expect(within(banner).getByText('Filtros novos')).toBeInTheDocument()
+
+    await user.click(within(banner).getByRole('button', { name: 'Atualizar agora' }))
+    const ready = await within(await screen.findByRole('status', { name: 'Atualização do app' })).findByRole('button', { name: 'Reiniciar e atualizar' })
+    await user.click(ready)
+    expect(fake.installUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('"Depois" esconde o aviso daquela versão', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    fake.pushUpdate({ status: 'available', current: '0.1.0', latest: '0.2.0' })
+    await user.click(await screen.findByRole('button', { name: 'Depois' }))
+    expect(screen.queryByRole('status', { name: 'Atualização do app' })).not.toBeInTheDocument()
+    fake.pushUpdate({ status: 'available', current: '0.1.0', latest: '0.3.0' }) // versão mais nova: avisa de novo
+    expect(await screen.findByRole('status', { name: 'Atualização do app' })).toHaveTextContent('0.3.0')
+  })
+
+  it('durante o draft não deixa reiniciar', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+    await screen.findByTestId('verdict')
+    fake.pushUpdate({ status: 'ready', current: '0.1.0', latest: '0.2.0' })
+    expect(await screen.findByRole('button', { name: 'Reiniciar e atualizar' })).toBeDisabled()
+  })
+})
+
+describe('sem internet', () => {
+  it('quando o ícone não carrega, mostra a inicial do campeão em vez do texto alternativo', async () => {
+    const { fireEvent } = await import('@testing-library/react')
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+    const verdict = await screen.findByTestId('verdict')
+
+    const img = await within(verdict).findByRole('img', { name: 'Orianna' })
+    expect(img.tagName).toBe('IMG')
+    fireEvent.error(img) // o CDN não respondeu
+
+    const tile = await within(verdict).findByRole('img', { name: 'Orianna' })
+    expect(tile.tagName).toBe('DIV')
+    expect(tile).toHaveTextContent('O')
+  })
+})

@@ -1,0 +1,113 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Rajdhani', 'Segoe UI', sans-serif;
+  --font-sans: 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
+
+  /* Noite azulada: base, painéis e superfícies elevadas */
+  --color-night: #090b12;
+  --color-deck: #0e121c;
+  --color-panel: #131826;
+  --color-raised: #1b2233;
+  --color-line: #263049;
+
+  /* Cada cor tem um significado fixo no draft */
+  --color-ally: #3cc9dc; /* time aliado */
+  --color-enemy: #f2627a; /* time inimigo */
+  --color-gold: #dcb870; /* veredito / melhor pick */
+
+  --color-snow: #e9eef8;
+  --color-mist: #93a0bf;
+  --color-dim: #5f6b88;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background-color: var(--color-night);
+    background-image:
+      radial-gradient(1100px 480px at 50% -12%, rgb(60 201 220 / 0.07), transparent 62%),
+      radial-gradient(900px 520px at 100% 100%, rgb(242 98 122 / 0.06), transparent 60%);
+    color: var(--color-snow);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 2px;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+}
+
+/* Cantos chanfrados: a assinatura visual do app (ícones e cartão do veredito) */
+.chamfer {
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+.chamfer-sm {
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+.num {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+/* O veredito se revela quando o melhor pick muda: o único movimento "solto" da tela */
+@keyframes verdict-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: brightness(1.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+.verdict-in {
+  animation: verdict-in 420ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes radar {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+.radar {
+  animation: radar 2.4s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

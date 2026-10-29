@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "source": "sample",
+  "isSample": true,
+  "disclaimer": "AMOSTRA FICTÍCIA para testar o app. Os números NÃO refletem o meta real. Substitua importando um dataset real (Configurações → Importar dados de meta).",
+  "patch": "sample",
+  "generatedAt": "2026-10-26T00:00:00Z",
+  "champions": {
+    "103": {
+      "roles": {
+        "MIDDLE": {
+          "games": 52000,
+          "wins": 26700,
+          "matchups": {
+            "238": {
+              "games": 2100,
+              "wins": 1000
+            },
+            "157": {
+              "games": 2600,
+              "wins": 1390
+            },
+            "134": {
+              "games": 1900,
+              "wins": 960
+            },
+            "61": {
+              "games": 2300,
+              "wins": 1180
+            }
+          },
+          "build": {
+            "skillOrder": {
+              "priority": [
+                "R",
+                "Q",
+                "E",
+                "W"
+              ],
+              "levels": [
+                "Q",
+                "W",
+                "E",
+                "Q",
+                "Q",
+                "R",
+                "Q",
+                "E",
+                "Q",
+                "E",
+                "R",
+                "E",
+                "E",
+                "W",
+                "W",
+                "R",
+                "W",
+                "W"
+              ]
+            },
+            "items": {
+              "starting": [
+                1056,
+                2003
+              ],
+              "boots": [
+                3020
+              ],
+              "core": [
+                6655,
+                4645,
+                3089
+              ],
+              "situational": [
+                {
+                  "itemId": 3157,
+                  "when": "contra assassinos (Zed, Akali)"
+                },
+                {
+                  "itemId": 3102,
+                  "when": "contra muito dano mágico"
+                },
+                {
+                  "itemId": 3135,
+                  "when": "contra inimigos com muita resistência mágica"
+                }
+              ]
+            }
+          },
+          "synergies": {
+            "112": {
+              "games": 3100,
+              "wins": 1680
+            },
+            "54": {
+              "games": 2800,
+              "wins": 1500
+            },
+            "238": {
+              "games": 2000,
+              "wins": 960
+            }
+          }
+        }
+      }
+    },
+    "238": {
+      "roles": {
+        "MIDDLE": {
+          "games": 41000,
+          "wins": 20500,
+          "matchups": {
+            "103": {
+              "games": 2100,
+              "wins": 1100
+            },
+            "157": {
+              "games": 2200,
+              "wins": 1130
+            },
+            "134": {
+              "games": 1700,
+              "wins": 880
+            }
+          }
+        }
+      }
+    },
+    "157": {
+      "roles": {
+        "MIDDLE": {
+          "games": 60000,
+          "wins": 29400,
+          "matchups": {
+            "103": {
+              "games": 2600,
+              "wins": 1210
+            },
+            "238": {
+              "games": 2200,
+              "wins": 1070
+            }
+          },
+          "synergies": {
+            "112": {
+              "games": 2600,
+              "wins": 1450
+            }
+          }
+        },
+        "TOP": {
+          "games": 20000,
+          "wins": 9800,
+          "matchups": {}
+        }
+      }
+    },
+    "134": {
+      "roles": {
+        "MIDDLE": {
+          "games": 30000,
+          "wins": 15200,
+          "matchups": {
+            "103": {
+              "games": 1900,
+              "wins": 940
+            }
+          },
+          "synergies": {
+            "112": {
+              "games": 1500,
+              "wins": 790
+            },
+            "54": {
+              "games": 1700,
+              "wins": 880
+            }
+          }
+        }
+      }
+    },
+    "61": {
+      "roles": {
+        "MIDDLE": {
+          "games": 33000,
+          "wins": 16900,
+          "matchups": {
+            "103": {
+              "games": 2300,
+              "wins": 1120
+            }
+          },
+          "synergies": {
+            "54": {
+              "games": 2200,
+              "wins": 1210
+            },
+            "112": {
+              "games": 1900,
+              "wins": 950
+            }
+          }
+        }
+      }
+    },
+    "112": {
+      "roles": {
+        "MIDDLE": {
+          "games": 28000,
+          "wins": 14500,
+          "matchups": {}
+        }
+      }
+    },
+    "54": {
+      "roles": {
+        "TOP": {
+          "games": 38000,
+          "wins": 19600,
+          "matchups": {}
+        }
+      }
+    }
+  }
+}

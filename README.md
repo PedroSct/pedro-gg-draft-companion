@@ -1,0 +1,102 @@
+# Pedro.gg Draft Companion
+
+Analista de draft em tempo real para League of Legends. Lê a seleção de campeões pelo cliente local (somente leitura,
+nunca envia nada de volta), cruza com a Champion Pool de cada amigo e mostra o melhor pick, a build e a ordem de habilidades.
+
+## Rodar em desenvolvimento
+
+O projeto usa **pnpm** (o `npm` tem um bug com as peças nativas do Vite/rolldown no Windows).
+
+    npm install -g pnpm      # só uma vez (ou: corepack enable)
+    pnpm install
+    pnpm dev                 # abre o app com recarga automática
+    pnpm typecheck
+    pnpm test
+
+Abra o League of Legends e entre numa seleção de campeões: o indicador do topo vai de "Procurando o LoL" para
+"Conectado ao cliente". Se a pasta do jogo não for achada sozinha, use Configurações > Escolher pasta.
+
+## O que o app faz
+
+- **Draft ao vivo**: times, bans, melhor pick da Pool, alternativas, build e ordem de habilidades.
+- **Prioridade da sugestão**: *Equilibrado*, *Conforto* (favorece o que você domina) ou *Meta* (favorece os números).
+- **Confrontos, sinergia e risco**: winrate contra os inimigos já escolhidos, ganho de winrate com os aliados já
+  escolhidos e um aviso de **risco de counter** quando o inimigo ainda pode pegar alguém que vence o seu pick.
+- **Composição dos times**: dano físico x mágico e frontline, com aviso (ex.: "dano inimigo quase todo mágico").
+- **Pools por rota** com filtros: *Só da rota* (padrão) ou *Todos*, mais filtros de **rota**, **classe** (Lutador,
+  Tanque, Mago...) e **função** (Encantador, Mergulhador, Artilharia...). A tabela de rotas/funções fica em
+  `src/shared/championMeta.ts`; campeão novo que ainda não está nela aparece em todas as rotas.
+- **Compartilhar Pool**: em *Pools* use **Compartilhar esta Pool** (gera um código `PGG1:...` ou um arquivo) e
+  **Importar de um amigo** (cole o código ou abra o arquivo). Ao importar você escolhe entre criar um perfil novo,
+  juntar (só acrescenta o que falta, sem mexer no seu conforto) ou substituir. Nada é salvo até clicar em *Salvar perfil*.
+  Anotações só vão se você marcar a opção.
+- **Aviso de atualização**: quando existe uma versão nova, aparece uma faixa no topo com **Atualizar agora** / **Depois**.
+  O app só baixa se você aceitar e só reinicia quando você clicar (fica travado durante uma seleção de campeões).
+
+## Gerar o instalador (um único .exe)
+
+**Opção A, no seu PC com Windows**
+
+    pnpm install
+    pnpm build:win       # cria dist/Pedro.gg-Setup-<versão>.exe
+
+**Opção B, sem configurar nada (GitHub Actions)**
+Suba o projeto para um repositório **público** no GitHub, abra a aba *Actions*, escolha *Instalador do Windows* e clique em
+*Run workflow*. O `.exe` aparece em *Artifacts*.
+
+O instalador não pede administrador, e desinstalar não apaga perfis nem Pools. Sem certificado de assinatura, o Windows
+mostra "O Windows protegeu seu PC": clique em *Mais informações* e *Executar assim mesmo*.
+
+## Publicar uma atualização para os amigos
+
+O app procura versões novas nos *Releases* do GitHub do projeto (ao abrir e a cada 4 horas). Para lançar uma:
+
+1. Mude `"version"` no `package.json` (ex.: `0.3.0`) e faça commit/push.
+2. Crie a tag com o mesmo número e envie: `git tag v0.3.0` e `git push origin v0.3.0`.
+3. O GitHub Actions gera o instalador e cria o Release (`.exe`, `latest.yml` e `.blockmap`).
+4. Quem já tem o app instalado vê o aviso "A versão 0.3.0 está disponível" e decide quando atualizar.
+
+Detalhes: o repositório de atualizações entra no instalador sozinho quando ele é gerado pelo Actions
+(`GITHUB_REPOSITORY`). Num `pnpm build:win` local, preencha `DEFAULT_UPDATE_REPO` em `src/shared/config.ts`
+(formato `usuario/repositorio`) antes. Sem isso, o app funciona normalmente, só não procura atualização
+(Configurações mostra isso). O repositório precisa ser público.
+
+## Se o `pnpm install` ou o build der erro
+
+Erro "Cannot find native binding" (`rolldown`, `lightningcss`...): é o bug do `npm` com peças nativas. Use `pnpm`.
+Se já usou `npm` nesta pasta, apague `node_modules` e rode `pnpm install` de novo.
+
+Evite deixar o projeto numa pasta sincronizada pelo OneDrive (como Desktop ou Documentos): ele cria milhares de
+arquivos e a sincronização atrapalha. `C:\pedro.gg` é uma boa escolha.
+
+Erro de "symbolic link" / "privilege" no `build:win`: ative o Modo de Desenvolvedor do Windows
+(Configurações > Para desenvolvedores) e rode `pnpm build:win` de novo.
+
+## Dados de meta (winrates, confrontos, sinergias e builds)
+
+O arquivo que vem no instalador (`resources/meta.sample.json`) é uma **amostra fictícia**; o app avisa isso na tela.
+Nem o smartpick.gg nem o draftforge.gg oferecem API pública (veja `docs/pesquisa.md`), então os dados reais vêm da
+**Match-v5 da Riot**:
+
+    # Windows (PowerShell):  $env:RIOT_API_KEY = "RGAPI-..."
+    pnpm meta:build -- --platform br1 --max-matches 3000
+
+A chave vem de developer.riotgames.com. Chaves de desenvolvimento expiram a cada 24 h e limitam as requisições, então a
+coleta é lenta (cerca de 0,8 requisição por segundo). Se for interrompida (Ctrl+C, queda de internet, chave vencida),
+rode o mesmo comando de novo: ela retoma de onde parou, sem contar partidas em dobro. `pnpm meta:build -- --help`
+lista todas as opções. O resultado inclui confrontos, **sinergias entre aliados**, builds e ordem de habilidades.
+
+O resultado é o `meta.json`. Para chegar aos amigos:
+1. Suba o `meta.json` para um repositório público (ex.: link "raw" do GitHub).
+2. Coloque o endereço em `src/shared/config.ts` (`DEFAULT_META_URL`) **antes** de gerar o instalador. Quem já instalou
+   pode colar o endereço em Configurações. O app baixa a versão nova sozinho ao abrir, se a opção estiver ligada.
+
+Também dá para importar um `meta.json` manualmente em Configurações > Importar dados de meta.
+
+## Limitações conhecidas
+- Os dados de meta reais dependem de você rodar o gerador uma vez por patch (e de uma chave da Riot).
+- A atualização automática foi testada com um atualizador simulado e com o app empacotado, mas ainda não contra um
+  Release real do GitHub: o primeiro teste de verdade é publicar a 0.2.1 e ver o aviso na 0.2.0.
+- Os dados do jogo (campeões, itens) ficam salvos no PC depois da primeira execução, mas as **imagens** vêm do CDN da
+  Riot. Sem internet, o app mostra a inicial de cada campeão no lugar do ícone.
+- A tabela de rotas e funções é curada à mão e pode ficar atrás do patch; "Todos" sempre mostra tudo.

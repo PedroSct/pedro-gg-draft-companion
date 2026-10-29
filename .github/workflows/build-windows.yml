@@ -1,0 +1,74 @@
+# Gera o instalador do Windows (Pedro.gg-Setup-<versão>.exe) sem precisar configurar nada no seu PC.
+#
+# Testar o instalador (sem publicar):
+#   Aba "Actions" > "Instalador do Windows" > "Run workflow". O .exe aparece em "Artifacts".
+#
+# Publicar uma versão (os apps instalados passam a avisar "nova versão disponível"):
+#   1. Mude "version" no package.json (ex.: 0.2.0) e faça commit.
+#   2. Crie a tag com o mesmo número e envie:   git tag v0.2.0 && git push origin v0.2.0
+#   3. O workflow gera o instalador e cria o Release com: .exe, latest.yml e .blockmap.
+#      O app dos seus amigos lê o latest.yml e pergunta se querem atualizar.
+name: Instalador do Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # só para criar o Release das tags
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # usa a versão do campo "packageManager" do package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: A tag precisa ser igual à versão do package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if [ "v$v" != "${{ github.ref_name }}" ]; then
+            echo "Tag ${{ github.ref_name }} diferente da versão do package.json (v$v). Ajuste e crie a tag de novo."
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm test
+
+      # O repositório de atualizações entra no app sozinho (GITHUB_REPOSITORY) e o latest.yml sai junto do .exe.
+      - run: pnpm exec electron-vite build
+      - run: >
+          pnpm exec electron-builder --win --publish never
+          -c.publish.provider=github
+          -c.publish.owner=${{ github.repository_owner }}
+          -c.publish.repo=${{ github.event.repository.name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pedro.gg-Setup
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
+          if-no-files-found: error
+
+      - name: Publicar o Release (somente tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
