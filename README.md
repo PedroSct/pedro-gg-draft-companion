@@ -116,7 +116,7 @@ Também dá para importar um `meta.json` manualmente em Configurações > Import
 - Não há nada durante a partida (sem overlay), de propósito: a análise vem depois do jogo.
 - Os dados de meta reais dependem de você rodar o gerador uma vez por patch (e de uma chave da Riot).
 - A atualização automática foi testada com um atualizador simulado e com o app empacotado, mas ainda não contra um
-  Release real do GitHub: o primeiro teste de verdade é publicar a 0.3.1 e ver o aviso na 0.3.0.
+  Release real do GitHub: o primeiro teste de verdade é publicar a 0.3.2 e ver o aviso na 0.3.1.
 - Os dados do jogo (campeões, itens) ficam salvos no PC depois da primeira execução, mas as **imagens** vêm do CDN da
   Riot. Sem internet, o app mostra a inicial de cada campeão no lugar do ícone.
 - A tabela de rotas e funções é curada à mão e pode ficar atrás do patch; "Todos" sempre mostra tudo.

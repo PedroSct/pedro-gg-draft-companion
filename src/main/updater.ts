@@ -50,6 +50,16 @@ export function notesToText(notes: unknown): string | undefined {
   return text ? text.slice(0, NOTES_MAX) : undefined
 }
 
+/**
+ * electron-updater é CommonJS. Depois de empacotado, `import('electron-updater')` pode entregar o
+ * `autoUpdater` como export nomeado (quando o Node o enxerga) ou só dentro de `default`.
+ */
+export function pickAutoUpdater(mod: unknown): UpdaterLike | null {
+  const m = mod as { autoUpdater?: unknown; default?: { autoUpdater?: unknown } } | null
+  const found = m?.autoUpdater ?? m?.default?.autoUpdater
+  return found ? (found as UpdaterLike) : null
+}
+
 export class UpdateService {
   private state: UpdateState
   private readonly active: boolean

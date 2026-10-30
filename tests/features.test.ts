@@ -6,7 +6,7 @@ import { emptyPool, mergePools, countNew } from '../src/shared/poolShare'
 import { decodeShare, encodeShare, toFileJson } from '../src/main/store/share'
 import { recommend } from '../src/main/data/recommender'
 import { validateDataset } from '../src/main/data/meta'
-import { UpdateService, notesToText, type UpdaterLike } from '../src/main/updater'
+import { UpdateService, notesToText, pickAutoUpdater, type UpdaterLike } from '../src/main/updater'
 import type { ChampionInfo, FriendProfile, MetaDataset, Pool } from '../src/shared/dataTypes'
 import type { DraftPlayer, DraftState } from '../src/shared/types'
 
@@ -348,5 +348,18 @@ describe('atualização do app', () => {
     expect(notesToText(undefined)).toBeUndefined()
     expect(notesToText([{ note: '<p>A &amp; B</p>' }, { note: 'C' }])).toBe('A & B\n\nC')
     expect(notesToText('x'.repeat(5000))!.length).toBe(1500)
+  })
+})
+
+describe('pickAutoUpdater (electron-updater é CommonJS)', () => {
+  const u = { on: () => {} }
+  it('acha o autoUpdater como export nomeado ou dentro de default', () => {
+    expect(pickAutoUpdater({ autoUpdater: u })).toBe(u)
+    expect(pickAutoUpdater({ default: { autoUpdater: u } })).toBe(u) // o caso do app empacotado
+  })
+  it('devolve null quando não existe', () => {
+    expect(pickAutoUpdater({})).toBeNull()
+    expect(pickAutoUpdater(null)).toBeNull()
+    expect(pickAutoUpdater({ default: {} })).toBeNull()
   })
 })

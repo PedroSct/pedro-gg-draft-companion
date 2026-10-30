@@ -11,7 +11,7 @@ import { recommend } from '../data/recommender'
 import { ROLES } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO } from '../../shared/config'
 import { decodeShare, encodeShare, toFileJson } from '../store/share'
-import { UpdateService, type UpdaterLike } from '../updater'
+import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
 import { AutoAccept } from '../autoAccept'
 import { PostGameStore } from '../postgame/store'
 import { PostGameCollector } from '../postgame/collector'
@@ -264,8 +264,9 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   let updaterImpl: UpdaterLike | null = null
   if (app.isPackaged) {
     try {
-      const mod = await import('electron-updater')
-      updaterImpl = mod.autoUpdater as unknown as UpdaterLike
+      // electron-updater é CommonJS: no app empacotado o `autoUpdater` pode vir só em `default`.
+      updaterImpl = pickAutoUpdater(await import('electron-updater'))
+      if (!updaterImpl) console.log('[update] indisponível: autoUpdater não encontrado no módulo')
     } catch (err) {
       console.log('[update] indisponível:', err instanceof Error ? err.message : err)
     }
