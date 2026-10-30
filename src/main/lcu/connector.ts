@@ -4,11 +4,17 @@ import https from 'node:https'
 import WebSocket from 'ws'
 import { findLockfilePath, readLockfile, type LockfileData } from './lockfile'
 import { normalizeSession } from './champSelect'
-import type { DraftState, LcuStatus } from '../../shared/types'
+import type { DraftState, LcuStatus, ReadyCheck } from '../../shared/types'
 
 const HOST = '127.0.0.1'
 const SESSION_PATH = '/lol-champ-select/v1/session'
 const SESSION_EVENT = 'OnJsonApiEvent_lol-champ-select_v1_session'
+const READY_PATH = '/lol-matchmaking/v1/ready-check'
+const READY_EVENT = 'OnJsonApiEvent_lol-matchmaking_v1_ready-check'
+/** Única escrita que o app faz no cliente, e só quando o usuário liga o "aceitar automático". */
+const ACCEPT_PATH = '/lol-matchmaking/v1/ready-check/accept'
+const GAMEFLOW_PATH = '/lol-gameflow/v1/gameflow-phase'
+const GAMEFLOW_EVENT = 'OnJsonApiEvent_lol-gameflow_v1_gameflow-phase'
 const RETRY_MS = 3000
 const REQUEST_TIMEOUT_MS = 5000
 
@@ -21,6 +27,9 @@ export interface LcuEvents {
   status: (status: LcuStatus) => void
   draft: (draft: DraftState) => void
   'draft-ended': () => void
+  'ready-check': (check: ReadyCheck | null) => void
+  /** fase do cliente: None, Lobby, Matchmaking, ReadyCheck, ChampSelect, InProgress, WaitingForStats, EndOfGame... */
+  gameflow: (phase: string) => void
 }
 
 export interface LcuConnector {
@@ -67,11 +76,21 @@ export class LcuConnector extends EventEmitter {
     return this.lastDraft
   }
 
-  /**
-   * Único método HTTP exposto é GET: o app opera estritamente em modo leitura.
-   * Útil nos próximos módulos (ex.: invocador atual) sem abrir escrita.
-   */
+  /** Leitura genérica (GET). O app só lê do cliente, com a única exceção de `acceptReadyCheck`. */
   get(path: string): Promise<{ status: number; data: unknown }> {
+    return this.request('GET', path)
+  }
+
+  /**
+   * Aceita a partida encontrada. É a ÚNICA escrita permitida e o caminho é fixo: não existe
+   * um "post" genérico, então nada além do botão Aceitar pode ser enviado ao cliente.
+   */
+  async acceptReadyCheck(): Promise<boolean> {
+    const res = await this.request('POST', ACCEPT_PATH)
+    return res.status >= 200 && res.status < 300
+  }
+
+  private request(method: 'GET' | 'POST', path: string): Promise<{ status: number; data: unknown }> {
     const c = this.creds
     if (!c) return Promise.reject(new Error('LCU não conectada'))
     if (!path.startsWith('/')) return Promise.reject(new Error('Caminho inválido'))
@@ -82,7 +101,7 @@ export class LcuConnector extends EventEmitter {
           host: HOST,
           port: c.port,
           path,
-          method: 'GET',
+          method,
           agent: localAgent,
           timeout: REQUEST_TIMEOUT_MS,
           headers: { Authorization: authHeader(c), Accept: 'application/json' }
@@ -147,6 +166,8 @@ export class LcuConnector extends EventEmitter {
       ws.once('open', () => {
         // Protocolo WAMP da LCU: [5, evento] = SUBSCRIBE
         ws.send(JSON.stringify([5, SESSION_EVENT]))
+        ws.send(JSON.stringify([5, READY_EVENT]))
+        ws.send(JSON.stringify([5, GAMEFLOW_EVENT]))
         resolve()
       })
       ws.on('message', (data) => {
@@ -187,6 +208,20 @@ export class LcuConnector extends EventEmitter {
     const res = await this.get(SESSION_PATH)
     if (res.status === 200) this.publish(res.data)
     else if (res.status !== 404) throw new Error(`LCU respondeu ${res.status}`) // 404 = fora da seleção
+
+    // Se o app abrir com a janela "partida encontrada" já aberta. Falha aqui nunca derruba a conexão.
+    try {
+      const gf = await this.get(GAMEFLOW_PATH)
+      if (gf.status === 200 && typeof gf.data === 'string') this.emit('gameflow', gf.data)
+    } catch {
+      /* só informativo */
+    }
+    try {
+      const rc = await this.get(READY_PATH)
+      if (rc.status === 200) this.publishReadyCheck(rc.data)
+    } catch {
+      /* sem fila: nada a fazer */
+    }
   }
 
   private onMessage(raw: string): void {
@@ -198,10 +233,27 @@ export class LcuConnector extends EventEmitter {
       return
     }
     // Formato: [8, "<evento>", { eventType: "Create|Update|Delete", data, uri }]
-    if (!Array.isArray(msg) || msg[0] !== 8 || msg[1] !== SESSION_EVENT) return
+    if (!Array.isArray(msg) || msg[0] !== 8) return
     const payload = msg[2] as { eventType?: string; data?: unknown } | undefined
+    if (msg[1] === GAMEFLOW_EVENT) {
+      if (typeof payload?.data === 'string') this.emit('gameflow', payload.data)
+      return
+    }
+    if (msg[1] === READY_EVENT) {
+      if (payload?.eventType === 'Delete') this.emit('ready-check', null)
+      else this.publishReadyCheck(payload?.data)
+      return
+    }
+    if (msg[1] !== SESSION_EVENT) return
     if (payload?.eventType === 'Delete') return this.clearDraft()
     this.publish(payload?.data)
+  }
+
+  private publishReadyCheck(data: unknown): void {
+    if (typeof data !== 'object' || data === null) return
+    const d = data as Record<string, unknown>
+    if (typeof d.state !== 'string') return
+    this.emit('ready-check', { state: d.state, playerResponse: typeof d.playerResponse === 'string' ? d.playerResponse : 'None' })
   }
 
   private publish(data: unknown): void {

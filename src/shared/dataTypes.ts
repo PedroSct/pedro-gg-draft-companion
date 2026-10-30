@@ -41,6 +41,10 @@ export interface AppSettings {
   metaAutoUpdate: boolean
   /** Como ordenar as sugestões: equilibrado, mais conforto ou mais meta. */
   pickMode: RecommendMode
+  /** Aceita a partida encontrada sozinho (pelo cliente do LoL). Desligado por padrão. */
+  autoAccept: boolean
+  /** Segundos de espera antes de aceitar (0 a 8). */
+  autoAcceptDelay: number
 }
 
 export interface ProfilesFile {

@@ -11,6 +11,7 @@ import type {
   SpellInfo,
   UpdateState
 } from './dataTypes'
+import type { PgDetail, PgFetchResult, PgSummary } from './postgame'
 import type { DecodeResult, ShareOptions, SharedProfile } from './poolShare'
 
 export type Unsubscribe = () => void
@@ -42,8 +43,18 @@ export interface LolApi {
   onDraftEnded(cb: () => void): Unsubscribe
 
   onUpdateState(cb: (state: UpdateState) => void): Unsubscribe
+  /** O app aceitou uma partida encontrada sozinho (opção "Aceitar partida automaticamente"). */
+  onAutoAccepted(cb: () => void): Unsubscribe
+  /** Uma partida terminou e foi analisada. */
+  onPostGameReady(cb: (summary: PgSummary) => void): Unsubscribe
 
   // Renderer → Main
+  listPostGames(): Promise<PgSummary[]>
+  getPostGame(gameId: number): Promise<PgDetail | null>
+  deletePostGame(gameId: number): Promise<boolean>
+  /** Busca no cliente a última partida do histórico e analisa. */
+  fetchLatestPostGame(): Promise<PgFetchResult>
+
   getLcuStatus(): Promise<LcuStatus>
   getCurrentDraft(): Promise<DraftState | null>
   recommend(req: { profileId: string; role: Role | null }): Promise<Recommendation | null>

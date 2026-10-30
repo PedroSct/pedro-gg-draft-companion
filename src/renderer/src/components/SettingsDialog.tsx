@@ -210,6 +210,42 @@ export function SettingsDialog() {
           </section>
 
           <section>
+            <h3 className="font-display text-lg font-semibold">Aceitar partida</h3>
+            <p className="mt-1 text-sm text-mist">
+              Quando a partida é encontrada, o app aceita por você pelo próprio cliente do LoL: não lê a tela e não mexe no
+              mouse, então funciona com o cliente minimizado ou em outro monitor. Se você aceitar ou recusar antes, ele não
+              faz nada.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={settings?.autoAccept ?? false}
+                  onChange={(e) => void saveSettings({ autoAccept: e.target.checked })}
+                  className="h-4 w-4 accent-[var(--color-gold)]"
+                />
+                Aceitar partida automaticamente
+              </label>
+              <label className="flex items-center gap-2 text-sm text-mist">
+                Esperar
+                <select
+                  aria-label="Espera antes de aceitar"
+                  value={settings?.autoAcceptDelay ?? 1}
+                  onChange={(e) => void saveSettings({ autoAcceptDelay: Number(e.target.value) })}
+                  className="rounded-sm border border-line bg-panel px-2 py-1 text-ink"
+                >
+                  {[0, 1, 2, 3, 5, 8].map((n) => (
+                    <option key={n} value={n}>
+                      {n === 0 ? 'nada (na hora)' : `${n} s`}
+                    </option>
+                  ))}
+                </select>
+                antes de aceitar
+              </label>
+            </div>
+          </section>
+
+          <section>
             <h3 className="font-display text-lg font-semibold">Atualização do app</h3>
             <p className="mt-1 text-sm text-mist">Versão instalada: {update?.current ?? '…'}</p>
             <div className="mt-2 flex items-center gap-2">

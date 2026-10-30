@@ -1,5 +1,6 @@
 import appIcon from '../assets/icon.png'
 import type { LcuStatus } from '../../../shared/types'
+import { useEffect, useState } from 'react'
 import { selectActiveProfile, useApp } from '../store/useApp'
 import { btn, btnGold } from '../lib/ui'
 
@@ -9,6 +10,37 @@ const STATUS: Record<LcuStatus, { label: string; dot: string; pulse: boolean }> 
   disconnected: { label: 'Cliente fechado', dot: 'bg-enemy', pulse: false }
 }
 
+/** Liga/desliga o "aceitar partida automaticamente" e avisa quando aceitou uma. */
+function AutoAcceptToggle() {
+  const on = useApp((s) => s.settings?.autoAccept ?? false)
+  const saveSettings = useApp((s) => s.saveSettings)
+  const at = useApp((s) => s.autoAcceptedAt)
+  const [flash, setFlash] = useState(false)
+
+  useEffect(() => {
+    if (!at) return
+    setFlash(true)
+    const t = setTimeout(() => setFlash(false), 4000)
+    return () => clearTimeout(t)
+  }, [at])
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => void saveSettings({ autoAccept: !on })}
+      title="Quando a partida for encontrada, o Pedro.gg clica em Aceitar por você (pelo cliente do LoL, sem usar o mouse)."
+      className={`flex items-center gap-2 rounded-sm border px-2.5 py-1.5 text-sm transition-colors ${
+        on ? 'border-gold/60 bg-gold/10 text-gold' : 'border-line bg-panel text-mist hover:border-mist/50'
+      }`}
+    >
+      <span className={`h-2 w-2 rounded-full ${on ? 'bg-gold' : 'bg-mist/40'}`} />
+      {flash ? 'Partida aceita!' : on ? 'Aceitar: automático' : 'Aceitar: manual'}
+    </button>
+  )
+}
+
 export function Header() {
   const status = useApp((s) => s.lcuStatus)
   const profiles = useApp((s) => s.profiles)
@@ -16,6 +48,9 @@ export function Header() {
   const setActive = useApp((s) => s.setActiveProfile)
   const openPool = useApp((s) => s.openPool)
   const openSettings = useApp((s) => s.openSettings)
+  const view = useApp((s) => s.view)
+  const setView = useApp((s) => s.setView)
+  const draft = useApp((s) => s.draft)
   const st = STATUS[status]
 
   return (
@@ -25,6 +60,16 @@ export function Header() {
         <span className="font-display text-xl font-semibold tracking-wide">Pedro.gg</span>
         <span className="text-sm text-mist">Draft Companion</span>
       </div>
+
+      <nav className="flex items-center gap-5 pl-2" role="tablist" aria-label="Telas">
+        <button type="button" role="tab" className="tab" aria-selected={view === 'draft'} onClick={() => setView('draft')}>
+          Draft
+          {draft && view !== 'draft' && <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-ally align-middle" aria-label="seleção em andamento" />}
+        </button>
+        <button type="button" role="tab" className="tab" aria-selected={view === 'postgame'} onClick={() => setView('postgame')}>
+          Pós-jogo
+        </button>
+      </nav>
 
       <div className="mx-auto flex items-center gap-2.5">
         {profiles.length > 0 ? (
@@ -60,6 +105,7 @@ export function Header() {
           </span>
           {st.label}
         </div>
+        <AutoAcceptToggle />
         <button type="button" className={btn} onClick={openPool}>
           Pools
         </button>

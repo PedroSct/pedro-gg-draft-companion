@@ -1,7 +1,9 @@
 # Pedro.gg Draft Companion
 
-Analista de draft em tempo real para League of Legends. Lê a seleção de campeões pelo cliente local (somente leitura,
-nunca envia nada de volta), cruza com a Champion Pool de cada amigo e mostra o melhor pick, a build e a ordem de habilidades.
+Analista de draft em tempo real para League of Legends. Lê a seleção de campeões pelo cliente local, cruza com a
+Champion Pool de cada amigo e mostra o melhor pick, a build e a ordem de habilidades. Depois da partida, analisa o seu
+jogo. O app só **lê** do cliente; a única coisa que ele envia é o "Aceitar" da partida encontrada, e só se você ligar
+essa opção.
 
 ## Rodar em desenvolvimento
 
@@ -30,6 +32,17 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   **Importar de um amigo** (cole o código ou abra o arquivo). Ao importar você escolhe entre criar um perfil novo,
   juntar (só acrescenta o que falta, sem mexer no seu conforto) ou substituir. Nada é salvo até clicar em *Salvar perfil*.
   Anotações só vão se você marcar a opção.
+- **Aceitar partida automaticamente** (opcional, desligado por padrão): botão no topo ou em *Configurações*. Quando a
+  partida é encontrada, o app aceita pelo próprio cliente do LoL, sem ler a tela e sem mexer no mouse (funciona com o
+  cliente minimizado). Há uma espera configurável (0 a 8 s). Se você aceitar, recusar ou desligar antes, ele não faz nada.
+  Substitui o script Python de leitura de tela. É a única escrita que o app faz no cliente, e o caminho é fixo no código.
+- **Pós-jogo**: ao terminar a partida, o app lê o resultado e a timeline no cliente (sem chave da Riot) e mostra nota e
+  conceito, radar (farm, rota, lutas, visão, objetivos, sobrevivência), dicas em português, CS e ouro minuto a minuto
+  contra o oponente de rota, diferença em 10/15/20 min, viradas de ouro, mortes por fase, objetivos e placar. Guarda as
+  últimas 40 partidas. O botão **Analisar última partida** busca a mais recente do histórico do cliente. As notas usam
+  referências aproximadas (CS/min e visão por rota) e são um ponto de comparação, não uma verdade.
+- **Aviso de meta desatualizado**: se o patch dos dados de builds for mais antigo que o do jogo, aparece uma faixa com
+  **Atualizar dados**.
 - **Aviso de atualização**: quando existe uma versão nova, aparece uma faixa no topo com **Atualizar agora** / **Depois**.
   O app só baixa se você aceitar e só reinicia quando você clicar (fica travado durante uma seleção de campeões).
 
@@ -94,9 +107,16 @@ O resultado é o `meta.json`. Para chegar aos amigos:
 Também dá para importar um `meta.json` manualmente em Configurações > Importar dados de meta.
 
 ## Limitações conhecidas
+- O Pós-jogo e o aceite automático usam endpoints do cliente do LoL (LCU) que a Riot **não** suporta oficialmente para
+  apps de terceiros e podem mudar num patch. Os caminhos usados são `/lol-matchmaking/v1/ready-check/accept`,
+  `/lol-end-of-game/v1/eog-stats-block`, `/lol-match-history/v1/games/{id}`, `/lol-match-history/v1/game-timelines/{id}`
+  e `/lol-gameflow/v1/gameflow-phase`. Foram testados contra um cliente simulado, **não contra o cliente real**. O app
+  guarda a resposta bruta das últimas 5 partidas em `postgame/raw` (pasta de dados do app) para ajustar o leitor se o
+  formato vier diferente.
+- Não há nada durante a partida (sem overlay), de propósito: a análise vem depois do jogo.
 - Os dados de meta reais dependem de você rodar o gerador uma vez por patch (e de uma chave da Riot).
 - A atualização automática foi testada com um atualizador simulado e com o app empacotado, mas ainda não contra um
-  Release real do GitHub: o primeiro teste de verdade é publicar a 0.2.1 e ver o aviso na 0.2.0.
+  Release real do GitHub: o primeiro teste de verdade é publicar a 0.3.1 e ver o aviso na 0.3.0.
 - Os dados do jogo (campeões, itens) ficam salvos no PC depois da primeira execução, mas as **imagens** vêm do CDN da
   Riot. Sem internet, o app mostra a inicial de cada campeão no lugar do ícone.
 - A tabela de rotas e funções é curada à mão e pode ficar atrás do patch; "Todos" sempre mostra tudo.

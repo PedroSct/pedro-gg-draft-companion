@@ -38,3 +38,11 @@ export interface DraftState {
   enemies: DraftPlayer[]
   bans: { allies: number[]; enemies: number[] }
 }
+
+/** Estado do "partida encontrada" (ready check) enviado pelo cliente. */
+export interface ReadyCheck {
+  /** 'InProgress' enquanto a janela de aceitar está aberta */
+  state: string
+  /** 'None' = você ainda não respondeu; 'Accepted' | 'Declined' */
+  playerResponse: string
+}

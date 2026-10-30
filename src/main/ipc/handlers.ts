@@ -12,6 +12,9 @@ import { ROLES } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO } from '../../shared/config'
 import { decodeShare, encodeShare, toFileJson } from '../store/share'
 import { UpdateService, type UpdaterLike } from '../updater'
+import { AutoAccept } from '../autoAccept'
+import { PostGameStore } from '../postgame/store'
+import { PostGameCollector } from '../postgame/collector'
 import type { ShareOptions } from '../../shared/poolShare'
 import type { UpdateMetaResult } from '../../shared/api'
 import type { Role } from '../../shared/types'
@@ -68,12 +71,62 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   })
   lcu.on('draft', (d) => send(IPC.DRAFT_UPDATE, d))
   lcu.on('draft-ended', () => send(IPC.DRAFT_ENDED))
+
+  // Aceitar a partida encontrada (opcional, desligado por padrão)
+  const autoAccept = new AutoAccept({
+    isEnabled: () => profiles.getSettings().autoAccept,
+    getDelaySec: () => profiles.getSettings().autoAcceptDelay,
+    accept: () => lcu.acceptReadyCheck(),
+    onAccepted: () => {
+      console.log('[lcu] partida aceita automaticamente')
+      send(IPC.MATCH_AUTO_ACCEPTED)
+    }
+  })
+  lcu.on('ready-check', (check) => autoAccept.update(check))
+
+  // ---- Pós-jogo: ao terminar a partida, lê o resultado e a timeline no cliente e analisa
+  const postGames = new PostGameStore(path.join(userData, 'postgame', 'history.json'), path.join(userData, 'postgame', 'raw'))
+  const champKeys = new Map<number, string>()
+  async function warmChampionKeys(): Promise<void> {
+    if (champKeys.size > 0) return
+    try {
+      const cat = await ddragon.getCatalog(await currentVersion())
+      for (const c of cat.champions) champKeys.set(c.id, c.key)
+    } catch {
+      /* sem catálogo: as rotas ausentes ficam em branco */
+    }
+  }
+  const collector = new PostGameCollector({
+    get: (p) => lcu.get(p),
+    store: postGames,
+    champKeyOf: (id) => champKeys.get(id) ?? null,
+    onReady: (summary) => send(IPC.POSTGAME_READY, summary)
+  })
+  lcu.on('gameflow', (phase) => {
+    void warmChampionKeys().then(() => collector.onPhase(phase))
+  })
+  handle(IPC.POSTGAME_LIST, () => postGames.list())
+  handle(IPC.POSTGAME_GET, (id) => (typeof id === 'number' ? postGames.get(id) : null))
+  handle(IPC.POSTGAME_DELETE, async (id) => {
+    if (typeof id !== 'number') return false
+    await postGames.remove(id)
+    return true
+  })
+  handle(IPC.POSTGAME_FETCH_LATEST, async () => {
+    await warmChampionKeys()
+    return collector.collectLatest()
+  })
+
   handle(IPC.LCU_GET_STATUS, () => lcu.getStatus())
   handle(IPC.DRAFT_GET_CURRENT, () => lcu.getLastDraft())
 
   // ---- Configurações e escolha da pasta do LoL
   handle(IPC.SETTINGS_GET, () => profiles.getSettings())
-  handle(IPC.SETTINGS_SET, (patch) => profiles.updateSettings(patch))
+  handle(IPC.SETTINGS_SET, async (patch) => {
+    const settings = await profiles.updateSettings(patch)
+    autoAccept.enabledChanged()
+    return settings
+  })
   handle(IPC.SETTINGS_PICK_GAME_DIR, async () => {
     const res = await dialog.showOpenDialog(win, {
       title: 'Selecione a pasta do League of Legends',
@@ -232,6 +285,7 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
 
   win.on('closed', () => {
     lcu.stop()
+    autoAccept.stop()
     updates.stop()
   })
   lcu.start()

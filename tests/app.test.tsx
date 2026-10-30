@@ -11,6 +11,9 @@ import type { DraftPlayer, DraftState, LcuStatus } from '../src/shared/types'
 import type { AppSettings, Catalog, FriendProfile, UpdateState } from '../src/shared/dataTypes'
 import type { DecodeResult } from '../src/shared/poolShare'
 import type { LolApi, ProfileInput } from '../src/shared/api'
+import { analyzeMatch, summarize, type PgDetail, type PgSummary } from '../src/shared/postgame'
+import { normalizeMatch } from '../src/main/postgame/normalize'
+import { makeLcuMatch } from './fixtures/match'
 
 const dataset = validateDataset(JSON.parse(readFileSync(join(process.cwd(), 'resources', 'meta.sample.json'), 'utf8')))
 
@@ -79,7 +82,13 @@ interface Fake {
   saveProfile: ReturnType<typeof vi.fn>
 }
 
-function installApi(opts: { profiles?: FriendProfile[] } = {}): Fake {
+function postGameFixture(): { summary: PgSummary; detail: PgDetail } {
+  const report = normalizeMatch(makeLcuMatch())!
+  const analysis = analyzeMatch(report)!
+  return { summary: summarize(report, analysis, 1_761_700_000_000), detail: { report, analysis } }
+}
+
+function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: PgSummary; detail: PgDetail }[]; metaPatch?: string } = {}): Fake {
   let profiles = opts.profiles ?? [makeProfile()]
   let draft: DraftState | null = null
   let status: LcuStatus = 'connected'
@@ -90,7 +99,9 @@ function installApi(opts: { profiles?: FriendProfile[] } = {}): Fake {
     lastActiveProfileId: profiles[0]?.id ?? null,
     metaUrl: null,
     metaAutoUpdate: true,
-    pickMode: 'balanced'
+    pickMode: 'balanced',
+    autoAccept: false,
+    autoAcceptDelay: 1
   }
   let update: UpdateState = { status: 'idle', current: '0.1.0' }
   const updateCbs = new Set<(s: UpdateState) => void>()
@@ -116,6 +127,12 @@ function installApi(opts: { profiles?: FriendProfile[] } = {}): Fake {
 
   const api: LolApi = {
     onMetaUpdated: () => () => {},
+    onAutoAccepted: () => () => {},
+    onPostGameReady: () => () => {},
+    listPostGames: async () => (opts.postGames ?? []).map((g) => g.summary),
+    getPostGame: async (id) => opts.postGames?.find((g) => g.summary.gameId === id)?.detail ?? null,
+    deletePostGame: async () => true,
+    fetchLatestPostGame: async () => ({ ok: false, message: 'sem partidas' }),
     onUpdateState: (cb) => (updateCbs.add(cb), () => updateCbs.delete(cb)),
     getUpdateState: async () => update,
     checkForUpdates: async () => update,
@@ -147,7 +164,10 @@ function installApi(opts: { profiles?: FriendProfile[] } = {}): Fake {
     },
     getCatalog: async () => catalog,
     getSpells: async () => [],
-    getMetaInfo: async () => ({ source: 'sample', patch: 'sample', generatedAt: '', isSample: true, champions: 7 }),
+    getMetaInfo: async () =>
+      opts.metaPatch
+        ? { source: 'https://x.test/meta.json', patch: opts.metaPatch, generatedAt: '', isSample: false, champions: 7 }
+        : { source: 'sample', patch: 'sample', generatedAt: '', isSample: true, champions: 7 },
     getBuild: async ({ championId, role }) => dataset.champions[String(championId)]?.roles[role]?.build ?? null,
     importMeta: async () => ({ ok: false, reason: 'canceled' }),
     updateMeta: async () => ({ ok: false, reason: 'no-url' })
@@ -193,7 +213,13 @@ beforeEach(() => {
     poolOpen: false,
     settingsOpen: false,
     update: null,
-    updateDismissed: null
+    updateDismissed: null,
+    view: 'draft',
+    postList: [],
+    postSelectedId: null,
+    postDetail: null,
+    postBusy: false,
+    postMessage: null
   })
 })
 
@@ -541,5 +567,45 @@ describe('sem internet', () => {
     const tile = await within(verdict).findByRole('img', { name: 'Orianna' })
     expect(tile.tagName).toBe('DIV')
     expect(tile).toHaveTextContent('O')
+  })
+})
+
+describe('pós-jogo e aviso de patch', () => {
+  it('a aba Pós-jogo sem partidas explica e oferece buscar a última', async () => {
+    installApi()
+    render(<App />)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: /Pós-jogo/ }))
+    expect(await screen.findByText('Sua primeira análise aparece aqui')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Analisar a última partida/ })).toBeEnabled()
+  })
+
+  it('mostra a análise da partida: nota, dicas, diferenças e placar', async () => {
+    installApi({ postGames: [postGameFixture()] })
+    render(<App />)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: /Pós-jogo/ }))
+    expect(await screen.findByText('Vitória', { selector: 'div' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /^Nota \d+ de 100/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'O que a partida mostrou' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /CS por minuto/ })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /Diferença de ouro entre o seu time/ })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /^Radar:/ })).toBeInTheDocument()
+    expect(screen.getByText('Dragões')).toBeInTheDocument()
+    expect(screen.getAllByText('Você', { selector: 'span.truncate' })).toHaveLength(1) // linha do placar
+    expect(screen.getByRole('button', { name: 'Remover do histórico' })).toBeInTheDocument()
+  })
+
+  it('avisa quando os dados de builds são de um patch mais velho que o do jogo', async () => {
+    installApi({ metaPatch: '16.18' })
+    render(<App />)
+    expect(await screen.findByText(/são do patch 16\.18 e o jogo está no 16\.20/)).toBeInTheDocument()
+  })
+
+  it('não avisa quando o patch é o mesmo', async () => {
+    installApi({ metaPatch: '16.20' })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    expect(screen.queryByText(/e o jogo está no/)).not.toBeInTheDocument()
   })
 })

@@ -23,7 +23,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   lastActiveProfileId: null,
   metaUrl: null,
   metaAutoUpdate: true,
-  pickMode: 'balanced'
+  pickMode: 'balanced',
+  autoAccept: false,
+  autoAcceptDelay: 1
 }
 
 function isHttpsUrl(v: string): boolean {
@@ -152,6 +154,15 @@ export function sanitizeSettingsPatch(raw: unknown): Partial<AppSettings> {
   if ('pickMode' in raw) {
     if (raw.pickMode === 'balanced' || raw.pickMode === 'comfort' || raw.pickMode === 'meta') out.pickMode = raw.pickMode
     else throw new Error('Configuração inválida: pickMode')
+  }
+  if ('autoAccept' in raw) {
+    if (typeof raw.autoAccept === 'boolean') out.autoAccept = raw.autoAccept
+    else throw new Error('Configuração inválida: autoAccept')
+  }
+  if ('autoAcceptDelay' in raw) {
+    const v = raw.autoAcceptDelay
+    if (typeof v === 'number' && Number.isFinite(v)) out.autoAcceptDelay = Math.min(8, Math.max(0, Math.round(v)))
+    else throw new Error('Configuração inválida: autoAcceptDelay')
   }
   return out
 }

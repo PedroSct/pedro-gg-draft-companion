@@ -9,16 +9,47 @@ import { IdleScreen } from './components/IdleScreen'
 import { PoolEditor } from './components/PoolEditor'
 import { SettingsDialog } from './components/SettingsDialog'
 import { UpdateBanner } from './components/UpdateBanner'
+import { PostGameScreen } from './components/PostGame'
 import { btn } from './lib/ui'
+
+/** "15.20.1" e "15.20" são o mesmo patch: compara só os dois primeiros números. */
+const patchOf = (v: string): string | null => {
+  const m = /^(\d+)\.(\d+)/.exec(v)
+  return m ? `${m[1]}.${m[2]}` : null
+}
 
 function Banners() {
   const metaInfo = useApp((s) => s.metaInfo)
   const catalogError = useApp((s) => s.catalogError)
   const loadCatalog = useApp((s) => s.loadCatalog)
   const openSettings = useApp((s) => s.openSettings)
+  const catalog = useApp((s) => s.catalog)
+  const updateMeta = useApp((s) => s.updateMeta)
+  const [refreshing, setRefreshing] = useState(false)
+  const gamePatch = catalog ? patchOf(catalog.version) : null
+  const metaPatch = metaInfo && !metaInfo.isSample ? patchOf(metaInfo.patch) : null
+  const stale = gamePatch !== null && metaPatch !== null && gamePatch !== metaPatch
 
   return (
     <>
+      {stale && (
+        <div role="status" className="flex items-center gap-3 border-b border-gold/30 bg-gold/10 px-5 py-2 text-sm text-gold">
+          <span>
+            Os dados de builds e matchups são do patch {metaPatch} e o jogo está no {gamePatch}. Itens e campeões mudaram; a sugestão pode estar desatualizada.
+          </span>
+          <button
+            type="button"
+            className="underline underline-offset-4 hover:text-snow disabled:opacity-50"
+            disabled={refreshing}
+            onClick={() => {
+              setRefreshing(true)
+              void updateMeta().finally(() => setRefreshing(false))
+            }}
+          >
+            {refreshing ? 'Atualizando…' : 'Atualizar dados'}
+          </button>
+        </div>
+      )}
       {catalogError && (
         <div role="alert" className="flex items-center gap-3 border-b border-enemy/40 bg-enemy/10 px-5 py-2 text-sm">
           <span>{catalogError}</span>
@@ -60,6 +91,7 @@ export default function App() {
   const init = useApp((s) => s.init)
   const ready = useApp((s) => s.ready)
   const draft = useApp((s) => s.draft)
+  const view = useApp((s) => s.view)
   const poolOpen = useApp((s) => s.poolOpen)
   const settingsOpen = useApp((s) => s.settingsOpen)
   const [fatal, setFatal] = useState<string | null>(null)
@@ -88,13 +120,18 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <Header />
-      <UpdateBanner />
-      <Banners />
-      <main className="min-h-0 flex-1 p-5">{!ready ? null : draft ? <DraftScreen /> : <IdleScreen />}</main>
-      {poolOpen && <PoolEditor />}
-      {settingsOpen && <SettingsDialog />}
+    <div className="bg-aurora relative flex h-full flex-col">
+      <div className="bg-grid pointer-events-none absolute inset-0 z-0" aria-hidden="true" />
+      <div className="relative z-10 flex h-full flex-col">
+        <Header />
+        <UpdateBanner />
+        <Banners />
+        <main className="min-h-0 flex-1 p-5">
+          {!ready ? null : view === 'postgame' ? <PostGameScreen /> : draft ? <DraftScreen /> : <IdleScreen />}
+        </main>
+        {poolOpen && <PoolEditor />}
+        {settingsOpen && <SettingsDialog />}
+      </div>
     </div>
   )
 }

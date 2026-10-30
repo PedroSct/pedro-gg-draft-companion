@@ -40,8 +40,17 @@ export const IPC = {
   UPDATE_DOWNLOAD: 'update:download',
   UPDATE_INSTALL: 'update:install',
 
+  POSTGAME_LIST: 'postgame:list',
+  POSTGAME_GET: 'postgame:get',
+  POSTGAME_DELETE: 'postgame:delete',
+  POSTGAME_FETCH_LATEST: 'postgame:fetchLatest',
+  // Main → Renderer (push): uma partida nova foi analisada
+  POSTGAME_READY: 'postgame:ready',
+
   // Main → Renderer (push): o meta foi atualizado em segundo plano
   META_UPDATED: 'meta:updated',
   // Main → Renderer (push): mudou o estado da atualização do app
-  UPDATE_STATE: 'update:state'
+  UPDATE_STATE: 'update:state',
+  // Main → Renderer (push): o app aceitou uma partida sozinho
+  MATCH_AUTO_ACCEPTED: 'match:autoAccepted'
 } as const

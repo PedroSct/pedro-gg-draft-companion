@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { PgDetail, PgSummary } from '../../../shared/postgame'
 import type { DraftState, LcuStatus, Role } from '../../../shared/types'
 import type {
   AppSettings,
@@ -33,6 +34,22 @@ interface AppState {
   update: UpdateState | null
   /** versão nova que a pessoa mandou "deixar para depois" (não mostra o aviso de novo até mudar) */
   updateDismissed: string | null
+  /** quando o app aceitou a última partida sozinho (para o aviso rápido no topo) */
+  autoAcceptedAt: number | null
+
+  /** tela principal: seleção de campeões ou análise das partidas */
+  view: 'draft' | 'postgame'
+  postList: PgSummary[]
+  postSelectedId: number | null
+  postDetail: PgDetail | null
+  postBusy: boolean
+  postMessage: { ok: boolean; text: string } | null
+
+  setView: (view: 'draft' | 'postgame') => void
+  loadPostGames: (selectLatest?: boolean) => Promise<void>
+  selectPostGame: (gameId: number) => Promise<void>
+  fetchLatestPostGame: () => Promise<void>
+  deletePostGame: (gameId: number) => Promise<void>
 
   init: () => Promise<() => void>
   loadCatalog: () => Promise<void>
@@ -88,6 +105,48 @@ export const useApp = create<AppState>()((set, get) => ({
   settingsOpen: false,
   update: null,
   updateDismissed: null,
+  autoAcceptedAt: null,
+  view: 'draft',
+  postList: [],
+  postSelectedId: null,
+  postDetail: null,
+  postBusy: false,
+  postMessage: null,
+
+  setView: (view) => set({ view }),
+
+  loadPostGames: async (selectLatest = false) => {
+    const postList = await window.api.listPostGames()
+    set({ postList })
+    const cur = get().postSelectedId
+    const target = selectLatest || cur === null || !postList.some((p) => p.gameId === cur) ? (postList[0]?.gameId ?? null) : cur
+    if (target === null) set({ postSelectedId: null, postDetail: null })
+    else if (target !== cur || selectLatest || get().postDetail === null) await get().selectPostGame(target)
+  },
+
+  selectPostGame: async (gameId) => {
+    set({ postSelectedId: gameId })
+    const detail = await window.api.getPostGame(gameId)
+    if (get().postSelectedId === gameId) set({ postDetail: detail })
+  },
+
+  fetchLatestPostGame: async () => {
+    set({ postBusy: true, postMessage: null })
+    try {
+      const res = await window.api.fetchLatestPostGame()
+      set({ postMessage: { ok: res.ok, text: res.message } })
+      if (res.ok) await get().loadPostGames(true)
+    } catch {
+      set({ postMessage: { ok: false, text: 'Não consegui buscar a partida. Tente de novo.' } })
+    } finally {
+      set({ postBusy: false })
+    }
+  },
+
+  deletePostGame: async (gameId) => {
+    await window.api.deletePostGame(gameId)
+    await get().loadPostGames()
+  },
 
   init: async () => {
     const api = window.api
@@ -109,6 +168,7 @@ export const useApp = create<AppState>()((set, get) => ({
         if (status === 'connected') void get().loadCatalog()
       }),
       api.onDraftUpdate((next) => {
+        if (!get().draft) set({ view: 'draft' }) // começou uma seleção: volta para ela
         const pickChanged = localChampion(get().draft) !== localChampion(next)
         set({ draft: next, ...(pickChanged ? { previewChampionId: null } : {}) })
         void get().refreshRecommendation()
@@ -122,8 +182,15 @@ export const useApp = create<AppState>()((set, get) => ({
         set({ metaInfo: info })
         void get().refreshRecommendation()
       }),
-      api.onUpdateState((update) => set({ update }))
+      api.onUpdateState((update) => set({ update })),
+      api.onAutoAccepted(() => set({ autoAcceptedAt: Date.now() })),
+      // Terminou uma partida: mostra a análise assim que ficar pronta.
+      api.onPostGameReady(() => {
+        set({ view: 'postgame', postMessage: null })
+        void get().loadPostGames(true)
+      })
     ]
+    void get().loadPostGames()
     void api.getUpdateState().then((update) => set((s) => (s.update ? s : { update })))
     // Fecha a janela em que a atualização terminou entre a leitura inicial e o registro do listener.
     void api.getMetaInfo().then((info) => set({ metaInfo: info }))

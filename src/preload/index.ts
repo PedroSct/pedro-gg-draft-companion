@@ -19,6 +19,12 @@ const api: LolApi = {
   onDraftUpdate: (cb) => subscribe(IPC.DRAFT_UPDATE, cb),
   onDraftEnded: (cb) => subscribe<void>(IPC.DRAFT_ENDED, () => cb()),
   onUpdateState: (cb) => subscribe(IPC.UPDATE_STATE, cb),
+  onPostGameReady: (cb) => subscribe(IPC.POSTGAME_READY, cb),
+  listPostGames: () => ipcRenderer.invoke(IPC.POSTGAME_LIST),
+  getPostGame: (id) => ipcRenderer.invoke(IPC.POSTGAME_GET, id),
+  deletePostGame: (id) => ipcRenderer.invoke(IPC.POSTGAME_DELETE, id),
+  fetchLatestPostGame: () => ipcRenderer.invoke(IPC.POSTGAME_FETCH_LATEST),
+  onAutoAccepted: (cb) => subscribe<void>(IPC.MATCH_AUTO_ACCEPTED, () => cb()),
 
   getLcuStatus: () => ipcRenderer.invoke(IPC.LCU_GET_STATUS),
   getCurrentDraft: () => ipcRenderer.invoke(IPC.DRAFT_GET_CURRENT),

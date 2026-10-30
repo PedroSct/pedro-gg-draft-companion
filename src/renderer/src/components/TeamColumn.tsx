@@ -17,7 +17,7 @@ const STATUS_TEXT: Record<PickStatus, string> = {
   locked: 'Confirmado'
 }
 
-function Row({ side, player, isLocal }: { side: 'ally' | 'enemy'; player: DraftPlayer | undefined; isLocal: boolean }) {
+function Row({ side, player, isLocal, index }: { side: 'ally' | 'enemy'; player: DraftPlayer | undefined; isLocal: boolean; index: number }) {
   const ally = side === 'ally'
   const name = useChampionName(player?.championId ?? 0)
   const nickname = useApp((s) => selectActiveProfile(s)?.nickname)
@@ -27,7 +27,8 @@ function Row({ side, player, isLocal }: { side: 'ally' | 'enemy'; player: DraftP
   return (
     <li
       aria-label={`${ally ? 'Aliado' : 'Inimigo'}: ${name || 'sem campeão'}`}
-      className={`flex items-center gap-3 border-y border-transparent px-3 py-2 ${ally ? 'border-l-2' : 'flex-row-reverse border-r-2 text-right'} ${accent} ${
+      style={{ ['--d' as string]: `${index * 60}ms` }}
+      className={`rise flex items-center gap-3 border-y border-transparent px-3 py-2 ${ally ? 'border-l-2' : 'flex-row-reverse border-r-2 text-right'} ${accent} ${
         isLocal ? 'bg-ally/10' : 'bg-panel/70'
       }`}
     >
@@ -115,7 +116,7 @@ export function TeamColumn({ side, players, localCellId }: Props) {
     <div className="flex flex-col gap-2">
       <ul className="flex flex-col gap-2" aria-label={side === 'ally' ? 'Time aliado' : 'Time inimigo'}>
         {slots.map((p, i) => (
-          <Row key={p?.cellId ?? `empty-${i}`} side={side} player={p} isLocal={side === 'ally' && p?.cellId === localCellId} />
+          <Row key={p?.cellId ?? `empty-${i}`} side={side} player={p} isLocal={side === 'ally' && p?.cellId === localCellId} index={i} />
         ))}
       </ul>
       <CompSummary side={side} players={players} />
