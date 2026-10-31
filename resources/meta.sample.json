@@ -85,7 +85,26 @@
                   "when": "contra inimigos com muita resistência mágica"
                 }
               ]
-            }
+            },
+            "runes": {
+              "primaryStyleId": 8100,
+              "subStyleId": 8200,
+              "perkIds": [
+                8112,
+                8139,
+                8138,
+                8135,
+                8226,
+                8210,
+                5008,
+                5008,
+                5001
+              ]
+            },
+            "spells": [
+              4,
+              14
+            ]
           },
           "synergies": {
             "112": {

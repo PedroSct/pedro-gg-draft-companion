@@ -4,7 +4,7 @@ import https from 'node:https'
 import WebSocket from 'ws'
 import { findLockfilePath, readLockfile, type LockfileData } from './lockfile'
 import { normalizeSession } from './champSelect'
-import type { DraftState, LcuStatus, ReadyCheck } from '../../shared/types'
+import type { DraftState, LcuIdentity, LcuStatus, ReadyCheck } from '../../shared/types'
 
 const HOST = '127.0.0.1'
 const SESSION_PATH = '/lol-champ-select/v1/session'
@@ -15,6 +15,16 @@ const READY_EVENT = 'OnJsonApiEvent_lol-matchmaking_v1_ready-check'
 const ACCEPT_PATH = '/lol-matchmaking/v1/ready-check/accept'
 const GAMEFLOW_PATH = '/lol-gameflow/v1/gameflow-phase'
 const GAMEFLOW_EVENT = 'OnJsonApiEvent_lol-gameflow_v1_gameflow-phase'
+const ME_PATH = '/lol-summoner/v1/current-summoner'
+const SUMMONER_BY_PUUID = '/lol-summoner/v1/summoners-by-puuid-cached/'
+/** Caminhos que o botão "Importar para o cliente" pode escrever (nada além disto, nem o aceite, passa por aqui). */
+const LOADOUT_WRITE_PATHS: RegExp[] = [
+  /^\/lol-perks\/v1\/pages$/,
+  /^\/lol-perks\/v1\/pages\/\d{1,12}$/,
+  /^\/lol-perks\/v1\/currentpage$/,
+  /^\/lol-champ-select\/v1\/session\/my-selection$/,
+  /^\/lol-item-sets\/v1\/item-sets\/\d{1,20}\/sets$/
+]
 const RETRY_MS = 3000
 const REQUEST_TIMEOUT_MS = 5000
 
@@ -30,6 +40,8 @@ export interface LcuEvents {
   'ready-check': (check: ReadyCheck | null) => void
   /** fase do cliente: None, Lobby, Matchmaking, ReadyCheck, ChampSelect, InProgress, WaitingForStats, EndOfGame... */
   gameflow: (phase: string) => void
+  /** conta logada no cliente (chega ao conectar) */
+  identity: (me: LcuIdentity) => void
 }
 
 export interface LcuConnector {
@@ -45,6 +57,10 @@ export class LcuConnector extends EventEmitter {
   private status: LcuStatus = 'searching'
   private lastDraft: DraftState | null = null
   private lastKey = ''
+  private identity: LcuIdentity | null = null
+  /** puuid → "Nome#TAG" (só aliados da seleção atual; vale até desconectar) */
+  private names = new Map<string, string>()
+  private resolving = new Set<string>()
 
   constructor(private readonly getLockfileOverride: () => string | null = () => null) {
     super()
@@ -76,6 +92,33 @@ export class LcuConnector extends EventEmitter {
     return this.lastDraft
   }
 
+  getIdentity(): LcuIdentity | null {
+    return this.identity
+  }
+
+  /** Lê a conta logada. Falha aqui nunca derruba a conexão. */
+  async refreshIdentity(): Promise<LcuIdentity | null> {
+    try {
+      const res = await this.get(ME_PATH)
+      if (res.status !== 200 || typeof res.data !== 'object' || res.data === null) return this.identity
+      const d = res.data as Record<string, unknown>
+      const puuid = typeof d.puuid === 'string' ? d.puuid : ''
+      const gameName = typeof d.gameName === 'string' && d.gameName ? d.gameName : typeof d.displayName === 'string' ? d.displayName : ''
+      const tagLine = typeof d.tagLine === 'string' ? d.tagLine : ''
+      if (!puuid || !gameName) return this.identity
+      const next = { puuid, gameName, tagLine }
+      if (!this.identity || this.identity.puuid !== puuid || this.identity.gameName !== gameName || this.identity.tagLine !== tagLine) {
+        this.identity = next
+        this.names.set(puuid, tagLine ? `${gameName}#${tagLine}` : gameName)
+        this.logger?.('identity', 'conta detectada')
+        this.emit('identity', next)
+      }
+      return this.identity
+    } catch {
+      return this.identity
+    }
+  }
+
   /** Leitura genérica (GET). O app só lê do cliente, com a única exceção de `acceptReadyCheck`. */
   get(path: string): Promise<{ status: number; data: unknown }> {
     return this.request('GET', path)
@@ -85,16 +128,54 @@ export class LcuConnector extends EventEmitter {
    * Aceita a partida encontrada. É a ÚNICA escrita permitida e o caminho é fixo: não existe
    * um "post" genérico, então nada além do botão Aceitar pode ser enviado ao cliente.
    */
-  async acceptReadyCheck(): Promise<boolean> {
-    const res = await this.request('POST', ACCEPT_PATH)
-    return res.status >= 200 && res.status < 300
+  async acceptReadyCheck(): Promise<{ ok: boolean; status: number }> {
+    try {
+      const res = await this.request('POST', ACCEPT_PATH)
+      const ok = res.status >= 200 && res.status < 300
+      this.logger?.('accept', `POST ready-check/accept -> HTTP ${res.status}${ok ? '' : ' ' + JSON.stringify(res.data).slice(0, 160)}`)
+      return { ok, status: res.status }
+    } catch (err) {
+      this.logger?.('accept', `POST ready-check/accept falhou: ${err instanceof Error ? err.message : 'erro'}`)
+      return { ok: false, status: 0 }
+    }
   }
 
-  private request(method: 'GET' | 'POST', path: string): Promise<{ status: number; data: unknown }> {
+  /**
+   * Escrita restrita ao "carregar build" (runas, feitiços e itens da partida). Só roda quando o usuário
+   * clica em Importar, e só nestes caminhos: qualquer outro é recusado aqui, antes de sair do app.
+   */
+  write(method: 'POST' | 'PUT' | 'PATCH', path: string, body: unknown): Promise<{ status: number; data: unknown }> {
+    if (!LOADOUT_WRITE_PATHS.some((re) => re.test(path))) return Promise.reject(new Error('Escrita não permitida'))
+    return this.request(method, path, body).then((res) => {
+      this.logger?.('importar', `${method} ${path.replace(/\/\d{4,}\//, '/…/')} -> HTTP ${res.status}`)
+      return res
+    })
+  }
+
+  /** Lê o estado atual da janela "partida encontrada" (usado como plano B quando o evento não chega). */
+  async readReadyCheck(): Promise<ReadyCheck | null> {
+    try {
+      const res = await this.get(READY_PATH)
+      if (res.status !== 200 || typeof res.data !== 'object' || res.data === null) return null
+      const d = res.data as Record<string, unknown>
+      if (typeof d.state !== 'string') return null
+      return { state: d.state, playerResponse: typeof d.playerResponse === 'string' ? d.playerResponse : 'None' }
+    } catch {
+      return null
+    }
+  }
+
+  private logger: ((tag: string, message: string) => void) | null = null
+  setLogger(fn: (tag: string, message: string) => void): void {
+    this.logger = fn
+  }
+
+  private request(method: 'GET' | 'POST' | 'PUT' | 'PATCH', path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
     const c = this.creds
     if (!c) return Promise.reject(new Error('LCU não conectada'))
     if (!path.startsWith('/')) return Promise.reject(new Error('Caminho inválido'))
 
+    const payload = body === undefined ? undefined : JSON.stringify(body)
     return new Promise((resolve, reject) => {
       const req = https.request(
         {
@@ -104,7 +185,11 @@ export class LcuConnector extends EventEmitter {
           method,
           agent: localAgent,
           timeout: REQUEST_TIMEOUT_MS,
-          headers: { Authorization: authHeader(c), Accept: 'application/json' }
+          headers: {
+            Authorization: authHeader(c),
+            Accept: 'application/json',
+            ...(payload !== undefined ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {})
+          }
         },
         (res) => {
           const chunks: Buffer[] = []
@@ -123,7 +208,7 @@ export class LcuConnector extends EventEmitter {
       )
       req.on('timeout', () => req.destroy(new Error('Timeout na LCU')))
       req.on('error', reject)
-      req.end()
+      req.end(payload)
     })
   }
 
@@ -168,6 +253,7 @@ export class LcuConnector extends EventEmitter {
         ws.send(JSON.stringify([5, SESSION_EVENT]))
         ws.send(JSON.stringify([5, READY_EVENT]))
         ws.send(JSON.stringify([5, GAMEFLOW_EVENT]))
+        this.logger?.('ws', 'conectado e inscrito em champ-select, ready-check e gameflow')
         resolve()
       })
       ws.on('message', (data) => {
@@ -196,6 +282,7 @@ export class LcuConnector extends EventEmitter {
 
   private onDisconnect(): void {
     this.creds = null
+    this.names.clear()
     this.clearDraft()
     this.setStatus('disconnected')
     this.schedule()
@@ -208,6 +295,8 @@ export class LcuConnector extends EventEmitter {
     const res = await this.get(SESSION_PATH)
     if (res.status === 200) this.publish(res.data)
     else if (res.status !== 404) throw new Error(`LCU respondeu ${res.status}`) // 404 = fora da seleção
+
+    await this.refreshIdentity()
 
     // Se o app abrir com a janela "partida encontrada" já aberta. Falha aqui nunca derruba a conexão.
     try {
@@ -236,10 +325,16 @@ export class LcuConnector extends EventEmitter {
     if (!Array.isArray(msg) || msg[0] !== 8) return
     const payload = msg[2] as { eventType?: string; data?: unknown } | undefined
     if (msg[1] === GAMEFLOW_EVENT) {
-      if (typeof payload?.data === 'string') this.emit('gameflow', payload.data)
+      if (typeof payload?.data === 'string') {
+        this.logger?.('gameflow', payload.data)
+        this.emit('gameflow', payload.data)
+      }
       return
     }
     if (msg[1] === READY_EVENT) {
+      const d = payload?.data as Record<string, unknown> | null | undefined
+      if (payload?.eventType === 'Delete') this.logger?.('ready-check', 'janela fechou')
+      else this.logger?.('ready-check', `state=${String(d?.state)} playerResponse=${String(d?.playerResponse)} timer=${String(d?.timer)}`)
       if (payload?.eventType === 'Delete') this.emit('ready-check', null)
       else this.publishReadyCheck(payload?.data)
       return
@@ -256,9 +351,41 @@ export class LcuConnector extends EventEmitter {
     this.emit('ready-check', { state: d.state, playerResponse: typeof d.playerResponse === 'string' ? d.playerResponse : 'None' })
   }
 
+  /** Completa "Nome#TAG" dos aliados que o cliente só entrega como puuid (usa o que já foi resolvido). */
+  private withNames(d: DraftState): DraftState {
+    return {
+      ...d,
+      allies: d.allies.map((p) => (p.name || !p.puuid || !this.names.has(p.puuid) ? p : { ...p, name: this.names.get(p.puuid) }))
+    }
+  }
+
+  private resolveNames(d: DraftState): void {
+    for (const p of d.allies) {
+      const puuid = p.puuid
+      if (!puuid || p.name || this.names.has(puuid) || this.resolving.has(puuid) || !/^[\w-]{8,100}$/.test(puuid)) continue
+      this.resolving.add(puuid)
+      void this.get(SUMMONER_BY_PUUID + puuid)
+        .then((res) => {
+          const r = res.data as Record<string, unknown> | null
+          if (res.status === 200 && r && typeof r.gameName === 'string' && r.gameName) {
+            this.names.set(puuid, typeof r.tagLine === 'string' && r.tagLine ? `${r.gameName}#${r.tagLine}` : r.gameName)
+            if (this.lastDraft) this.publishDraft(this.lastDraft)
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => this.resolving.delete(puuid))
+    }
+  }
+
   private publish(data: unknown): void {
-    const draft = normalizeSession(data)
-    if (!draft) return
+    const raw = normalizeSession(data)
+    if (!raw) return
+    this.publishDraft(raw)
+    if (this.lastDraft) this.resolveNames(this.lastDraft)
+  }
+
+  private publishDraft(raw: DraftState): void {
+    const draft = this.withNames(raw)
     const key = JSON.stringify(draft)
     if (key === this.lastKey) return // evita re-render por eventos redundantes
     this.lastKey = key

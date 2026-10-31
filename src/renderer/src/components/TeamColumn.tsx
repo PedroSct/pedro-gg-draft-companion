@@ -1,6 +1,6 @@
 import type { DraftPlayer, PickStatus } from '../../../shared/types'
-import { selectActiveProfile, useApp } from '../store/useApp'
-import { ROLE_SHORT } from '../lib/format'
+import { selectActiveProfile, selectFocusPlayer, useApp } from '../store/useApp'
+import { ROLE_SHORT, splashUrl } from '../lib/format'
 import { useMemo } from 'react'
 import { analyzeComp, type CompWarning } from '../../../shared/comp'
 import { ChampionIcon, useChampionName } from './Icons'
@@ -20,33 +20,81 @@ const STATUS_TEXT: Record<PickStatus, string> = {
 function Row({ side, player, isLocal, index }: { side: 'ally' | 'enemy'; player: DraftPlayer | undefined; isLocal: boolean; index: number }) {
   const ally = side === 'ally'
   const name = useChampionName(player?.championId ?? 0)
-  const nickname = useApp((s) => selectActiveProfile(s)?.nickname)
+  const info = useApp((s) => (player && player.championId > 0 ? s.champById.get(player.championId) : undefined))
+  const profile = useApp((s) => (player?.profileId ? s.profiles.find((p) => p.id === player.profileId) : undefined))
+  const owner = useApp(selectActiveProfile)
+  const focusCell = useApp((s) => selectFocusPlayer(s)?.cellId)
+  const setFocus = useApp((s) => s.setFocus)
+  const topPick = useApp((s) => (player ? s.recs[player.cellId]?.ranking[0]?.championId : undefined))
+  const topName = useChampionName(topPick ?? 0)
   const status = player?.status ?? 'none'
   const accent = ally ? 'border-ally' : 'border-enemy'
 
-  return (
-    <li
-      aria-label={`${ally ? 'Aliado' : 'Inimigo'}: ${name || 'sem campeão'}`}
-      style={{ ['--d' as string]: `${index * 60}ms` }}
-      className={`rise flex items-center gap-3 border-y border-transparent px-3 py-2 ${ally ? 'border-l-2' : 'flex-row-reverse border-r-2 text-right'} ${accent} ${
-        isLocal ? 'bg-ally/10' : 'bg-panel/70'
-      }`}
-    >
-      {player && player.championId > 0 ? (
-        <ChampionIcon id={player.championId} size={48} dim={status === 'hovering'} />
-      ) : (
-        <div className="chamfer-sm h-12 w-12 shrink-0 border border-dashed border-line bg-deck" aria-hidden="true" />
+  const who = isLocal ? (profile?.nickname ?? owner?.nickname ?? 'Você') : (profile?.nickname ?? null)
+  const friend = ally && !isLocal && !!profile
+  const clickable = ally && !!player && (isLocal || friend)
+  const focused = clickable && focusCell === player?.cellId
+  const locked = status === 'locked'
+
+  const body = (
+    <>
+      {info && (
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-0 bg-cover bg-top transition-opacity duration-500 ${locked ? 'opacity-40' : 'opacity-20'}`}
+          style={{ backgroundImage: `url("${splashUrl(info.key)}")` }}
+        />
       )}
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-display text-xl font-semibold leading-tight">
-          {name || <span className="text-dim">Sem campeão</span>}
-        </div>
-        <div className={`flex items-center gap-2 text-xs text-mist ${ally ? '' : 'justify-end'}`}>
-          {isLocal && <span className="font-medium text-ally">{nickname ?? 'Você'}</span>}
-          {player?.role && <span>{ROLE_SHORT[player.role]}</span>}
-          <span className={status === 'locked' ? 'text-snow' : ''}>{STATUS_TEXT[status]}</span>
-        </div>
-      </div>
+      <span aria-hidden="true" className={`pointer-events-none absolute inset-y-2 w-1 rounded-full ${accent.replace('border-', 'bg-')} ${ally ? 'left-1' : 'right-1'}`} />
+      <span aria-hidden="true" className={`pointer-events-none absolute inset-0 ${ally ? 'bg-gradient-to-r' : 'bg-gradient-to-l'} from-deck/95 via-deck/70 to-transparent`} />
+      <span className={`relative flex w-full items-center gap-3 ${ally ? '' : 'flex-row-reverse text-right'}`}>
+        {player && player.championId > 0 ? (
+          <ChampionIcon id={player.championId} size={52} dim={status === 'hovering'} className={locked ? 'ring-2 ring-white/10' : ''} />
+        ) : (
+          <span className="chamfer-sm block h-[52px] w-[52px] shrink-0 border border-dashed border-line bg-deck" aria-hidden="true" />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-display text-xl font-semibold leading-tight">
+            {name || <span className="text-dim">Sem campeão</span>}
+          </span>
+          <span className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-mist ${ally ? '' : 'justify-end'}`}>
+            {who && (
+              <span className={`rounded-full px-1.5 py-px font-medium ${isLocal ? 'bg-ally/15 text-ally' : 'bg-gold/15 text-gold'}`}>
+                {isLocal ? `${who} · você` : who}
+              </span>
+            )}
+            {player?.role && <span>{ROLE_SHORT[player.role]}</span>}
+            <span className={locked ? 'text-snow' : ''}>{STATUS_TEXT[status]}</span>
+          </span>
+          {friend && topPick !== undefined && (
+            <span className="mt-0.5 block truncate text-xs text-gold">Sugestão: {topName}</span>
+          )}
+        </span>
+      </span>
+    </>
+  )
+
+  const cls = `rise relative flex min-h-[68px] items-center overflow-hidden rounded-xl border px-3.5 py-2 text-left transition-colors ${
+    focused ? 'border-gold/60 bg-ally/10' : isLocal ? 'border-ally/30 bg-ally/10' : 'border-line/70 bg-panel/70'
+  }`
+  const style = { ['--d' as string]: `${index * 60}ms` }
+  const label = `${ally ? 'Aliado' : 'Inimigo'}: ${name || 'sem campeão'}`
+
+  return (
+    <li aria-label={label} style={style} className="list-none">
+      {clickable ? (
+        <button
+          type="button"
+          onClick={() => setFocus(player!.cellId)}
+          aria-pressed={focused}
+          title={isLocal ? 'Ver as suas sugestões' : `Ver as sugestões de ${who}`}
+          className={`${cls} w-full hover:bg-raised/70`}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className={cls}>{body}</div>
+      )}
     </li>
   )
 }
@@ -116,7 +164,7 @@ export function TeamColumn({ side, players, localCellId }: Props) {
     <div className="flex flex-col gap-2">
       <ul className="flex flex-col gap-2" aria-label={side === 'ally' ? 'Time aliado' : 'Time inimigo'}>
         {slots.map((p, i) => (
-          <Row key={p?.cellId ?? `empty-${i}`} side={side} player={p} isLocal={side === 'ally' && p?.cellId === localCellId} index={i} />
+          <Row key={p?.cellId ?? `empty-${i}`} side={side} player={p} isLocal={side === 'ally' && (p?.isMe === true || p?.cellId === localCellId)} index={i} />
         ))}
       </ul>
       <CompSummary side={side} players={players} />

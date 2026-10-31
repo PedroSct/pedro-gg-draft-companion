@@ -5,7 +5,7 @@ import { sanitizeSettingsPatch } from '../src/main/store/profiles'
 const open = { state: 'InProgress', playerResponse: 'None' }
 
 function make(enabled = true, delay = 1) {
-  const accept = vi.fn(async () => true)
+  const accept = vi.fn(async () => ({ ok: true, status: 204 }))
   const onAccepted = vi.fn()
   const cfg = { enabled, delay }
   const aa = new AutoAccept({ isEnabled: () => cfg.enabled, getDelaySec: () => cfg.delay, accept, onAccepted })
@@ -87,7 +87,7 @@ describe('AutoAccept', () => {
   })
 
   it('erro ao aceitar não derruba nem conta como aceito', async () => {
-    const accept = vi.fn(async () => {
+    const accept = vi.fn(async (): Promise<{ ok: boolean; status: number }> => {
       throw new Error('cliente fechou')
     })
     const onAccepted = vi.fn()
@@ -104,5 +104,42 @@ describe('configurações do aceite automático', () => {
     expect(sanitizeSettingsPatch({ autoAcceptDelay: -3 })).toEqual({ autoAcceptDelay: 0 })
     expect(() => sanitizeSettingsPatch({ autoAccept: 'sim' })).toThrow()
     expect(() => sanitizeSettingsPatch({ autoAcceptDelay: 'x' })).toThrow()
+  })
+})
+
+describe('AutoAccept: tentativas', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('tenta de novo quando o cliente recusa o aceite e para quando consegue', async () => {
+    const results = [{ ok: false, status: 500 }, { ok: false, status: 404 }, { ok: true, status: 204 }]
+    const accept = vi.fn(async () => results.shift()!)
+    const attempts: number[] = []
+    const onAccepted = vi.fn()
+    const aa = new AutoAccept({ isEnabled: () => true, getDelaySec: () => 0, accept, onAccepted, onAttempt: (i) => attempts.push(i.status), retryMs: 100 })
+    aa.update(open)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(attempts).toEqual([500, 404, 204])
+    expect(onAccepted).toHaveBeenCalledTimes(1)
+  })
+
+  it('desiste depois do máximo de tentativas', async () => {
+    const accept = vi.fn(async () => ({ ok: false, status: 404 }))
+    const onAccepted = vi.fn()
+    const aa = new AutoAccept({ isEnabled: () => true, getDelaySec: () => 0, accept, onAccepted, maxAttempts: 3, retryMs: 50 })
+    aa.update(open)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(accept).toHaveBeenCalledTimes(3)
+    expect(onAccepted).not.toHaveBeenCalled()
+  })
+
+  it('para de tentar se você aceitar à mão no meio', async () => {
+    const accept = vi.fn(async () => ({ ok: false, status: 500 }))
+    const aa = new AutoAccept({ isEnabled: () => true, getDelaySec: () => 0, accept, onAccepted: () => {}, retryMs: 100 })
+    aa.update(open)
+    await vi.advanceTimersByTimeAsync(10)
+    aa.update({ state: 'InProgress', playerResponse: 'Accepted' })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(accept).toHaveBeenCalledTimes(1)
   })
 })

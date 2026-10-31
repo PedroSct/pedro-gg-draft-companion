@@ -7,9 +7,14 @@ export interface AutoAcceptOptions {
   isEnabled: () => boolean
   /** espera antes de aceitar, em segundos */
   getDelaySec: () => number
-  /** envia o aceite ao cliente; true = o cliente confirmou */
-  accept: () => Promise<boolean>
+  /** envia o aceite ao cliente; ok = o cliente confirmou (2xx) */
+  accept: () => Promise<{ ok: boolean; status: number }>
   onAccepted: () => void
+  /** cada tentativa (para diagnóstico) */
+  onAttempt?: (info: { attempt: number; ok: boolean; status: number }) => void
+  /** tentativas por janela e espera entre elas */
+  maxAttempts?: number
+  retryMs?: number
 }
 
 export class AutoAccept {
@@ -17,6 +22,7 @@ export class AutoAccept {
   /** já tratamos esta janela de "partida encontrada"? (o cliente manda vários eventos por janela) */
   private handled = false
   private current: ReadyCheck | null = null
+  private stopped = false
 
   constructor(private readonly o: AutoAcceptOptions) {}
 
@@ -50,6 +56,7 @@ export class AutoAccept {
   }
 
   stop(): void {
+    this.stopped = true
     this.cancel()
   }
 
@@ -60,13 +67,24 @@ export class AutoAccept {
 
   private async fire(): Promise<void> {
     this.timer = null
-    // Reconfere na hora: a pessoa pode ter desligado, aceitado à mão ou a janela pode ter fechado (recusa/dodge).
-    const c = this.current
-    if (!this.o.isEnabled() || !c || c.state !== 'InProgress' || c.playerResponse !== 'None') return
-    try {
-      if (await this.o.accept()) this.o.onAccepted()
-    } catch {
-      /* cliente fechou no meio: a próxima janela tenta de novo */
+    const max = this.o.maxAttempts ?? 4
+    const retryMs = this.o.retryMs ?? 700
+    for (let attempt = 1; attempt <= max; attempt++) {
+      // Reconfere na hora: a pessoa pode ter desligado, aceitado à mão ou a janela pode ter fechado (recusa/dodge).
+      const c = this.current
+      if (!this.o.isEnabled() || !c || c.state !== 'InProgress' || c.playerResponse !== 'None') return
+      try {
+        const res = await this.o.accept()
+        this.o.onAttempt?.({ attempt, ok: res.ok, status: res.status })
+        if (res.ok) {
+          this.o.onAccepted()
+          return
+        }
+      } catch {
+        this.o.onAttempt?.({ attempt, ok: false, status: 0 })
+      }
+      if (attempt < max) await new Promise<void>((r) => setTimeout(r, retryMs))
+      if (this.stopped) return
     }
   }
 }

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
+import type { Role } from '../../../shared/types'
+import type { LoadoutParts, PartResult } from '../../../shared/loadout'
 import type { ChampionBuild, SkillKey, SpellInfo } from '../../../shared/dataTypes'
 import { useApp } from '../store/useApp'
 import { useFocus } from '../lib/useFocus'
-import { ROLE_LABEL, ROLE_SHORT } from '../lib/format'
+import { ROLE_LABEL, ROLE_SHORT, splashUrl } from '../lib/format'
+import { btnGold } from '../lib/ui'
 import { ROLES } from '../../../shared/dataTypes'
 import { ChampionIcon, ItemIcon, SafeImg, useChampionName } from './Icons'
 
@@ -113,6 +116,124 @@ function SituationalItem({ id, when }: { id: number; when: string }) {
   )
 }
 
+const SPELL_NAME: Record<number, string> = {
+  1: 'Limpar',
+  3: 'Exaustão',
+  4: 'Flash',
+  6: 'Fantasma',
+  7: 'Curar',
+  11: 'Golpear',
+  12: 'Teleporte',
+  13: 'Clareza',
+  14: 'Ignição',
+  21: 'Barreira',
+  32: 'Marca'
+}
+
+const PART_LABEL: Record<keyof LoadoutParts, string> = { runes: 'Runas', spells: 'Feitiços', items: 'Itens' }
+
+/** "Importar para o cliente": só por clique, só desta partida, e só o que a pessoa marcar. */
+function ImportPanel({ championId, role, build, forLocal }: { championId: number; role: Role; build: ChampionBuild; forLocal: boolean }) {
+  const lcuStatus = useApp((s) => s.lcuStatus)
+  const inDraft = useApp((s) => s.draft !== null)
+  const name = useChampionName(championId)
+  const available: Record<keyof LoadoutParts, boolean> = {
+    runes: !!build.runes,
+    spells: !!build.spells,
+    items: build.items.core.length + build.items.starting.length + build.items.boots.length > 0
+  }
+  const [picked, setPicked] = useState<LoadoutParts>({ runes: true, spells: true, items: true })
+  const [busy, setBusy] = useState(false)
+  const [results, setResults] = useState<Partial<Record<keyof LoadoutParts, PartResult>> | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setResults(null)
+    setError(null)
+  }, [championId, role])
+
+  const parts = (Object.keys(PART_LABEL) as (keyof LoadoutParts)[]).filter((k) => available[k])
+  const chosen = parts.filter((k) => picked[k])
+  const blocked = !forLocal
+    ? 'Importar vale só para o seu próprio campeão: cada pessoa importa no cliente dela.'
+    : lcuStatus !== 'connected'
+      ? 'Abra o cliente do LoL para importar.'
+      : parts.length === 0
+        ? 'Os dados de meta não têm runas, feitiços nem itens para este campeão. Atualize os dados em Configurações.'
+        : null
+
+  async function run(): Promise<void> {
+    setBusy(true)
+    setResults(null)
+    setError(null)
+    try {
+      const res = await window.api.applyLoadout({
+        championId,
+        role,
+        parts: { runes: picked.runes && available.runes, spells: picked.spells && available.spells, items: picked.items && available.items }
+      })
+      if (res.ok) setResults(res.parts)
+      else setError(res.message)
+    } catch {
+      setError('Não consegui importar. Tente de novo.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const detail: Record<keyof LoadoutParts, string> = {
+    runes: build.runes ? 'Cria ou atualiza a página “Pedro.gg” e a deixa ativa' : 'sem dados',
+    spells: build.spells ? `${build.spells.map((id) => SPELL_NAME[id] ?? `#${id}`).join(' + ')}${inDraft ? '' : ' (só durante a seleção)'}` : 'sem dados',
+    items: 'Salva o conjunto “Pedro.gg” (aparece na loja)'
+  }
+
+  return (
+    <section aria-label="Importar para o cliente" className="rounded-2xl border border-gold/25 bg-gold/5 p-4">
+      <h3 className="font-display text-lg font-semibold text-gold">Importar para o cliente</h3>
+      <p className="mt-0.5 text-xs text-mist">Só acontece quando você clicar, e só para esta partida: {name}, {ROLE_LABEL[role]}. Nada é alterado sem o seu pedido.</p>
+      <ul className="mt-3 flex flex-col gap-2">
+        {(Object.keys(PART_LABEL) as (keyof LoadoutParts)[]).map((k) => (
+          <li key={k}>
+            <label className={`flex items-start gap-2.5 text-sm ${available[k] ? '' : 'opacity-50'}`}>
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]"
+                disabled={!available[k] || !!blocked}
+                checked={available[k] && picked[k]}
+                onChange={(e) => setPicked((p) => ({ ...p, [k]: e.target.checked }))}
+              />
+              <span>
+                <span className="font-medium">{PART_LABEL[k]}</span>
+                <span className="block text-xs text-mist">{detail[k]}</span>
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button type="button" className={btnGold} disabled={!!blocked || busy || chosen.length === 0} onClick={() => void run()}>
+          {busy ? 'Importando…' : 'Importar para o cliente'}
+        </button>
+        {blocked && <span className="text-xs text-mist">{blocked}</span>}
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-enemy">
+          {error}
+        </p>
+      )}
+      {results && (
+        <ul className="mt-2 flex flex-col gap-1" role="status">
+          {(Object.keys(results) as (keyof LoadoutParts)[]).map((k) => (
+            <li key={k} className={`text-sm ${results[k]?.ok ? 'text-ally' : 'text-enemy'}`}>
+              {PART_LABEL[k]}: {results[k]?.message}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 type Status = 'loading' | 'ready' | 'error'
 
 export function BuildPanel() {
@@ -150,7 +271,7 @@ export function BuildPanel() {
 
   if (!focus) {
     return (
-      <div className="border border-dashed border-line bg-panel/50 p-5 text-center text-mist">
+      <div className="rounded-2xl border border-dashed border-line bg-panel/50 p-5 text-center text-mist">
         A build aparece aqui quando você passar o mouse em um campeão ou travar o pick.
       </div>
     )
@@ -161,11 +282,19 @@ export function BuildPanel() {
     focus.source === 'local' ? 'Seu campeão' : focus.source === 'preview' ? 'Opção selecionada' : 'Melhor pick da Pool'
 
   return (
-    <section aria-label="Build" className="border border-line bg-panel/70">
-      <header className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <ChampionIcon id={focus.championId} size={44} />
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate font-display text-2xl font-semibold leading-none">{name}</h2>
+    <section aria-label="Build" className="overflow-hidden rounded-2xl border border-line bg-panel/70 shadow-card">
+      <header className="relative flex items-center gap-3 overflow-hidden border-b border-line px-4 py-3">
+        {champ && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-cover bg-top opacity-25"
+            style={{ backgroundImage: `url("${splashUrl(champ.key)}")` }}
+          />
+        )}
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-panel via-panel/80 to-transparent" />
+        <ChampionIcon id={focus.championId} size={52} className="relative" />
+        <div className="relative min-w-0 flex-1">
+          <h2 className="truncate font-display text-3xl font-semibold leading-none">{name}</h2>
           <p className="mt-1 text-xs text-mist">
             {origin}
             {focus.role ? `, ${ROLE_LABEL[focus.role]}` : ''}
@@ -185,7 +314,7 @@ export function BuildPanel() {
                 <button
                   key={r}
                   type="button"
-                  className="rounded-sm border border-line bg-panel px-2.5 py-1 text-sm text-mist hover:text-snow"
+                  className="rounded-lg border border-line bg-panel px-2.5 py-1 text-sm text-mist hover:text-snow"
                   onClick={() => setRoleOverride(r)}
                 >
                   {ROLE_SHORT[r]}
@@ -221,6 +350,7 @@ export function BuildPanel() {
                 </div>
               )}
             </div>
+            {focus.role && <ImportPanel championId={focus.championId} role={focus.role} build={build} forLocal={focus.forLocal} />}
           </>
         )}
       </div>

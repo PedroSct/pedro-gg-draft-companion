@@ -1,6 +1,6 @@
 // src/shared/api.ts
 // Contrato do `window.api` exposto pelo preload. Main, Preload e Renderer usam estes tipos.
-import type { DraftState, LcuStatus, Role } from './types'
+import type { DraftState, LcuIdentity, LcuStatus, Role } from './types'
 import type {
   AppSettings,
   Catalog,
@@ -12,6 +12,7 @@ import type {
   UpdateState
 } from './dataTypes'
 import type { PgDetail, PgFetchResult, PgSummary } from './postgame'
+import type { LoadoutParts, LoadoutResult } from './loadout'
 import type { DecodeResult, ShareOptions, SharedProfile } from './poolShare'
 
 export type Unsubscribe = () => void
@@ -35,6 +36,16 @@ export type ImportShareFileResult =
   | { ok: true; shared: SharedProfile }
   | { ok: false; reason: 'canceled' | 'invalid'; message?: string }
 
+/** Quem está logado no cliente e a qual perfil essa conta pertence (se algum). */
+export interface IdentityState {
+  account: LcuIdentity | null
+  profileId: string | null
+}
+
+export type LoadoutImportResult =
+  | { ok: true; parts: LoadoutResult }
+  | { ok: false; message: string }
+
 export interface LolApi {
   // Main → Renderer
   onMetaUpdated(cb: (info: MetaInfo) => void): Unsubscribe
@@ -42,6 +53,8 @@ export interface LolApi {
   onDraftUpdate(cb: (draft: DraftState) => void): Unsubscribe
   onDraftEnded(cb: () => void): Unsubscribe
 
+  /** O app descobriu a conta logada ou reconheceu um perfil. */
+  onIdentity(cb: (state: IdentityState) => void): Unsubscribe
   onUpdateState(cb: (state: UpdateState) => void): Unsubscribe
   /** O app aceitou uma partida encontrada sozinho (opção "Aceitar partida automaticamente"). */
   onAutoAccepted(cb: () => void): Unsubscribe
@@ -49,6 +62,10 @@ export interface LolApi {
   onPostGameReady(cb: (summary: PgSummary) => void): Unsubscribe
 
   // Renderer → Main
+  /** Texto de diagnóstico (sem dados pessoais) para copiar e enviar. */
+  getDiagnostics(): Promise<string>
+  /** Última tentativa de aceitar a partida (null = nenhuma ainda). */
+  getLastAccept(): Promise<{ ok: boolean; status: number; at: number } | null>
   listPostGames(): Promise<PgSummary[]>
   getPostGame(gameId: number): Promise<PgDetail | null>
   deletePostGame(gameId: number): Promise<boolean>
@@ -57,7 +74,12 @@ export interface LolApi {
 
   getLcuStatus(): Promise<LcuStatus>
   getCurrentDraft(): Promise<DraftState | null>
-  recommend(req: { profileId: string; role: Role | null }): Promise<Recommendation | null>
+  recommend(req: { profileId: string; role: Role | null; cellId?: number }): Promise<Recommendation | null>
+  /** Coloca runas, feitiços e/ou itens da build no cliente (só quando o usuário clica em Importar). */
+  applyLoadout(req: { championId: number; role: Role; parts: LoadoutParts }): Promise<LoadoutImportResult>
+  getIdentity(): Promise<IdentityState>
+  /** "Esta conta é este perfil": grava Riot ID e puuid no perfil. */
+  claimProfile(profileId: string): Promise<IdentityState>
 
   getSettings(): Promise<AppSettings>
   setSettings(patch: Partial<AppSettings>): Promise<AppSettings>

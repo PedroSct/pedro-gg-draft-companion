@@ -114,6 +114,7 @@ function fromGame(game: Obj): { list: Partial10[]; winByTeam: Map<number, boolea
       wardsPlaced: num(pick(stats, ['wardsPlaced'])),
       wardsKilled: num(pick(stats, ['wardsKilled'])),
       win,
+      smite: [pick(raw, ['spell1Id', 'summoner1Id']), pick(raw, ['spell2Id', 'summoner2Id'])].some((v) => num(v) === 11),
       ident: { puuid: str(player.puuid), summonerId: str(player.summonerId), accountId: str(pick(player, ['currentAccountId', 'accountId'])) }
     })
   }
@@ -157,21 +158,98 @@ function fromEog(eog: Obj): Partial10[] {
   return list
 }
 
-/** Se o cliente não disser a rota de alguém, completa pelas rotas típicas do campeão. */
-function fillRoles(list: PgParticipant[], champKeyOf: (id: number) => string | null): void {
-  for (const team of new Set(list.map((p) => p.teamId))) {
-    const mates = list.filter((p) => p.teamId === team)
-    const taken = new Set(mates.map((p) => p.role).filter((r): r is Role => r !== null))
-    const free = (['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'] as Role[]).filter((r) => !taken.has(r))
-    for (const p of mates.filter((m) => m.role === null)) {
-      const key = champKeyOf(p.championId)
-      const likely = key ? CHAMPION_TRAITS[key]?.positions ?? [] : []
-      const role = likely.find((r) => free.includes(r)) ?? free[0] ?? null
-      if (role) {
-        p.role = role
-        free.splice(free.indexOf(role), 1)
-      }
+const ALL_ROLES: Role[] = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY']
+
+/** Em que corredor do mapa o ponto está: topo, meio, base (rota de baixo) ou outro (selva, base). */
+function laneOfPoint(x: number, y: number): 'TOP' | 'MIDDLE' | 'BOTTOM' | null {
+  const d = y - x // positivo = canto superior esquerdo (rota de cima)
+  if (d > 4200) return 'TOP'
+  if (d < -4200) return 'BOTTOM'
+  // perto da diagonal: meio, mas longe das bases (cantos)
+  const distBlue = Math.hypot(x, y)
+  const distRed = Math.hypot(14800 - x, 14800 - y)
+  if (Math.abs(d) < 1700 && distBlue > 3800 && distRed > 3800) return 'MIDDLE'
+  return null
+}
+
+function laneShares(id: number, frames: PgFrame[]): Record<'TOP' | 'MIDDLE' | 'BOTTOM', number> {
+  const out = { TOP: 0, MIDDLE: 0, BOTTOM: 0 }
+  let n = 0
+  for (const f of frames) {
+    if (f.minute < 3 || f.minute > 9) continue // antes disso ainda estão indo para a rota; depois, já rodaram
+    const p = f.players[id]?.pos
+    if (!p) continue
+    n++
+    const lane = laneOfPoint(p[0], p[1])
+    if (lane) out[lane]++
+  }
+  if (n > 0) for (const k of Object.keys(out) as (keyof typeof out)[]) out[k] /= n
+  return out
+}
+
+function permutations<T>(items: T[]): T[][] {
+  if (items.length <= 1) return [items]
+  return items.flatMap((x, i) => permutations([...items.slice(0, i), ...items.slice(i + 1)]).map((rest) => [x, ...rest]))
+}
+
+/**
+ * Define a rota de cada um do time quando o cliente não informa (ou informa de forma repetida).
+ * Pontua cada jogador em cada rota com sinais do jogo (Golpe-fatal, farm de selva, onde ficou no mapa nos
+ * primeiros minutos, quem farmou menos na rota de baixo) e escolhe a combinação de 5 rotas de maior soma.
+ * As rotas rotuladas pelo cliente contam como um sinal forte, mas não são absolutas.
+ */
+function assignTeamRoles(team: PgParticipant[], frames: PgFrame[], champKeyOf: (id: number) => string | null): void {
+  if (team.length !== 5) return
+  const given = team.map((p) => p.role)
+  if (given.every((r) => r !== null) && new Set(given).size === 5) return // cliente já informou tudo certo
+
+  const laneCs = team.filter((p) => !p.smite).map((p) => p.cs)
+  const maxCs = Math.max(1, ...laneCs)
+  const shares = team.map((p) => laneShares(p.id, frames))
+  const total = (p: PgParticipant): number => p.cs + p.jungleCs
+  const score = (pi: number, role: Role): number => {
+    const p = team[pi]
+    const jungleRatio = total(p) > 0 ? p.jungleCs / total(p) : 0
+    let s = 0
+    if (given[pi] === role) s += 8
+    if (role === 'JUNGLE') {
+      s += (p.smite ? 10 : 0) + jungleRatio * 6 - (jungleRatio < 0.2 ? 4 : 0)
+    } else {
+      s -= p.smite ? 8 : 0
+      s -= jungleRatio * 6
+      const sh = shares[pi]
+      if (role === 'TOP') s += sh.TOP * 6
+      if (role === 'MIDDLE') s += sh.MIDDLE * 6
+      if (role === 'BOTTOM' || role === 'UTILITY') s += sh.BOTTOM * 6
+      const csRatio = p.cs / maxCs
+      if (role === 'BOTTOM') s += csRatio * 3
+      if (role === 'UTILITY') s += (1 - csRatio) * 3 + Math.min(1, p.visionScore / 60)
     }
+    const key = champKeyOf(p.championId)
+    const idx = key ? (CHAMPION_TRAITS[key]?.positions ?? []).indexOf(role) : -1
+    if (idx >= 0) s += [2, 1.2, 0.6][idx] ?? 0.3
+    return s
+  }
+
+  let best: Role[] | null = null
+  let bestScore = -Infinity
+  for (const perm of permutations(ALL_ROLES)) {
+    const sc = perm.reduce((a, role, i) => a + score(i, role), 0)
+    if (sc > bestScore) {
+      bestScore = sc
+      best = perm
+    }
+  }
+  if (best) team.forEach((p, i) => (p.role = best![i]))
+}
+
+function fillRoles(list: PgParticipant[], frames: PgFrame[], champKeyOf: (id: number) => string | null): void {
+  for (const teamId of new Set(list.map((p) => p.teamId))) {
+    assignTeamRoles(
+      list.filter((p) => p.teamId === teamId),
+      frames,
+      champKeyOf
+    )
   }
 }
 
@@ -206,7 +284,10 @@ function parseTimeline(tl: unknown, teamOf: (id: number) => number | null): { fr
           jungle: num(v.jungleMinionsKilled),
           gold: num(pick(v, ['totalGold'])),
           xp: num(v.xp),
-          level: num(v.level)
+          level: num(v.level),
+          ...(isObj(v.position) && typeof v.position.x === 'number' && typeof v.position.y === 'number'
+            ? { pos: [Math.round(v.position.x), Math.round(v.position.y)] as [number, number] }
+            : {})
         }
       }
       if (Object.keys(players).length > 0) frames.push({ minute, players })
@@ -287,12 +368,12 @@ export function normalizeMatch(raw: RawMatch, opts: NormalizeOptions = {}): Matc
     void ident
     return rest
   })
-  fillRoles(participants, opts.champKeyOf ?? (() => null))
-
   // quando só temos o placar final (sem participantId do jogo) a timeline não tem como casar com ninguém
   const timelineUsable = !!game && raw.timeline !== undefined && raw.timeline !== null
   const teamOf = (id: number): number | null => participants.find((p) => p.id === id)?.teamId ?? null
   const parsed = timelineUsable ? parseTimeline(raw.timeline, teamOf) : { frames: [] as PgFrame[], events: [] as PgEvent[] }
+
+  fillRoles(participants, parsed.frames, opts.champKeyOf ?? (() => null))
 
   const myTeam = participants.find((p) => p.isMe)
   return {

@@ -13,11 +13,14 @@ import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO } from '../../shared/config'
 import { decodeShare, encodeShare, toFileJson } from '../store/share'
 import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
 import { AutoAccept } from '../autoAccept'
+import { Diagnostics } from '../diagnostics'
+import { applyLoadout } from '../lcu/loadout'
 import { PostGameStore } from '../postgame/store'
 import { PostGameCollector } from '../postgame/collector'
 import type { ShareOptions } from '../../shared/poolShare'
-import type { UpdateMetaResult } from '../../shared/api'
-import type { Role } from '../../shared/types'
+import type { IdentityState, UpdateMetaResult } from '../../shared/api'
+import { annotateDraft, findProfileFor, riotIdOf } from '../../shared/identity'
+import type { DraftState, Role } from '../../shared/types'
 import { IPC } from './channels'
 
 export interface AppServices {
@@ -69,14 +72,42 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     console.log('[lcu] status:', s) // nunca logar credenciais
     send(IPC.LCU_STATUS, s)
   })
-  lcu.on('draft', (d) => send(IPC.DRAFT_UPDATE, d))
+  // ---- Identidade: quem é você e quais amigos (com perfil) estão no time
+  const identityState = (): IdentityState => {
+    const account = lcu.getIdentity()
+    const mine = account ? findProfileFor(profiles.list(), { puuid: account.puuid, name: riotIdOf(account) }) : undefined
+    return { account, profileId: mine?.id ?? null }
+  }
+  /** Último draft já marcado com "é você" / "é o amigo X". Grava o puuid dos amigos reconhecidos. */
+  const annotatedDraft = (): DraftState | null => {
+    const d = lcu.getLastDraft()
+    if (!d) return null
+    const res = annotateDraft(d, profiles.list(), lcu.getIdentity())
+    for (const l of res.learn) void profiles.learnPuuid(l.profileId, l.puuid).catch(() => undefined)
+    return res.draft
+  }
+  const pushDraft = (): void => {
+    const d = annotatedDraft()
+    if (d) send(IPC.DRAFT_UPDATE, d)
+  }
+  lcu.on('draft', pushDraft)
+  lcu.on('identity', () => {
+    send(IPC.IDENTITY_UPDATE, identityState())
+    pushDraft()
+  })
   lcu.on('draft-ended', () => send(IPC.DRAFT_ENDED))
 
   // Aceitar a partida encontrada (opcional, desligado por padrão)
+  const diag = new Diagnostics(path.join(userData, 'logs', 'diagnostico.log'))
+  lcu.setLogger((tag, msg) => diag.log(tag, msg))
   const autoAccept = new AutoAccept({
     isEnabled: () => profiles.getSettings().autoAccept,
     getDelaySec: () => profiles.getSettings().autoAcceptDelay,
     accept: () => lcu.acceptReadyCheck(),
+    onAttempt: ({ attempt, ok, status }) => {
+      diag.setAccept({ ok, status, at: Date.now() })
+      diag.log('aceite', `tentativa ${attempt}: ${ok ? 'aceita' : 'recusada pelo cliente'} (HTTP ${status})`)
+    },
     onAccepted: () => {
       console.log('[lcu] partida aceita automaticamente')
       send(IPC.MATCH_AUTO_ACCEPTED)
@@ -84,14 +115,37 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   })
   lcu.on('ready-check', (check) => autoAccept.update(check))
 
+  // Plano B: em "ReadyCheck" o app também pergunta ao cliente por conta própria, caso o evento não chegue.
+  let readyPoll: NodeJS.Timeout | null = null
+  const stopReadyPoll = (): void => {
+    if (readyPoll) clearInterval(readyPoll)
+    readyPoll = null
+  }
+  lcu.on('gameflow', (phase) => {
+    if (phase !== 'ReadyCheck') return stopReadyPoll()
+    if (readyPoll || !profiles.getSettings().autoAccept) return
+    diag.log('aceite', 'fase ReadyCheck: conferindo o cliente a cada 0,7 s')
+    const started = Date.now()
+    readyPoll = setInterval(() => {
+      if (Date.now() - started > 25_000) return stopReadyPoll()
+      void lcu.readReadyCheck().then((c) => {
+        if (c) autoAccept.update(c)
+      })
+    }, 700)
+  })
+
   // ---- Pós-jogo: ao terminar a partida, lê o resultado e a timeline no cliente e analisa
   const postGames = new PostGameStore(path.join(userData, 'postgame', 'history.json'), path.join(userData, 'postgame', 'raw'))
   const champKeys = new Map<number, string>()
+  const champNames = new Map<number, string>()
   async function warmChampionKeys(): Promise<void> {
     if (champKeys.size > 0) return
     try {
       const cat = await ddragon.getCatalog(await currentVersion())
-      for (const c of cat.champions) champKeys.set(c.id, c.key)
+      for (const c of cat.champions) {
+        champKeys.set(c.id, c.key)
+        champNames.set(c.id, c.name)
+      }
     } catch {
       /* sem catálogo: as rotas ausentes ficam em branco */
     }
@@ -117,8 +171,25 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     return collector.collectLatest()
   })
 
+  handle(IPC.DIAG_REPORT, () =>
+    diag.report([
+      `Pedro.gg ${app.getVersion()} (${process.platform} ${process.arch})`,
+      `Cliente: ${lcu.getStatus()}`,
+      `Aceite automático: ${profiles.getSettings().autoAccept ? 'ligado' : 'desligado'}, espera ${profiles.getSettings().autoAcceptDelay}s`
+    ])
+  )
+  handle(IPC.DIAG_ACCEPT, () => diag.getAccept())
   handle(IPC.LCU_GET_STATUS, () => lcu.getStatus())
-  handle(IPC.DRAFT_GET_CURRENT, () => lcu.getLastDraft())
+  handle(IPC.DRAFT_GET_CURRENT, () => annotatedDraft())
+  handle(IPC.IDENTITY_GET, () => identityState())
+  handle(IPC.IDENTITY_CLAIM, async (id) => {
+    const account = lcu.getIdentity()
+    if (typeof id !== 'string' || !account) return identityState()
+    await profiles.claim(id, { puuid: account.puuid, riotId: riotIdOf(account) })
+    send(IPC.IDENTITY_UPDATE, identityState())
+    pushDraft()
+    return identityState()
+  })
 
   // ---- Configurações e escolha da pasta do LoL
   handle(IPC.SETTINGS_GET, () => profiles.getSettings())
@@ -141,8 +212,18 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
 
   // ---- Perfis e Pools
   handle(IPC.PROFILES_LIST, () => profiles.list())
-  handle(IPC.PROFILES_SAVE, (raw) => profiles.upsert(raw))
-  handle(IPC.PROFILES_DELETE, (id) => (typeof id === 'string' ? profiles.remove(id) : false))
+  handle(IPC.PROFILES_SAVE, async (raw) => {
+    const saved = await profiles.upsert(raw)
+    send(IPC.IDENTITY_UPDATE, identityState())
+    pushDraft()
+    return saved
+  })
+  handle(IPC.PROFILES_DELETE, async (id) => {
+    const ok = typeof id === 'string' ? await profiles.remove(id) : false
+    send(IPC.IDENTITY_UPDATE, identityState())
+    pushDraft()
+    return ok
+  })
 
   // ---- Data Dragon (versão acompanha o patch do cliente quando em "auto")
   async function currentVersion(): Promise<string> {
@@ -169,6 +250,28 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     const role = req.role as Role
     if (typeof req.championId !== 'number' || !ROLES.includes(role)) return null
     return meta.getBuild(req.championId, role)
+  })
+  // ---- Importar runas/feitiços/itens para o cliente (só por clique do usuário; a build vem do meta, não do renderer)
+  handle(IPC.LOADOUT_APPLY, async (raw) => {
+    const req = isRecord(raw) ? raw : {}
+    const role = req.role as Role
+    const parts = isRecord(req.parts) ? req.parts : {}
+    if (typeof req.championId !== 'number' || !ROLES.includes(role)) return { ok: false, message: 'Pedido inválido.' }
+    if (lcu.getStatus() !== 'connected') return { ok: false, message: 'O cliente do LoL não está conectado.' }
+    const build = meta.getBuild(req.championId, role)
+    if (!build) return { ok: false, message: 'Não há build deste campeão nos dados de meta.' }
+    await warmChampionKeys()
+    const result = await applyLoadout(
+      { get: (p) => lcu.get(p), write: (m, p, b) => lcu.write(m, p, b) },
+      {
+        championId: req.championId,
+        championName: champNames.get(req.championId) ?? `Campeão ${req.championId}`,
+        role,
+        build,
+        parts: { runes: parts.runes === true, spells: parts.spells === true, items: parts.items === true }
+      }
+    )
+    return { ok: true, parts: result }
   })
   handle(IPC.META_IMPORT, async () => {
     const res = await dialog.showOpenDialog(win, {
@@ -211,8 +314,14 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   handle(IPC.DRAFT_RECOMMEND, (raw) => {
     const req = isRecord(raw) ? raw : {}
     const profile = typeof req.profileId === 'string' ? profiles.get(req.profileId) : undefined
-    const draft = lcu.getLastDraft()
+    let draft = annotatedDraft()
     if (!profile || !draft) return null
+    // Sugestão para um amigo: ele passa a ser o "jogador de referência" (rota, sinergias com os outros).
+    if (typeof req.cellId === 'number') {
+      const who = draft.allies.find((a) => a.cellId === req.cellId)
+      if (!who) return null
+      draft = { ...draft, localPlayerCellId: who.cellId, localRole: who.role }
+    }
     const role = ROLES.includes(req.role as Role) ? (req.role as Role) : null
     return recommend({ draft, profile, dataset: meta.get(), role, mode: profiles.getSettings().pickMode })
   })
@@ -287,6 +396,7 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   win.on('closed', () => {
     lcu.stop()
     autoAccept.stop()
+    stopReadyPoll()
     updates.stop()
   })
   lcu.start()

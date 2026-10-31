@@ -31,3 +31,7 @@ export const normalize = (s: string): string =>
     .replace(/\p{Diacritic}/gu, '')
     .replace(/[^a-zA-Z0-9]/g, '')
     .toLowerCase()
+
+/** Arte do campeão (já recortada para cartões). Só é pedida quando o cartão aparece. */
+export const splashUrl = (championKey: string): string =>
+  `https://ddragon.leagueoflegends.com/cdn/img/champion/centered/${encodeURIComponent(championKey)}_0.jpg`

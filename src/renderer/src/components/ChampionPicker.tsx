@@ -84,7 +84,7 @@ export function ChampionPicker({ catalog, role, inPool, onToggle }: Props) {
               type="button"
               aria-pressed={scope === value}
               onClick={() => setScope(value)}
-              className={`border px-3 py-1.5 text-sm first:rounded-l-sm last:rounded-r-sm ${
+              className={`border px-3 py-1.5 text-sm first:rounded-l-lg last:rounded-r-lg ${
                 scope === value ? 'border-gold/70 bg-gold/10 text-gold' : 'border-line bg-panel text-mist hover:text-snow'
               }`}
             >
@@ -146,7 +146,7 @@ export function ChampionPicker({ catalog, role, inPool, onToggle }: Props) {
                 aria-pressed={on}
                 aria-label={c.name}
                 onClick={() => onToggle({ id: c.id, key: c.key })}
-                className={`flex w-full flex-col items-center gap-0.5 p-1 ${on ? 'bg-gold/90 text-night' : 'hover:bg-raised'}`}
+                className={`flex w-full flex-col items-center gap-0.5 rounded-xl p-1 transition-colors ${on ? 'bg-gold/90 text-night' : 'hover:bg-raised'}`}
               >
                 <ChampionIcon id={c.id} size={44} />
                 <span className="w-full truncate text-center text-[11px] leading-tight">{c.name}</span>

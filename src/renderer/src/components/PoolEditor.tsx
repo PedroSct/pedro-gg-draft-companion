@@ -3,7 +3,7 @@ import { ROLES, type FriendProfile, type Pool, type PoolEntry } from '../../../s
 import type { Role } from '../../../shared/types'
 import { selectActiveProfile, useApp } from '../store/useApp'
 import { mergePools, type ImportMode, type SharedProfile } from '../../../shared/poolShare'
-import { ROLE_LABEL } from '../lib/format'
+import { ROLE_LABEL, ROLE_SHORT } from '../lib/format'
 import { btn, btnDanger, btnGold, input } from '../lib/ui'
 import { ChampionIcon, Stars, useChampionName } from './Icons'
 import { ChampionPicker } from './ChampionPicker'
@@ -30,6 +30,8 @@ const toForm = (p: FriendProfile): FormState => ({
   pool: structuredClone(p.pool)
 })
 
+const COMFORT_LABEL = ['', 'Inseguro', 'Treinando', 'Confortável', 'Muito bom', 'Main']
+
 function PoolRow({
   entry,
   onComfort,
@@ -43,12 +45,13 @@ function PoolRow({
 }) {
   const name = useChampionName(entry.championId)
   return (
-    <li className="flex items-center gap-3 border border-line bg-panel/70 px-2.5 py-2">
-      <ChampionIcon id={entry.championId} size={40} />
+    <li className="flex items-center gap-3 rounded-xl border border-line bg-panel/70 px-2.5 py-2 transition-colors hover:border-mist/30">
+      <ChampionIcon id={entry.championId} size={44} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3">
           <span className="truncate font-display text-lg font-semibold">{name}</span>
           <Stars value={entry.comfort} onChange={onComfort} label={`Conforto com ${name}`} />
+          <span className={`text-xs ${entry.comfort >= 4 ? 'text-gold' : 'text-dim'}`}>{COMFORT_LABEL[entry.comfort]}</span>
         </div>
         <input
           className={`${input} mt-1 py-1 text-xs`}
@@ -66,6 +69,44 @@ function PoolRow({
   )
 }
 
+function AccountBar({
+  account,
+  linkedId,
+  formId,
+  riotId,
+  onFill,
+  onClaim
+}: {
+  account: { gameName: string; tagLine: string }
+  linkedId: string | null
+  formId: string | undefined
+  riotId: string
+  onFill: (riotId: string) => void
+  onClaim: () => Promise<void>
+}) {
+  const full = account.tagLine ? `${account.gameName}#${account.tagLine}` : account.gameName
+  const isThis = formId !== undefined && linkedId === formId
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-b border-line bg-ally/5 px-4 py-2 text-sm">
+      <span className="text-mist">
+        Conta no cliente: <span className="font-medium text-snow">{full}</span>
+      </span>
+      {isThis ? (
+        <span className="rounded-full bg-ally/15 px-2 py-0.5 text-xs font-medium text-ally">Este perfil é você</span>
+      ) : formId ? (
+        <button type="button" className={btn} onClick={() => void onClaim()}>
+          Esta conta é este perfil
+        </button>
+      ) : riotId.trim() === '' ? (
+        <button type="button" className={btn} onClick={() => onFill(full)}>
+          Usar minha conta neste perfil
+        </button>
+      ) : null}
+      {linkedId === null && <span className="text-xs text-gold">Sem um perfil vinculado, o app usa o perfil principal para você.</span>}
+    </div>
+  )
+}
+
 export function PoolEditor() {
   const close = useApp((s) => s.closePool)
   const profiles = useApp((s) => s.profiles)
@@ -75,6 +116,8 @@ export function PoolEditor() {
   const loadCatalog = useApp((s) => s.loadCatalog)
   const saveProfile = useApp((s) => s.saveProfile)
   const deleteProfile = useApp((s) => s.deleteProfile)
+  const identity = useApp((s) => s.identity)
+  const claimProfile = useApp((s) => s.claimProfile)
 
   const [form, setForm] = useState<FormState>(() => (active ? toForm(active) : emptyForm()))
   const baseline = useRef<string>(JSON.stringify(active ? toForm(active) : emptyForm()))
@@ -183,7 +226,7 @@ export function PoolEditor() {
   }
 
   return (
-    <div className="fixed inset-0 z-40 bg-night/90 p-5 backdrop-blur-sm">
+    <div className="fixed inset-0 z-40 bg-night/92 p-5">
       {shareOpen && <ShareDialog profile={shareProfile} onClose={() => setShareOpen(false)} />}
       {importOpen && (
         <ImportDialog
@@ -192,25 +235,49 @@ export function PoolEditor() {
           onClose={() => setImportOpen(false)}
         />
       )}
-      <div role="dialog" aria-modal="true" aria-label="Perfis e Pools" className="mx-auto flex h-full max-w-[1240px] border border-line bg-deck">
+      <div role="dialog" aria-modal="true" aria-label="Perfis e Pools" className="mx-auto flex h-full max-w-[1240px] overflow-hidden rounded-2xl border border-line bg-deck shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]">
         {/* Perfis */}
-        <aside className="flex w-60 shrink-0 flex-col border-r border-line">
-          <h2 className="border-b border-line px-4 py-3 font-display text-xl font-semibold">Perfis</h2>
-          <ul className="flex-1 overflow-y-auto p-2" aria-label="Perfis cadastrados">
-            {profiles.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => select(p)}
-                  aria-current={form.id === p.id}
-                  className={`w-full px-3 py-2 text-left font-display text-lg ${
-                    form.id === p.id ? 'bg-raised text-gold' : 'text-snow hover:bg-panel'
-                  }`}
-                >
-                  {p.nickname}
-                </button>
-              </li>
-            ))}
+        <aside className="flex w-72 shrink-0 flex-col border-r border-line bg-night/40">
+          <h2 className="px-4 pb-1 pt-4 font-display text-2xl font-semibold">Perfis</h2>
+          <p className="px-4 pb-3 text-xs text-mist">Um perfil por jogador. Com o Riot ID salvo, o app reconhece o amigo sozinho na seleção.</p>
+          <ul className="flex flex-1 flex-col gap-1.5 overflow-y-auto px-3 pb-3" aria-label="Perfis cadastrados">
+            {profiles.map((p) => {
+              const mine = identity?.profileId === p.id
+              const top = ROLES.flatMap((r) => p.pool[r])[0]
+              const total = ROLES.reduce((n, r) => n + p.pool[r].length, 0)
+              const selected = form.id === p.id
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => select(p)}
+                    aria-current={selected}
+                    className={`flex w-full items-center gap-3 rounded-xl border px-2.5 py-2 text-left transition-colors ${
+                      selected ? 'border-gold/50 bg-raised' : 'border-transparent hover:bg-panel'
+                    }`}
+                  >
+                    {top ? (
+                      <ChampionIcon id={top.championId} size={40} />
+                    ) : (
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-raised font-display text-lg text-dim" aria-hidden="true">
+                        {p.nickname.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className={`flex items-center gap-1.5 font-display text-lg font-semibold leading-tight ${selected ? 'text-gold' : 'text-snow'}`}>
+                        <span className="truncate">{p.nickname}</span>
+                        {mine && <span className="rounded-full bg-ally/15 px-1.5 text-[11px] font-medium text-ally">você</span>}
+                      </span>
+                      <span className="block truncate text-xs text-mist">
+                        {p.riotId ?? 'sem Riot ID'} · {total} {total === 1 ? 'campeão' : 'campeões'}
+                      </span>
+                      {p.mainRoles.length > 0 && <span className="block truncate text-[11px] text-dim">{p.mainRoles.map((r) => ROLE_SHORT[r]).join(' · ')}</span>}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+            {profiles.length === 0 && <li className="rounded-xl border border-dashed border-line p-3 text-sm text-mist">Nenhum perfil ainda. Crie o seu e o de cada amigo.</li>}
           </ul>
           <div className="flex flex-col gap-2 border-t border-line p-3">
             <button type="button" className={`${btnGold} w-full justify-center`} onClick={() => select(null)}>
@@ -233,6 +300,16 @@ export function PoolEditor() {
 
         {/* Editor */}
         <div className="flex min-w-0 flex-1 flex-col">
+          {identity?.account && (
+            <AccountBar
+              account={identity.account}
+              linkedId={identity.profileId}
+              formId={form.id}
+              riotId={form.riotId}
+              onFill={(riotId) => setForm((f) => ({ ...f, riotId }))}
+              onClaim={() => (form.id ? claimProfile(form.id) : Promise.resolve())}
+            />
+          )}
           <div className="grid shrink-0 grid-cols-[1fr_1fr_auto] items-end gap-x-3 gap-y-2 border-b border-line px-4 py-3">
             <div>
               <label htmlFor="nick" className="mb-1 block text-sm text-mist">
@@ -283,7 +360,7 @@ export function PoolEditor() {
                 role="tab"
                 aria-selected={role === r}
                 onClick={() => setRole(r)}
-                className={`border-x border-t px-4 py-1.5 font-display text-lg ${
+                className={`rounded-t-xl border-x border-t px-4 py-1.5 font-display text-lg transition-colors ${
                   role === r ? 'border-line bg-panel text-gold' : 'border-transparent text-mist hover:text-snow'
                 }`}
               >
@@ -322,7 +399,7 @@ export function PoolEditor() {
             <div className="flex min-h-0 flex-col">
               <h3 className="mb-1 text-sm text-mist">Pool de {ROLE_LABEL[role]}</h3>
               {form.pool[role].length === 0 ? (
-                <p className="border border-dashed border-line p-4 text-mist">
+                <p className="rounded-xl border border-dashed border-line p-4 text-mist">
                   Nenhum campeão ainda. Clique nos ícones ao lado para adicionar.
                 </p>
               ) : (

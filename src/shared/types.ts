@@ -28,6 +28,18 @@ export interface DraftPlayer {
   /** Aliados vêm com rota em fila ranqueada; inimigos normalmente vêm null. */
   role: Role | null
   puuid?: string
+  /** "Nome#TAG" quando o cliente informa (ou o app descobre pela conta) */
+  name?: string
+  /** preenchidos pelo app: este jogador é você / é um amigo com perfil salvo */
+  isMe?: boolean
+  profileId?: string
+}
+
+/** Conta logada no cliente do LoL. */
+export interface LcuIdentity {
+  puuid: string
+  gameName: string
+  tagLine: string
 }
 
 export interface DraftState {

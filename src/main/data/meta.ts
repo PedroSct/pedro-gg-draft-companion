@@ -31,6 +31,23 @@ function asStats(v: unknown): WinStats | null {
 const idList = (v: unknown): number[] =>
   Array.isArray(v) ? v.filter((n): n is number => Number.isInteger(n) && n > 0) : []
 
+/** Runas e feitiços são opcionais: dado fora do formato é ignorado, nunca derruba o arquivo inteiro. */
+function parseRunes(raw: Json): Pick<ChampionBuild, 'runes' | 'spells'> {
+  const out: Pick<ChampionBuild, 'runes' | 'spells'> = {}
+  const r = raw.runes
+  if (isRecord(r) && Number.isInteger(r.primaryStyleId) && Number.isInteger(r.subStyleId) && Array.isArray(r.perkIds)) {
+    const ids = r.perkIds.filter((n): n is number => Number.isInteger(n) && (n as number) > 0)
+    const styles = [r.primaryStyleId as number, r.subStyleId as number]
+    if (ids.length === 9 && styles.every((n) => n > 0) && styles[0] !== styles[1]) {
+      out.runes = { primaryStyleId: styles[0], subStyleId: styles[1], perkIds: ids }
+    }
+  }
+  if (Array.isArray(raw.spells) && raw.spells.length === 2 && raw.spells.every((n) => Number.isInteger(n) && (n as number) > 0) && raw.spells[0] !== raw.spells[1]) {
+    out.spells = [raw.spells[0] as number, raw.spells[1] as number]
+  }
+  return out
+}
+
 function parseBuild(raw: unknown): ChampionBuild | undefined {
   if (!isRecord(raw) || !isRecord(raw.skillOrder) || !isRecord(raw.items)) return undefined
   const skills = (v: unknown): SkillKey[] =>
@@ -48,6 +65,7 @@ function parseBuild(raw: unknown): ChampionBuild | undefined {
     : []
 
   return {
+    ...parseRunes(raw),
     skillOrder: { priority, ...(levels.length ? { levels } : {}) },
     items: {
       starting: idList(raw.items.starting),

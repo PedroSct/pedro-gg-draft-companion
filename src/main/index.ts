@@ -18,6 +18,9 @@ async function createWindow(): Promise<void> {
     minHeight: 700,
     show: false,
     autoHideMenuBar: true,
+    // Barra de título integrada ao cabeçalho do app (os botões de janela do sistema ficam por cima).
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#0e121c', symbolColor: '#93a0bf', height: 52 },
     backgroundColor: '#090b12',
     title: 'Pedro.gg Draft Companion',
     icon: app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(app.getAppPath(), 'build', 'icon.png'),

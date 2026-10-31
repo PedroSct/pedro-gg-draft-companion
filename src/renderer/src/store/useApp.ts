@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { PgDetail, PgSummary } from '../../../shared/postgame'
-import type { DraftState, LcuStatus, Role } from '../../../shared/types'
+import type { DraftPlayer, DraftState, LcuStatus, Role } from '../../../shared/types'
 import type {
   AppSettings,
   Catalog,
@@ -11,7 +11,7 @@ import type {
   RecommendMode,
   UpdateState
 } from '../../../shared/dataTypes'
-import type { ImportMetaResult, PickDirResult, ProfileInput, UpdateMetaResult } from '../../../shared/api'
+import type { IdentityState, ImportMetaResult, PickDirResult, ProfileInput, UpdateMetaResult } from '../../../shared/api'
 
 interface AppState {
   ready: boolean
@@ -23,7 +23,16 @@ interface AppState {
   catalogError: string | null
   champById: Map<number, ChampionInfo>
   metaInfo: MetaInfo | null
+  /** Sugestão do jogador em foco (você ou um amigo); null enquanto não calcula */
   recommendation: Recommendation | null
+  /** Sugestões de todos os aliados que têm perfil, por cellId */
+  recs: Record<number, Recommendation>
+  /** conta logada no cliente e perfil dela (null até o main responder) */
+  identity: IdentityState | null
+  /** aliado cuja sugestão está na tela (null = você) */
+  focusCellId: number | null
+  /** rota escolhida à mão para amigos sem rota atribuída, por cellId */
+  friendRoles: Record<number, Role>
   /** Rota escolhida à mão quando a fila não atribui posição (blind pick, normal). */
   roleOverride: Role | null
   /** Campeão da lista de alternativas que o usuário clicou para ver a build. */
@@ -56,6 +65,9 @@ interface AppState {
   refreshRecommendation: () => Promise<void>
   setActiveProfile: (id: string) => Promise<void>
   setRoleOverride: (role: Role | null) => void
+  setFocus: (cellId: number | null) => void
+  setFriendRole: (cellId: number, role: Role | null) => void
+  claimProfile: (profileId: string) => Promise<void>
   setPreview: (championId: number | null) => void
   saveProfile: (input: ProfileInput) => Promise<FriendProfile>
   deleteProfile: (id: string) => Promise<void>
@@ -84,7 +96,34 @@ const localChampion = (d: DraftState | null): number =>
 
 /** Perfil em uso: o último escolhido, ou o primeiro da lista. */
 export const selectActiveProfile = (s: AppState): FriendProfile | null =>
-  s.profiles.find((p) => p.id === s.settings?.lastActiveProfileId) ?? s.profiles[0] ?? null
+  s.profiles.find((p) => p.id === s.identity?.profileId) ??
+  s.profiles.find((p) => p.id === s.settings?.lastActiveProfileId) ??
+  s.profiles[0] ??
+  null
+
+/** Aliado em foco: o escolhido na faixa de amigos, ou você. */
+export const selectFocusPlayer = (s: AppState): DraftPlayer | null => {
+  const d = s.draft
+  if (!d) return null
+  const byCell = (c: number): DraftPlayer | undefined => d.allies.find((p) => p.cellId === c)
+  return (s.focusCellId !== null ? byCell(s.focusCellId) : undefined) ?? byCell(d.localPlayerCellId) ?? null
+}
+
+export const selectFocusProfile = (s: AppState): FriendProfile | null => {
+  const p = selectFocusPlayer(s)
+  if (!p || p.cellId === s.draft?.localPlayerCellId) return selectActiveProfile(s)
+  return s.profiles.find((x) => x.id === p.profileId) ?? null
+}
+
+/** Agrupa atualizações rápidas do draft (passar o mouse por vários campeões) em um único cálculo. */
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+const scheduleRefresh = (fn: () => void): void => {
+  if (refreshTimer) clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null
+    fn()
+  }, 40)
+}
 
 let recSeq = 0 // descarta respostas antigas quando o draft muda rápido
 
@@ -99,6 +138,10 @@ export const useApp = create<AppState>()((set, get) => ({
   champById: new Map(),
   metaInfo: null,
   recommendation: null,
+  recs: {},
+  identity: null,
+  focusCellId: null,
+  friendRoles: {},
   roleOverride: null,
   previewChampionId: null,
   poolOpen: false,
@@ -150,14 +193,15 @@ export const useApp = create<AppState>()((set, get) => ({
 
   init: async () => {
     const api = window.api
-    const [lcuStatus, draft, profiles, settings, metaInfo] = await Promise.all([
+    const [lcuStatus, draft, profiles, settings, metaInfo, identity] = await Promise.all([
       api.getLcuStatus(),
       api.getCurrentDraft(),
       api.listProfiles(),
       api.getSettings(),
-      api.getMetaInfo()
+      api.getMetaInfo(),
+      api.getIdentity()
     ])
-    set({ lcuStatus, draft, profiles, settings, metaInfo, ready: true })
+    set({ lcuStatus, draft, profiles, settings, metaInfo, identity, ready: true })
     void get().loadCatalog()
     void get().refreshRecommendation()
 
@@ -171,11 +215,19 @@ export const useApp = create<AppState>()((set, get) => ({
         if (!get().draft) set({ view: 'draft' }) // começou uma seleção: volta para ela
         const pickChanged = localChampion(get().draft) !== localChampion(next)
         set({ draft: next, ...(pickChanged ? { previewChampionId: null } : {}) })
-        void get().refreshRecommendation()
+        scheduleRefresh(() => void get().refreshRecommendation())
       }),
       api.onDraftEnded(() => {
         recSeq++
-        set({ draft: null, recommendation: null, previewChampionId: null, roleOverride: null })
+        set({ draft: null, recommendation: null, recs: {}, previewChampionId: null, roleOverride: null, focusCellId: null, friendRoles: {} })
+      }),
+      // Conta detectada ou perfil reconhecido: recarrega os perfis (o main pode ter aprendido o puuid).
+      api.onIdentity((identity) => {
+        set({ identity })
+        void api.listProfiles().then((profiles) => {
+          set({ profiles })
+          void get().refreshRecommendation()
+        })
       }),
       // Meta atualizado em segundo plano: mostra os dados novos e recalcula a sugestão.
       api.onMetaUpdated((info) => {
@@ -208,15 +260,31 @@ export const useApp = create<AppState>()((set, get) => ({
 
   refreshRecommendation: async () => {
     const state = get()
-    const profile = selectActiveProfile(state)
-    if (!state.draft || !profile) {
+    const owner = selectActiveProfile(state)
+    const draft = state.draft
+    if (!draft || (!owner && !draft.allies.some((a) => a.profileId))) {
       recSeq++
-      set({ recommendation: null })
+      set({ recommendation: null, recs: {} })
       return
     }
     const mine = ++recSeq
-    const recommendation = await window.api.recommend({ profileId: profile.id, role: state.roleOverride })
-    if (mine === recSeq) set({ recommendation })
+    // Você (perfil da conta ou o perfil principal) + cada amigo reconhecido na seleção.
+    const jobs = draft.allies.flatMap((a) => {
+      const isLocal = a.cellId === draft.localPlayerCellId
+      const profileId = isLocal ? (a.profileId ?? owner?.id) : a.profileId
+      if (!profileId) return []
+      const role = isLocal ? state.roleOverride : (state.friendRoles[a.cellId] ?? null)
+      return [{ cellId: a.cellId, req: { profileId, role, ...(isLocal ? {} : { cellId: a.cellId }) } }]
+    })
+    const results = await Promise.all(jobs.map((j) => window.api.recommend(j.req)))
+    if (mine !== recSeq) return
+    const recs: Record<number, Recommendation> = {}
+    jobs.forEach((j, i) => {
+      const r = results[i]
+      if (r) recs[j.cellId] = r
+    })
+    const focus = selectFocusPlayer(get())
+    set({ recs, recommendation: focus ? (recs[focus.cellId] ?? null) : null })
   },
 
   setActiveProfile: async (id) => {
@@ -231,6 +299,29 @@ export const useApp = create<AppState>()((set, get) => ({
   },
 
   setPreview: (previewChampionId) => set({ previewChampionId }),
+
+  setFocus: (focusCellId) => {
+    const d = get().draft
+    const cell = focusCellId === d?.localPlayerCellId ? null : focusCellId
+    set({ focusCellId: cell, previewChampionId: null })
+    const focus = selectFocusPlayer(get())
+    set({ recommendation: focus ? (get().recs[focus.cellId] ?? null) : null })
+  },
+
+  setFriendRole: (cellId, role) => {
+    const friendRoles = { ...get().friendRoles }
+    if (role) friendRoles[cellId] = role
+    else delete friendRoles[cellId]
+    set({ friendRoles, previewChampionId: null })
+    void get().refreshRecommendation()
+  },
+
+  claimProfile: async (profileId) => {
+    const identity = await window.api.claimProfile(profileId)
+    const [profiles, settings] = await Promise.all([window.api.listProfiles(), window.api.getSettings()])
+    set({ identity, profiles, settings })
+    await get().refreshRecommendation()
+  },
 
   saveProfile: async (input) => {
     const saved = await window.api.saveProfile(input)

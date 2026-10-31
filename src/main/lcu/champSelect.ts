@@ -14,6 +14,8 @@ interface RawPlayer {
   championPickIntent?: number
   assignedPosition?: string
   puuid?: string
+  gameName?: string
+  tagLine?: string
 }
 
 interface RawAction {
@@ -65,7 +67,8 @@ function toPlayer(p: RawPlayer, picks: RawAction[]): DraftPlayer {
     championId,
     status,
     role: ROLES[(p.assignedPosition ?? '').toLowerCase()] ?? null,
-    puuid: p.puuid || undefined
+    puuid: p.puuid || undefined,
+    ...(p.gameName ? { name: p.tagLine ? `${p.gameName}#${p.tagLine}` : p.gameName } : {})
   }
 }
 

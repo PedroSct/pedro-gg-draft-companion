@@ -1,7 +1,8 @@
 import { useState } from 'react'
+import type { Role } from '../../../shared/types'
 import { ROLES, type Confidence, type PickScore, type PickRisk, type RecommendMode } from '../../../shared/dataTypes'
 import type { ExclusionReason } from '../../../shared/dataTypes'
-import { selectActiveProfile, useApp } from '../store/useApp'
+import { selectActiveProfile, selectFocusPlayer, selectFocusProfile, useApp } from '../store/useApp'
 import { pct, ROLE_LABEL, ROLE_SHORT, signed } from '../lib/format'
 import { btnGold } from '../lib/ui'
 import { ChampionIcon, Stars, useChampionName } from './Icons'
@@ -38,7 +39,7 @@ function ModeSwitch() {
             title={m.hint}
             aria-pressed={mode === m.id}
             onClick={() => void setMode(m.id)}
-            className={`border px-3 py-1 text-sm first:rounded-l-sm last:rounded-r-sm ${
+            className={`border px-3 py-1 text-sm first:rounded-l-lg last:rounded-r-lg ${
               mode === m.id ? 'border-gold/70 bg-gold/10 text-gold' : 'border-line bg-panel text-mist hover:text-snow'
             }`}
           >
@@ -74,7 +75,7 @@ function RiskBadge({ risk }: { risk: PickRisk }) {
   if (risk.level === 'none') return null
   const t = RISK_TEXT[risk.level]
   return (
-    <div className={`flex flex-wrap items-center gap-2 border px-3 py-1.5 text-sm ${t.cls}`} data-testid="risk">
+    <div className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-1.5 text-sm ${t.cls}`} data-testid="risk">
       <span className="font-medium">{t.label}</span>
       <span className="text-xs opacity-80">ainda disponíveis para o inimigo:</span>
       {risk.counters.map((c) => (
@@ -109,7 +110,7 @@ function VsNames({ pick }: { pick: PickScore }) {
   return <>{`contra ${name}${more > 0 ? ` e +${more}` : ''}`}</>
 }
 
-function Verdict({ pick }: { pick: PickScore }) {
+function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
   const name = useChampionName(pick.championId)
   const hasMatchup = pick.matchupWinrate !== null
   const mainStat = hasMatchup ? pick.matchupWinrate : pick.baselineWinrate
@@ -119,13 +120,14 @@ function Verdict({ pick }: { pick: PickScore }) {
     <section
       key={pick.championId}
       data-testid="verdict"
-      aria-label="Melhor pick da sua Pool"
-      className="verdict-in chamfer bg-gradient-to-br from-gold via-gold/40 to-gold/10 p-px"
+      aria-label={owner ? `Melhor pick de ${owner}` : 'Melhor pick da sua Pool'}
+      className="verdict-in rounded-2xl bg-gradient-to-br from-gold via-gold/40 to-gold/10 p-px shadow-card"
     >
-      <div className="chamfer flex items-center gap-4 bg-deck p-4">
+     <div className="overflow-hidden rounded-[15px] bg-deck">
+      <div className="flex items-center gap-4 bg-deck p-4">
         <ChampionIcon id={pick.championId} size={88} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-gold">Melhor pick da sua Pool</p>
+          <p className="text-sm text-gold">{owner ? `Melhor pick de ${owner}` : 'Melhor pick da sua Pool'}</p>
           <h2 className="truncate font-display text-4xl font-bold leading-none">{name}</h2>
           <p className="mt-1.5 flex items-center gap-3 text-sm text-mist">
             <span>{ROLE_LABEL[pick.role]}</span>
@@ -145,7 +147,7 @@ function Verdict({ pick }: { pick: PickScore }) {
         </div>
       </div>
       <dl
-        className="chamfer grid grid-cols-4 gap-px bg-line/60 text-center"
+        className="grid grid-cols-4 gap-px bg-line/60 text-center"
         title="Quanto cada fator somou ao score, em pontos"
       >
         {(
@@ -201,6 +203,7 @@ function Verdict({ pick }: { pick: PickScore }) {
           <RiskBadge risk={pick.risk} />
         </div>
       )}
+     </div>
     </section>
   )
 }
@@ -234,7 +237,7 @@ function AltRow({ pick, selected, onSelect }: { pick: PickScore; selected: boole
         </span>
         {(pick.risk.level === 'high' || pick.risk.level === 'medium') && (
           <span
-            className={`border px-1.5 text-xs ${pick.risk.level === 'high' ? 'border-enemy/60 text-enemy' : 'border-gold/50 text-gold'}`}
+            className={`rounded-md border px-1.5 text-xs ${pick.risk.level === 'high' ? 'border-enemy/60 text-enemy' : 'border-gold/50 text-gold'}`}
             title={RISK_TEXT[pick.risk.level].label}
           >
             RISCO
@@ -265,20 +268,85 @@ function Unavailable({ items }: { items: { championId: number; reason: Exclusion
   )
 }
 
+/** "Sugestões para: Você · Amigo (Mid) · …" — só amigos reconhecidos na seleção aparecem. */
+function FocusStrip() {
+  const draft = useApp((s) => s.draft)
+  const profiles = useApp((s) => s.profiles)
+  const owner = useApp(selectActiveProfile)
+  const focus = useApp(selectFocusPlayer)
+  const setFocus = useApp((s) => s.setFocus)
+  const account = useApp((s) => s.identity?.account)
+  if (!draft) return null
+  const friends = draft.allies.filter((a) => a.profileId && a.cellId !== draft.localPlayerCellId && !a.isMe)
+  const me = draft.allies.find((a) => a.cellId === draft.localPlayerCellId)
+  const myProfile = profiles.find((p) => p.id === me?.profileId) ?? owner
+
+  return (
+    <div className="flex flex-col gap-1.5" role="group" aria-label="Para quem são as sugestões">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-mist">Sugestões para</span>
+        <button
+          type="button"
+          aria-pressed={focus?.cellId === draft.localPlayerCellId}
+          onClick={() => setFocus(null)}
+          className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+            focus?.cellId === draft.localPlayerCellId ? 'border-gold/70 bg-gold/10 text-gold' : 'border-line bg-panel text-mist hover:text-snow'
+          }`}
+        >
+          Você{myProfile ? ` · ${myProfile.nickname}` : ''}
+        </button>
+        {friends.map((f) => {
+          const prof = profiles.find((p) => p.id === f.profileId)
+          const on = focus?.cellId === f.cellId
+          return (
+            <button
+              key={f.cellId}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setFocus(f.cellId)}
+              className={`flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-3 text-sm transition-colors ${
+                on ? 'border-gold/70 bg-gold/10 text-gold' : 'border-line bg-panel text-mist hover:text-snow'
+              }`}
+            >
+              {f.championId > 0 ? <ChampionIcon id={f.championId} size={24} /> : <span className="h-6 w-6 rounded-full bg-raised" aria-hidden="true" />}
+              {prof?.nickname}
+              {f.role ? <span className="text-xs opacity-70">{ROLE_SHORT[f.role]}</span> : null}
+            </button>
+          )
+        })}
+      </div>
+      {friends.length === 0 && account && profiles.length > 0 && (
+        <p className="text-xs text-dim">
+          Quando um amigo com perfil (e Riot ID salvo) entrar no seu time, ele aparece aqui com as próprias sugestões.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function PickSuggestion() {
   const draft = useApp((s) => s.draft)
   const rec = useApp((s) => s.recommendation)
-  const profile = useApp(selectActiveProfile)
+  const owner = useApp(selectActiveProfile)
+  const profile = useApp(selectFocusProfile)
+  const focus = useApp(selectFocusPlayer)
   const preview = useApp((s) => s.previewChampionId)
-  const roleOverride = useApp((s) => s.roleOverride)
+  const localRoleOverride = useApp((s) => s.roleOverride)
+  const friendRoles = useApp((s) => s.friendRoles)
   const setPreview = useApp((s) => s.setPreview)
-  const setRole = useApp((s) => s.setRoleOverride)
+  const setLocalRole = useApp((s) => s.setRoleOverride)
+  const setFriendRole = useApp((s) => s.setFriendRole)
   const openPool = useApp((s) => s.openPool)
   const [showAll, setShowAll] = useState(false)
 
-  if (!profile) {
+  const isLocal = !focus || !draft || focus.cellId === draft.localPlayerCellId
+  const roleOverride = isLocal ? localRoleOverride : (friendRoles[focus.cellId] ?? null)
+  const setRole = (r: Role | null): void => (isLocal ? setLocalRole(r) : setFriendRole(focus.cellId, r))
+  const subjectRole = isLocal ? draft?.localRole : focus?.role
+
+  if (!owner && !profile) {
     return (
-      <div className="border border-dashed border-line bg-panel/50 p-5 text-center">
+      <div className="rounded-2xl border border-dashed border-line bg-panel/50 p-5 text-center">
         <p className="text-snow">Crie um perfil para receber sugestões de pick.</p>
         <button type="button" className={`${btnGold} mt-3`} onClick={openPool}>
           Criar perfil
@@ -287,17 +355,18 @@ export function PickSuggestion() {
     )
   }
 
-  const needsRole = draft !== null && draft.localRole === null
+  const needsRole = draft !== null && (subjectRole ?? null) === null
   const ranking = rec?.ranking ?? []
   const alternatives = ranking.slice(1)
   const visibleAlts = showAll ? alternatives : alternatives.slice(0, 3)
 
   return (
     <div className="flex flex-col gap-3">
+      <FocusStrip />
       <ModeSwitch />
       {needsRole && (
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Rota que você vai jogar">
-          <span className="text-sm text-mist">Sua rota</span>
+          <span className="text-sm text-mist">{isLocal ? 'Sua rota' : 'Rota do amigo'}</span>
           {ROLES.map((r) => (
             <button
               key={r}
@@ -316,7 +385,7 @@ export function PickSuggestion() {
 
       {ranking[0] ? (
         <>
-          <Verdict pick={ranking[0]} />
+          <Verdict pick={ranking[0]} owner={isLocal ? null : (profile?.nickname ?? null)} />
           {visibleAlts.length > 0 && (
             <ul className="flex flex-col gap-1.5" aria-label="Outras opções da Pool">
               {visibleAlts.map((p) => (
@@ -336,7 +405,7 @@ export function PickSuggestion() {
           )}
         </>
       ) : (
-        <div className="border border-dashed border-line bg-panel/50 p-5 text-center">
+        <div className="rounded-2xl border border-dashed border-line bg-panel/50 p-5 text-center">
           {rec?.note === 'empty-pool' ? (
             <>
               <p>

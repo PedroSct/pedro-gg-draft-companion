@@ -232,3 +232,40 @@ describe('PostGameCollector + store', () => {
     expect(await store.has(45)).toBe(false)
   })
 })
+
+describe('rotas quando o cliente não informa', () => {
+  const keys: Record<number, string> = { 266: 'Aatrox', 64: 'LeeSin', 103: 'Ahri', 22: 'Ashe', 412: 'Thresh', 54: 'Malphite', 11: 'MasterYi', 7: 'Leblanc', 51: 'Caitlyn', 111: 'Nautilus' }
+  const champKeyOf = (id: number) => keys[id] ?? null
+
+  it('descobre as 5 rotas de cada time pelo mapa, Golpe-fatal e farm', () => {
+    const r = normalizeMatch(makeLcuMatch({ hideRoles: true, me: 5 }), { champKeyOf })!
+    for (const team of [100, 200]) {
+      const roles = r.participants.filter((p) => p.teamId === team).map((p) => p.role)
+      expect([...roles].sort()).toEqual(['BOTTOM', 'JUNGLE', 'MIDDLE', 'TOP', 'UTILITY'])
+    }
+    expect(r.participants.find((p) => p.id === 2)!.role).toBe('JUNGLE')
+    expect(r.participants.find((p) => p.id === 5)!.role).toBe('UTILITY')
+    expect(r.participants.find((p) => p.id === 10)!.role).toBe('UTILITY')
+  })
+
+  it('funciona mesmo sem a tabela de campeões (só sinais do jogo)', () => {
+    const r = normalizeMatch(makeLcuMatch({ hideRoles: true, me: 5 }))!
+    expect(r.participants.find((p) => p.id === 5)!.role).toBe('UTILITY')
+    expect(r.participants.find((p) => p.id === 4)!.role).toBe('BOTTOM')
+    expect(r.participants.find((p) => p.id === 8)!.role).toBe('MIDDLE')
+  })
+
+  it('suporte é comparado com o suporte inimigo, nunca com outra rota', () => {
+    const r = normalizeMatch(makeLcuMatch({ hideRoles: true, me: 5 }), { champKeyOf })!
+    const a = analyzeMatch(r)!
+    expect(a.role).toBe('UTILITY')
+    expect(a.opponentId).toBe(10)
+    expect(a.diffs.length).toBeGreaterThan(0)
+  })
+
+  it('rotas informadas corretamente pelo cliente são mantidas', () => {
+    const r = normalizeMatch(makeLcuMatch({ me: 5 }))!
+    expect(r.participants.find((p) => p.isMe)!.role).toBe('UTILITY')
+    expect(analyzeMatch(r)!.opponentId).toBe(10)
+  })
+})

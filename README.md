@@ -41,6 +41,19 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   contra o oponente de rota, diferença em 10/15/20 min, viradas de ouro, mortes por fase, objetivos e placar. Guarda as
   últimas 40 partidas. O botão **Analisar última partida** busca a mais recente do histórico do cliente. As notas usam
   referências aproximadas (CS/min e visão por rota) e são um ponto de comparação, não uma verdade.
+- **Conta e amigos automáticos**: o app lê a conta logada no cliente e, na seleção de campeões, reconhece os amigos
+  pelo **Riot ID** salvo no perfil deles (o app guarda o puuid sozinho depois, então vale mesmo se o nome mudar). Cada
+  amigo reconhecido ganha as próprias sugestões ("Sugestões para: Você · Caio · …"), com a Pool e a rota dele. Não existe
+  mais o seletor "Quem está jogando": em *Pools*, o botão **Esta conta é este perfil** liga a sua conta ao seu perfil.
+  O puuid nunca vai no código de compartilhamento.
+- **Importar para o cliente** (opcional, por partida): no painel da build, **Importar para o cliente** coloca as runas
+  (página "Pedro.gg", só ela é alterada), os feitiços (durante a seleção) e/ou um conjunto de itens "Pedro.gg" no cliente.
+  Só acontece ao clicar e só no que estiver marcado. Precisa de runas/feitiços no `meta.json` (o gerador novo coleta);
+  sem eles o botão explica o que falta. Caminhos escritos: `/lol-perks/v1/pages`, `/lol-perks/v1/currentpage`,
+  `/lol-champ-select/v1/session/my-selection` e `/lol-item-sets/v1/item-sets/{id}/sets`.
+- **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
+  menos movimento opcional e telas pesadas carregadas só quando abertas.
+- **Configurações** em seções (Geral, Partida, Dados, Aplicativo), com o relatório de diagnóstico para copiar.
 - **Aviso de meta desatualizado**: se o patch dos dados de builds for mais antigo que o do jogo, aparece uma faixa com
   **Atualizar dados**.
 - **Aviso de atualização**: quando existe uma versão nova, aparece uma faixa no topo com **Atualizar agora** / **Depois**.
@@ -64,10 +77,10 @@ mostra "O Windows protegeu seu PC": clique em *Mais informações* e *Executar a
 
 O app procura versões novas nos *Releases* do GitHub do projeto (ao abrir e a cada 4 horas). Para lançar uma:
 
-1. Mude `"version"` no `package.json` (ex.: `0.3.0`) e faça commit/push.
-2. Crie a tag com o mesmo número e envie: `git tag v0.3.0` e `git push origin v0.3.0`.
+1. Mude `"version"` no `package.json` (ex.: `0.4.0`) e faça commit/push.
+2. Crie a tag com o mesmo número e envie: `git tag v0.4.0` e `git push origin v0.4.0`.
 3. O GitHub Actions gera o instalador e cria o Release (`.exe`, `latest.yml` e `.blockmap`).
-4. Quem já tem o app instalado vê o aviso "A versão 0.3.0 está disponível" e decide quando atualizar.
+4. Quem já tem o app instalado vê o aviso "A versão 0.4.0 está disponível" e decide quando atualizar.
 
 Detalhes: o repositório de atualizações entra no instalador sozinho quando ele é gerado pelo Actions
 (`GITHUB_REPOSITORY`). Num `pnpm build:win` local, preencha `DEFAULT_UPDATE_REPO` em `src/shared/config.ts`
@@ -97,7 +110,8 @@ Nem o smartpick.gg nem o draftforge.gg oferecem API pública (veja `docs/pesquis
 A chave vem de developer.riotgames.com. Chaves de desenvolvimento expiram a cada 24 h e limitam as requisições, então a
 coleta é lenta (cerca de 0,8 requisição por segundo). Se for interrompida (Ctrl+C, queda de internet, chave vencida),
 rode o mesmo comando de novo: ela retoma de onde parou, sem contar partidas em dobro. `pnpm meta:build -- --help`
-lista todas as opções. O resultado inclui confrontos, **sinergias entre aliados**, builds e ordem de habilidades.
+lista todas as opções. O resultado inclui confrontos, **sinergias entre aliados**, builds, ordem de habilidades, **runas e feitiços** mais usados nas vitórias.
+Rode o gerador de novo para o botão de importar ter runas e feitiços (os dados antigos continuam funcionando, só sem essa parte).
 
 O resultado é o `meta.json`. Para chegar aos amigos:
 1. Suba o `meta.json` para um repositório público (ex.: link "raw" do GitHub).
@@ -113,10 +127,11 @@ Também dá para importar um `meta.json` manualmente em Configurações > Import
   e `/lol-gameflow/v1/gameflow-phase`. Foram testados contra um cliente simulado, **não contra o cliente real**. O app
   guarda a resposta bruta das últimas 5 partidas em `postgame/raw` (pasta de dados do app) para ajustar o leitor se o
   formato vier diferente.
+- O **importar runas/itens** e a **leitura da conta/amigos** também usam endpoints não oficiais do cliente e foram testados só contra um cliente simulado.
 - Não há nada durante a partida (sem overlay), de propósito: a análise vem depois do jogo.
 - Os dados de meta reais dependem de você rodar o gerador uma vez por patch (e de uma chave da Riot).
 - A atualização automática foi testada com um atualizador simulado e com o app empacotado, mas ainda não contra um
-  Release real do GitHub: o primeiro teste de verdade é publicar a 0.3.2 e ver o aviso na 0.3.1.
+  Release real do GitHub: o primeiro teste de verdade é publicar uma versão nova e ver o aviso na anterior.
 - Os dados do jogo (campeões, itens) ficam salvos no PC depois da primeira execução, mas as **imagens** vêm do CDN da
   Riot. Sem internet, o app mostra a inicial de cada campeão no lugar do ícone.
 - A tabela de rotas e funções é curada à mão e pode ficar atrás do patch; "Todos" sempre mostra tudo.

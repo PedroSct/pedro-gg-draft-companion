@@ -12,6 +12,12 @@ export interface RawParticipant {
   teamId: number
   teamPosition?: string
   win: boolean
+  summoner1Id?: number
+  summoner2Id?: number
+  perks?: {
+    statPerks?: { defense?: number; flex?: number; offense?: number }
+    styles?: { description?: string; style?: number; selections?: { perk?: number }[] }[]
+  }
 }
 export interface RawMatch {
   info?: {
@@ -53,6 +59,10 @@ export interface BuildAgg {
   boots: Counter
   core: Record<string, CoreStat>
   other: Counter
+  /** "estiloPrincipal|estiloSecundário|p1,p2,…,p9" → vitórias (ausente em checkpoints antigos) */
+  runes?: Counter
+  /** "feitiçoA,feitiçoB" (ordenados) → vitórias */
+  spells?: Counter
 }
 export interface RoleAgg extends WinStats {
   matchups: Record<string, WinStats>
@@ -238,6 +248,32 @@ export function extractPurchases(events: RawEvent[], participantId: number): { i
   return list
 }
 
+// ------------------------------------------------------------------- runas e feitiços
+
+/** "principal|secundária|9 ids" na ordem do cliente, ou null se a página estiver incompleta. */
+export function runeKeyOf(p: RawParticipant): string | null {
+  const styles = p.perks?.styles
+  const sp = p.perks?.statPerks
+  if (!Array.isArray(styles) || !sp) return null
+  const primary = styles.find((x) => x.description === 'primaryStyle') ?? styles[0]
+  const sub = styles.find((x) => x.description === 'subStyle') ?? styles[1]
+  const pick = (st: typeof primary): number[] => (st?.selections ?? []).map((x) => x.perk ?? 0)
+  const main = pick(primary)
+  const second = pick(sub)
+  const shards = [sp.offense, sp.flex, sp.defense].map((n) => n ?? 0)
+  if (!primary?.style || !sub?.style || main.length !== 4 || second.length !== 2) return null
+  const all = [...main, ...second, ...shards]
+  if (all.some((n) => !(n > 0)) || primary.style === sub.style) return null
+  return `${primary.style}|${sub.style}|${all.join(',')}`
+}
+
+export function spellKeyOf(p: RawParticipant): string | null {
+  const a = p.summoner1Id
+  const b = p.summoner2Id
+  if (!(typeof a === 'number' && typeof b === 'number' && a > 0 && b > 0 && a !== b)) return null
+  return [a, b].sort((x, y) => x - y).join(',')
+}
+
 // ----------------------------------------------------------------------- adicionar partida
 
 const toRole = (position: string | undefined): Role | null => ROLE_OF[position ?? ''] ?? null
@@ -280,6 +316,17 @@ export function addMatch(state: AggState, match: RawMatch, timeline: RawTimeline
       mu.games++
       if (me.win) mu.wins++
     }
+  }
+
+  // Runas e feitiços vêm da própria partida (não precisam da timeline): só de quem venceu.
+  for (const p of participants) {
+    const role = toRole(p.teamPosition)
+    if (!role || !p.win || !(p.championId > 0)) continue
+    const build = roleAgg(state, p.championId, role).build
+    const rk = runeKeyOf(p)
+    if (rk) bump((build.runes ??= {}), rk)
+    const sk = spellKeyOf(p)
+    if (sk) bump((build.spells ??= {}), sk)
   }
 
   if (!timeline) return true
@@ -371,7 +418,19 @@ function buildFrom(b: BuildAgg, minSamples: number): ChampionBuild | undefined {
     .slice(0, 3)
     .map(([id, n]) => ({ itemId: Number(id), when: `Comprado em ${Math.round((n / Math.max(1, b.samples)) * 100)}% das partidas vencidas` }))
 
+  const runeKey = top(b.runes ?? {})
+  let runes: ChampionBuild['runes']
+  if (runeKey && total(b.runes ?? {}) >= minSamples) {
+    const [primary, sub, ids] = runeKey.split('|')
+    const perkIds = ids.split(',').map(Number)
+    if (perkIds.length === 9) runes = { primaryStyleId: Number(primary), subStyleId: Number(sub), perkIds }
+  }
+  const spellKey = top(b.spells ?? {})
+  const spells = spellKey && total(b.spells ?? {}) >= minSamples ? (spellKey.split(',').map(Number) as [number, number]) : undefined
+
   return {
+    ...(runes ? { runes } : {}),
+    ...(spells ? { spells } : {}),
     skillOrder: {
       priority: [...priorityKey] as ChampionBuild['skillOrder']['priority'],
       ...(levels ? { levels: [...levels] as NonNullable<ChampionBuild['skillOrder']['levels']> } : {})

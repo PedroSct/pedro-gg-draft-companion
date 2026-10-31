@@ -11,6 +11,11 @@ export const IPC = {
   LCU_GET_STATUS: 'lcu:getStatus',
   DRAFT_GET_CURRENT: 'draft:getCurrent',
   DRAFT_RECOMMEND: 'draft:recommend',
+  LOADOUT_APPLY: 'loadout:apply',
+  IDENTITY_GET: 'identity:get',
+  IDENTITY_CLAIM: 'identity:claim',
+  // Main → Renderer (push): conta detectada / amigo reconhecido
+  IDENTITY_UPDATE: 'identity:update',
 
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
@@ -40,6 +45,8 @@ export const IPC = {
   UPDATE_DOWNLOAD: 'update:download',
   UPDATE_INSTALL: 'update:install',
 
+  DIAG_REPORT: 'diag:report',
+  DIAG_ACCEPT: 'diag:accept',
   POSTGAME_LIST: 'postgame:list',
   POSTGAME_GET: 'postgame:get',
   POSTGAME_DELETE: 'postgame:delete',

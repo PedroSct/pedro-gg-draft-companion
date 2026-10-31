@@ -10,7 +10,7 @@ import { validateDataset } from '../src/main/data/meta'
 import type { DraftPlayer, DraftState, LcuStatus } from '../src/shared/types'
 import type { AppSettings, Catalog, FriendProfile, UpdateState } from '../src/shared/dataTypes'
 import type { DecodeResult } from '../src/shared/poolShare'
-import type { LolApi, ProfileInput } from '../src/shared/api'
+import type { IdentityState, LolApi, ProfileInput } from '../src/shared/api'
 import { analyzeMatch, summarize, type PgDetail, type PgSummary } from '../src/shared/postgame'
 import { normalizeMatch } from '../src/main/postgame/normalize'
 import { makeLcuMatch } from './fixtures/match'
@@ -101,8 +101,11 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     metaAutoUpdate: true,
     pickMode: 'balanced',
     autoAccept: false,
-    autoAcceptDelay: 1
+    autoAcceptDelay: 1,
+    introAnimation: true,
+    reduceMotion: false
   }
+  let identity: IdentityState = { account: null, profileId: null }
   let update: UpdateState = { status: 'idle', current: '0.1.0' }
   const updateCbs = new Set<(s: UpdateState) => void>()
   const setUpdate = (u: UpdateState): UpdateState => {
@@ -128,11 +131,20 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
   const api: LolApi = {
     onMetaUpdated: () => () => {},
     onAutoAccepted: () => () => {},
+    getDiagnostics: async () => 'diagnóstico de teste',
+    getLastAccept: async () => null,
     onPostGameReady: () => () => {},
     listPostGames: async () => (opts.postGames ?? []).map((g) => g.summary),
     getPostGame: async (id) => opts.postGames?.find((g) => g.summary.gameId === id)?.detail ?? null,
     deletePostGame: async () => true,
     fetchLatestPostGame: async () => ({ ok: false, message: 'sem partidas' }),
+    applyLoadout: async () => ({ ok: true, parts: { runes: { ok: true, message: 'Runas aplicadas.' } } }),
+    onIdentity: () => () => {},
+    getIdentity: async () => identity,
+    claimProfile: async (id) => {
+      identity = { account: identity.account, profileId: id }
+      return identity
+    },
     onUpdateState: (cb) => (updateCbs.add(cb), () => updateCbs.delete(cb)),
     getUpdateState: async () => update,
     checkForUpdates: async () => update,
@@ -151,7 +163,14 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     getCurrentDraft: async () => draft,
     recommend: async (req) => {
       const profile = profiles.find((p) => p.id === req.profileId)
-      return profile && draft ? recommend({ draft, profile, dataset, role: req.role, mode: settings.pickMode }) : null
+      if (!profile || !draft) return null
+      let d = draft
+      if (typeof req.cellId === 'number') {
+        const who = draft.allies.find((a) => a.cellId === req.cellId)
+        if (!who) return null
+        d = { ...draft, localPlayerCellId: who.cellId, localRole: who.role }
+      }
+      return recommend({ draft: d, profile, dataset, role: req.role, mode: settings.pickMode })
     },
     getSettings: async () => settings,
     setSettings: async (patch) => (settings = { ...settings, ...patch }),
@@ -208,6 +227,10 @@ beforeEach(() => {
     champById: new Map(),
     metaInfo: null,
     recommendation: null,
+    recs: {},
+    identity: null,
+    focusCellId: null,
+    friendRoles: {},
     roleOverride: null,
     previewChampionId: null,
     poolOpen: false,
@@ -304,6 +327,56 @@ describe('Companion App', () => {
     await user.click(within(group).getByRole('button', { name: 'Mid' }))
 
     expect(await screen.findByTestId('verdict')).toHaveTextContent('Orianna')
+  })
+
+  it('reconhece o amigo na seleção e mostra as sugestões dele', async () => {
+    const user = userEvent.setup()
+    const friend: FriendProfile = {
+      ...makeProfile(),
+      id: 'p2',
+      nickname: 'Caio',
+      riotId: 'Caio#BR1',
+      mainRoles: ['TOP'],
+      pool: { ...makeProfile().pool, MIDDLE: [], TOP: [{ championId: 86, championKey: 'Garen', comfort: 5 }] }
+    }
+    const fake = installApi({ profiles: [makeProfile(), friend] })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    const d = draftWithZed()
+    d.allies[0] = { ...player(0, 0, 'none', 'TOP'), name: 'Caio#BR1', profileId: 'p2' }
+    d.allies[1] = { ...player(1, 0, 'none', 'MIDDLE'), isMe: true }
+    act(() => fake.pushDraft(d))
+
+    expect(await screen.findByTestId('verdict')).toHaveTextContent('Orianna')
+    const group = screen.getByRole('group', { name: 'Para quem são as sugestões' })
+    await user.click(within(group).getByRole('button', { name: /Caio/ }))
+
+    const verdict = await screen.findByTestId('verdict')
+    await waitFor(() => expect(verdict).toHaveTextContent('Melhor pick de Caio'))
+    expect(verdict).toHaveTextContent('Garen')
+
+    // Voltar para você
+    await user.click(within(group).getByRole('button', { name: /Você/ }))
+    await waitFor(() => expect(screen.getByTestId('verdict')).toHaveTextContent('Melhor pick da sua Pool'))
+  })
+
+  it('importa runas, feitiços e itens só quando a pessoa clica, e mostra o resultado', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    const apply = vi.spyOn(fake.api, 'applyLoadout')
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    const locked = draftWithZed()
+    locked.allies[1] = player(1, 103, 'locked', 'MIDDLE')
+    act(() => fake.pushDraft(locked))
+
+    const panel = await screen.findByRole('region', { name: 'Importar para o cliente' })
+    expect(apply).not.toHaveBeenCalled()
+    await user.click(within(panel).getByRole('checkbox', { name: /Itens/ })) // desmarca os itens
+    await user.click(within(panel).getByRole('button', { name: 'Importar para o cliente' }))
+
+    await waitFor(() => expect(apply).toHaveBeenCalledWith({ championId: 103, role: 'MIDDLE', parts: { runes: true, spells: true, items: false } }))
+    expect(await within(panel).findByText(/Runas: Runas aplicadas/)).toBeInTheDocument()
   })
 
   it('o fim do draft volta para a tela de espera', async () => {

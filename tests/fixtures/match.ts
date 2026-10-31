@@ -14,16 +14,22 @@ export interface FixtureOpts {
   myCsPerMin?: number
   myDeaths?: number
   durationMin?: number
+  /** participante que é "você" (1 = topo azul; 5 = suporte azul) */
+  me?: number
+  /** simula um cliente que não informa as rotas (lane/role = NONE) */
+  hideRoles?: boolean
 }
 
 export function makeLcuMatch(o: FixtureOpts = {}) {
   const dur = o.durationMin ?? 25
+  const myIdx = o.me ?? 1
+  const POS: [number, number][] = [[2400, 12400], [9500, 5500], [7400, 7400], [12400, 2400], [12000, 2900]]
   const myCpm = o.myCsPerMin ?? 7.5
   const participants: any[] = [] // eslint-disable-line @typescript-eslint/no-explicit-any
   const identities: any[] = [] // eslint-disable-line @typescript-eslint/no-explicit-any
   for (let i = 1; i <= 10; i++) {
     const [lane, role] = LANES[(i - 1) % 5]
-    const me = i === 1
+    const me = i === myIdx
     participants.push({
       participantId: i,
       teamId: i <= 5 ? 100 : 200,
@@ -41,11 +47,13 @@ export function makeLcuMatch(o: FixtureOpts = {}) {
         wardsKilled: 2,
         win: i <= 5
       },
-      timeline: { lane, role }
+      timeline: o.hideRoles ? { lane: 'NONE', role: 'NONE' } : { lane, role },
+      spell1Id: lane === 'JUNGLE' ? 11 : 4,
+      spell2Id: lane === 'JUNGLE' ? 4 : 14
     })
     identities.push({
       participantId: i,
-      player: { summonerName: me ? 'Pedro' : `Jogador${i}`, gameName: me ? 'Pedro' : `Jogador${i}`, tagLine: 'BR1', puuid: me ? 'puuid-pedro' : `puuid-${i}`, summonerId: me ? 111 : 200 + i, currentAccountId: me ? 999 : 300 + i }
+      player: { summonerName: i === myIdx ? 'Pedro' : `Jogador${i}`, gameName: i === myIdx ? 'Pedro' : `Jogador${i}`, tagLine: 'BR1', puuid: i === myIdx ? 'puuid-pedro' : `puuid-${i}`, summonerId: i === myIdx ? 111 : 200 + i, currentAccountId: i === myIdx ? 999 : 300 + i }
     })
   }
   const game = {
@@ -66,9 +74,9 @@ export function makeLcuMatch(o: FixtureOpts = {}) {
   for (let m = 0; m <= dur; m++) {
     const pf: Record<string, unknown> = {}
     for (let i = 1; i <= 10; i++) {
-      const me = i === 1
+      const me = i === myIdx
       const jg = (i - 1) % 5 === 1
-      const cpm = me ? myCpm : i === 6 ? 7 : 6.5
+      const cpm = me ? myCpm : i === ((myIdx + 4) % 10) + 1 ? 7 : 6.5
       pf[String(i)] = {
         participantId: i,
         level: Math.min(18, 1 + Math.floor(m * 0.7)),
@@ -76,7 +84,8 @@ export function makeLcuMatch(o: FixtureOpts = {}) {
         minionsKilled: jg ? Math.round(m * 0.8) : Math.round(m * cpm),
         jungleMinionsKilled: jg ? Math.round(m * 5) : 0,
         totalGold: 500 + Math.round(m * (me ? 520 : 480)),
-        currentGold: 100
+        currentGold: 100,
+        position: { x: POS[(i - 1) % 5][0] + (m % 3) * 40, y: POS[(i - 1) % 5][1] - (m % 4) * 30 }
       }
     }
     const events: unknown[] = []
@@ -94,7 +103,7 @@ export function makeLcuMatch(o: FixtureOpts = {}) {
     gameId: game.gameId,
     gameLength: dur * 60,
     gameMode: 'CLASSIC',
-    localPlayer: { championId: CHAMPS[0], teamId: 100, summonerName: 'Pedro' },
+    localPlayer: { championId: CHAMPS[myIdx - 1], teamId: 100, summonerName: 'Pedro' },
     teams: [100, 200].map((teamId) => ({
       teamId,
       isWinningTeam: teamId === 100,

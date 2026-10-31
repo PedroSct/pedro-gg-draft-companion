@@ -1,6 +1,6 @@
 {
   "name": "pedro-gg-draft-companion",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

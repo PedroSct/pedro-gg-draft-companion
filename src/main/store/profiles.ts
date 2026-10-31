@@ -25,7 +25,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   metaAutoUpdate: true,
   pickMode: 'balanced',
   autoAccept: false,
-  autoAcceptDelay: 1
+  autoAcceptDelay: 1,
+  introAnimation: true,
+  reduceMotion: false
 }
 
 function isHttpsUrl(v: string): boolean {
@@ -106,6 +108,7 @@ export function sanitizeProfile(
     id: existing?.id ?? `p_${randomUUID().slice(0, 8)}`,
     nickname,
     riotId: str(raw.riotId, 40),
+    puuid: typeof raw.puuid === 'string' && /^[\w-]{8,100}$/.test(raw.puuid) ? raw.puuid : undefined,
     mainRoles,
     notes: str(raw.notes, 2000),
     pool: sanitizePool(raw.pool),
@@ -163,6 +166,12 @@ export function sanitizeSettingsPatch(raw: unknown): Partial<AppSettings> {
     const v = raw.autoAcceptDelay
     if (typeof v === 'number' && Number.isFinite(v)) out.autoAcceptDelay = Math.min(8, Math.max(0, Math.round(v)))
     else throw new Error('Configuração inválida: autoAcceptDelay')
+  }
+  for (const key of ['introAnimation', 'reduceMotion'] as const) {
+    if (key in raw) {
+      if (typeof raw[key] === 'boolean') out[key] = raw[key] as boolean
+      else throw new Error(`Configuração inválida: ${key}`)
+    }
   }
   return out
 }
@@ -244,6 +253,8 @@ export class ProfileStore {
     const id = isRecord(raw) && typeof raw.id === 'string' ? raw.id : null
     const existing = id ? this.get(id) : undefined
     const profile = sanitizeProfile(raw, existing)
+    // O puuid é aprendido pelo app: mantém o que já havia, desde que o Riot ID não tenha mudado.
+    if (!profile.puuid && existing?.puuid && (existing.riotId ?? '') === (profile.riotId ?? '')) profile.puuid = existing.puuid
 
     const idx = this.data.profiles.findIndex((p) => p.id === profile.id)
     if (idx >= 0) this.data.profiles[idx] = profile
@@ -252,6 +263,27 @@ export class ProfileStore {
 
     await this.persist()
     return structuredClone(profile)
+  }
+
+  /** Grava o puuid reconhecido de um amigo (sem mexer em `updatedAt`). */
+  async learnPuuid(id: string, puuid: string): Promise<void> {
+    const p = this.get(id)
+    if (!p || p.puuid === puuid || !/^[\w-]{8,100}$/.test(puuid)) return
+    p.puuid = puuid
+    await this.persist()
+  }
+
+  /** A conta logada pertence a este perfil: grava Riot ID e puuid e marca como "você". */
+  async claim(id: string, who: { puuid: string; riotId: string }): Promise<FriendProfile | null> {
+    const p = this.get(id)
+    if (!p) return null
+    // Uma conta só pode estar em um perfil.
+    for (const other of this.data.profiles) if (other.id !== id && other.puuid === who.puuid) delete other.puuid
+    p.riotId = who.riotId.slice(0, 40)
+    p.puuid = who.puuid
+    this.data.settings.lastActiveProfileId = id
+    await this.persist()
+    return structuredClone(p)
   }
 
   async remove(id: string): Promise<boolean> {

@@ -15,6 +15,8 @@ import {
   itemRulesFrom,
   newState,
   priorityOf,
+  runeKeyOf,
+  spellKeyOf,
   type RawEvent,
   type RawMatch
 } from '../tools/meta/aggregate'
@@ -147,6 +149,72 @@ describe('sinergia entre aliados', () => {
     const m: RawMatch = { info: { gameVersion: '16.20.1.1', queueId: 420, gameDuration: 1500, participants: Array.from({ length: 10 }, (_, i) => ({ participantId: i + 1, championId: i + 1, teamId: i < 5 ? 100 : 200, teamPosition: ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'][i % 5], win: i < 5 })) } }
     expect(addMatch(old, m, null, itemRulesFrom({ data: {} }))).toBe(true)
     expect(old.champions['1'].TOP!.synergies!['2']).toEqual({ games: 1, wins: 1 })
+  })
+})
+
+describe('runas e feitiços', () => {
+  const perks = (style: number, sub: number, ids: number[]) => ({
+    statPerks: { offense: ids[6], flex: ids[7], defense: ids[8] },
+    styles: [
+      { description: 'primaryStyle', style, selections: ids.slice(0, 4).map((perk) => ({ perk })) },
+      { description: 'subStyle', style: sub, selections: ids.slice(4, 6).map((perk) => ({ perk })) }
+    ]
+  })
+  const PAGE = [8112, 8139, 8138, 8135, 8226, 8210, 5008, 5008, 5001]
+
+  it('lê a página de runas na ordem do cliente e rejeita páginas incompletas', () => {
+    const p = { participantId: 1, championId: 1, teamId: 100, win: true, perks: perks(8100, 8200, PAGE) }
+    expect(runeKeyOf(p)).toBe(`8100|8200|${PAGE.join(',')}`)
+    expect(runeKeyOf({ ...p, perks: perks(8100, 8100, PAGE) })).toBeNull()
+    expect(runeKeyOf({ ...p, perks: undefined })).toBeNull()
+    expect(runeKeyOf({ ...p, perks: perks(8100, 8200, [...PAGE.slice(0, 8), 0]) })).toBeNull()
+    expect(spellKeyOf({ ...p, summoner1Id: 14, summoner2Id: 4 })).toBe('4,14')
+    expect(spellKeyOf({ ...p, summoner1Id: 4, summoner2Id: 4 })).toBeNull()
+  })
+
+  it('conta runas e feitiços só das vitórias', () => {
+    const state = newState('16.20')
+    for (let n = 0; n < 5; n++) {
+      const m: RawMatch = {
+        info: {
+          gameVersion: '16.20.1.1',
+          queueId: 420,
+          gameDuration: 1500,
+          participants: Array.from({ length: 10 }, (_, i) => ({
+            participantId: i + 1,
+            championId: i + 1,
+            teamId: i < 5 ? 100 : 200,
+            teamPosition: ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'][i % 5],
+            win: i < 5,
+            summoner1Id: 4,
+            summoner2Id: 14,
+            perks: perks(8100, 8200, PAGE)
+          }))
+        }
+      }
+      addMatch(state, m, null, itemRulesFrom({ data: {} }))
+    }
+    // O perdedor (campeão 6) não entra na contagem
+    expect(state.champions['6'].TOP!.build.runes).toBeUndefined()
+    expect(Object.values(state.champions['1'].TOP!.build.runes!)).toEqual([5])
+    const b = state.champions['1'].TOP!.build
+    expect(Object.keys(b.spells!)).toEqual(['4,14'])
+  })
+
+  it('o app ignora runas fora do formato sem rejeitar o arquivo', () => {
+    const build = (extra: object) => ({
+      schemaVersion: 1,
+      source: 't',
+      patch: '16.20',
+      generatedAt: '2026-01-01T00:00:00Z',
+      champions: { '1': { roles: { TOP: { games: 10, wins: 5, matchups: {}, build: { ...extra, skillOrder: { priority: ['R', 'Q', 'W', 'E'] }, items: { starting: [], boots: [], core: [], situational: [] } } } } } }
+    })
+    const good = validateDataset(build({ runes: { primaryStyleId: 8100, subStyleId: 8200, perkIds: PAGE }, spells: [4, 14] }))
+    expect(good.champions['1'].roles.TOP!.build!.runes!.perkIds).toEqual(PAGE)
+    expect(good.champions['1'].roles.TOP!.build!.spells).toEqual([4, 14])
+    const bad = validateDataset(build({ runes: { primaryStyleId: 8100, subStyleId: 8200, perkIds: [1, 2, 3] }, spells: [4, 4] }))
+    expect(bad.champions['1'].roles.TOP!.build!.runes).toBeUndefined()
+    expect(bad.champions['1'].roles.TOP!.build!.spells).toBeUndefined()
   })
 })
 

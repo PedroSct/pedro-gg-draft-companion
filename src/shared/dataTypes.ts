@@ -21,6 +21,8 @@ export interface FriendProfile {
   id: string
   nickname: string
   riotId?: string
+  /** aprendido sozinho quando a conta aparece na seleção (nunca é compartilhado) */
+  puuid?: string
   mainRoles: Role[]
   notes?: string
   pool: Pool
@@ -45,6 +47,10 @@ export interface AppSettings {
   autoAccept: boolean
   /** Segundos de espera antes de aceitar (0 a 8). */
   autoAcceptDelay: number
+  /** Animação de abertura do app. */
+  introAnimation: boolean
+  /** Menos movimento: desliga animações e transições. */
+  reduceMotion: boolean
 }
 
 export interface ProfilesFile {
@@ -68,7 +74,18 @@ export interface SituationalItem {
   when: string
 }
 
+/** Página de runas (formato do cliente): 4 da árvore principal, 2 da secundária e 3 fragmentos, nessa ordem. */
+export interface RunePage {
+  primaryStyleId: number
+  subStyleId: number
+  perkIds: number[]
+}
+
 export interface ChampionBuild {
+  /** runas mais usadas nas vitórias (ausente em dados antigos) */
+  runes?: RunePage
+  /** feitiços de invocador mais usados nas vitórias */
+  spells?: [number, number]
   skillOrder: {
     /** prioridade de evolução, ex.: ['R','Q','E','W'] */
     priority: SkillKey[]

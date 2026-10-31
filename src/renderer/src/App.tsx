@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { useApp } from './store/useApp'
 import { Header } from './components/Header'
 import { TeamColumn } from './components/TeamColumn'
@@ -6,11 +6,14 @@ import { BansBar } from './components/BansBar'
 import { PickSuggestion } from './components/PickSuggestion'
 import { BuildPanel } from './components/BuildPanel'
 import { IdleScreen } from './components/IdleScreen'
-import { PoolEditor } from './components/PoolEditor'
-import { SettingsDialog } from './components/SettingsDialog'
 import { UpdateBanner } from './components/UpdateBanner'
-import { PostGameScreen } from './components/PostGame'
+import { Splash } from './components/Splash'
 import { btn } from './lib/ui'
+
+// Telas pesadas só são carregadas quando abrem: o app inicia mais rápido e gasta menos memória.
+const PoolEditor = lazy(() => import('./components/PoolEditor').then((m) => ({ default: m.PoolEditor })))
+const SettingsDialog = lazy(() => import('./components/SettingsDialog').then((m) => ({ default: m.SettingsDialog })))
+const PostGameScreen = lazy(() => import('./components/PostGame').then((m) => ({ default: m.PostGameScreen })))
 
 /** "15.20.1" e "15.20" são o mesmo patch: compara só os dois primeiros números. */
 const patchOf = (v: string): string | null => {
@@ -91,9 +94,11 @@ export default function App() {
   const init = useApp((s) => s.init)
   const ready = useApp((s) => s.ready)
   const draft = useApp((s) => s.draft)
+  const settings = useApp((s) => s.settings)
   const view = useApp((s) => s.view)
   const poolOpen = useApp((s) => s.poolOpen)
   const settingsOpen = useApp((s) => s.settingsOpen)
+  const reduceMotion = useApp((s) => s.settings?.reduceMotion ?? false)
   const [fatal, setFatal] = useState<string | null>(null)
 
   useEffect(() => {
@@ -111,6 +116,10 @@ export default function App() {
     }
   }, [init])
 
+  useEffect(() => {
+    document.documentElement.classList.toggle('reduce-motion', reduceMotion)
+  }, [reduceMotion])
+
   if (fatal) {
     return (
       <div role="alert" className="grid h-full place-items-center text-enemy">
@@ -127,10 +136,13 @@ export default function App() {
         <UpdateBanner />
         <Banners />
         <main className="min-h-0 flex-1 p-5">
-          {!ready ? null : view === 'postgame' ? <PostGameScreen /> : draft ? <DraftScreen /> : <IdleScreen />}
+          <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : draft ? <DraftScreen /> : <IdleScreen />}</Suspense>
         </main>
-        {poolOpen && <PoolEditor />}
-        {settingsOpen && <SettingsDialog />}
+        <Suspense fallback={null}>
+          {poolOpen && <PoolEditor />}
+          {settingsOpen && <SettingsDialog />}
+        </Suspense>
+      {import.meta.env.MODE !== 'test' && settings?.introAnimation !== false && !reduceMotion && <Splash ready={ready} />}
       </div>
     </div>
   )

@@ -29,6 +29,8 @@ export interface PgParticipant {
   wardsPlaced: number
   wardsKilled: number
   win: boolean
+  /** levava Golpe-fatal (Smite): sinal forte de caçador */
+  smite?: boolean
 }
 
 export interface PgFramePlayer {
@@ -37,6 +39,8 @@ export interface PgFramePlayer {
   gold: number
   xp: number
   level: number
+  /** posição no mapa (0 a ~14800); usada para descobrir a rota */
+  pos?: [number, number]
 }
 
 export interface PgFrame {

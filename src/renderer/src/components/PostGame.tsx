@@ -120,7 +120,7 @@ function InsightCard({ insight, i }: { insight: Insight; i: number }) {
 
 function Panel({ title, children, className = '', delay = 0 }: { title: string; children: React.ReactNode; className?: string; delay?: number }) {
   return (
-    <section className={`rise border border-line bg-panel/70 p-4 backdrop-blur-sm ${className}`} style={{ ['--d' as string]: `${delay}ms` }}>
+    <section className={`rise border border-line bg-panel/70 p-4 ${className}`} style={{ ['--d' as string]: `${delay}ms` }}>
       <h3 className="mb-3 font-display text-lg font-semibold tracking-wide text-snow">{title}</h3>
       {children}
     </section>
@@ -132,11 +132,11 @@ function Hero({ report, a }: { report: MatchReport; a: Analysis }) {
   const name = useChampionName(me.championId)
   const win = report.win
   return (
-    <div className={`rise relative flex flex-wrap items-center gap-6 overflow-hidden border border-line bg-panel/80 p-5`}>
+    <div className={`rise relative flex flex-wrap items-center gap-6 overflow-hidden rounded-2xl border border-line bg-panel/80 p-5`}>
       <div className={`absolute inset-y-0 left-0 w-1.5 ${win ? 'bg-ally' : 'bg-enemy'}`} aria-hidden="true" />
       <div
-        className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full opacity-20 blur-3xl"
-        style={{ background: win ? 'var(--color-ally)' : 'var(--color-enemy)' }}
+        className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full opacity-20"
+        style={{ background: `radial-gradient(circle, ${win ? 'var(--color-ally)' : 'var(--color-enemy)'} 0%, transparent 68%)` }}
         aria-hidden="true"
       />
       <ChampionIcon id={me.championId} size={84} />
@@ -155,7 +155,11 @@ function Hero({ report, a }: { report: MatchReport; a: Analysis }) {
             <span className="num text-2xl font-semibold">{me.assists}</span>
             <span className="ml-1 text-mist">KDA</span>
           </span>
-          <Stat label="CS/min" value={a.csPerMin} decimals={1} />
+          {a.role === 'UTILITY' ? (
+            <Stat label="visão/min" value={a.visionPerMin} decimals={1} />
+          ) : (
+            <Stat label="CS/min" value={a.csPerMin} decimals={1} />
+          )}
           <Stat label="Participação" value={Math.round(a.killParticipation * 100)} suffix="%" />
           <Stat label="Dano do time" value={Math.round(a.damageShare * 100)} suffix="%" />
         </div>
@@ -285,7 +289,7 @@ function Detail() {
               </ul>
             )}
           </Panel>
-          <Panel title={`Contra o oponente de rota${a.opp ? '' : ''}`} delay={200}>
+          <Panel title={a.role ? `Contra o ${ROLE_PT[a.role].toLowerCase()} inimigo` : 'Contra o oponente de rota'} delay={200}>
             <Diffs a={a} />
           </Panel>
         </div>
@@ -293,17 +297,31 @@ function Detail() {
 
       {hasSeries && (
         <div className="grid gap-4 xl:grid-cols-2">
-          <Panel title="Farm (CS) por minuto" delay={240}>
-            <LineChart
-              xs={a.minutes}
-              ariaLabel="CS por minuto, você contra o oponente de rota"
-              markers={[{ x: 10, label: '10' }, { x: 15, label: '15' }]}
-              series={[
-                { name: 'Você', color: 'var(--color-ally)', values: a.me.cs },
-                ...(a.opp ? [{ name: oppLabel, color: 'var(--color-enemy)', values: a.opp.cs, dashed: true }] : [])
-              ]}
-            />
-          </Panel>
+          {a.role === 'UTILITY' ? (
+            <Panel title="Experiência por minuto" delay={240}>
+              <LineChart
+                xs={a.minutes}
+                ariaLabel="Experiência por minuto, você contra o suporte inimigo"
+                format={(v) => `${(v / 1000).toFixed(1)}k`}
+                series={[
+                  { name: 'Você', color: 'var(--color-ally)', values: a.me.xp },
+                  ...(a.opp ? [{ name: oppLabel, color: 'var(--color-enemy)', values: a.opp.xp, dashed: true }] : [])
+                ]}
+              />
+            </Panel>
+          ) : (
+            <Panel title="Farm (CS) por minuto" delay={240}>
+              <LineChart
+                xs={a.minutes}
+                ariaLabel="CS por minuto, você contra o oponente de rota"
+                markers={[{ x: 10, label: '10' }, { x: 15, label: '15' }]}
+                series={[
+                  { name: 'Você', color: 'var(--color-ally)', values: a.me.cs },
+                  ...(a.opp ? [{ name: oppLabel, color: 'var(--color-enemy)', values: a.opp.cs, dashed: true }] : [])
+                ]}
+              />
+            </Panel>
+          )}
           <Panel title="Ouro por minuto" delay={280}>
             <LineChart
               xs={a.minutes}
