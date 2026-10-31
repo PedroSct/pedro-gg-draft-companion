@@ -8,6 +8,7 @@ import { ProfileStore } from '../store/profiles'
 import { DataDragon } from '../data/ddragon'
 import { MetaStore, MetaUpdateError } from '../data/meta'
 import { recommend } from '../data/recommender'
+import { championDetail, tierRows } from '../data/metaStats'
 import { ROLES } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO } from '../../shared/config'
 import { decodeShare, encodeShare, toFileJson } from '../store/share'
@@ -182,6 +183,7 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   handle(IPC.LCU_GET_STATUS, () => lcu.getStatus())
   handle(IPC.DRAFT_GET_CURRENT, () => annotatedDraft())
   handle(IPC.IDENTITY_GET, () => identityState())
+  handle(IPC.ACCOUNT_STATS, () => lcu.getAccountStats())
   handle(IPC.IDENTITY_CLAIM, async (id) => {
     const account = lcu.getIdentity()
     if (typeof id !== 'string' || !account) return identityState()
@@ -245,6 +247,16 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
 
   // ---- Meta (matchups/builds)
   handle(IPC.META_INFO, () => meta.info())
+  handle(IPC.META_TIERS, (role) => {
+    const ds = meta.get()
+    return ds && ROLES.includes(role as Role) ? tierRows(ds, role as Role) : []
+  })
+  handle(IPC.META_DETAIL, (raw) => {
+    const req = isRecord(raw) ? raw : {}
+    const ds = meta.get()
+    if (!ds || typeof req.championId !== 'number' || !ROLES.includes(req.role as Role)) return null
+    return championDetail(ds, req.championId, req.role as Role)
+  })
   handle(IPC.META_GET_BUILD, (raw) => {
     const req = isRecord(raw) ? raw : {}
     const role = req.role as Role

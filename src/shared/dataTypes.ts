@@ -157,6 +157,15 @@ export interface Catalog {
   locale: string
   champions: ChampionInfo[]
   items: Record<string, ItemInfo>
+  /** árvores e runas (por id): nome e ícone. Ausente se o Data Dragon não entregou. */
+  runes?: Record<string, NamedIcon>
+  /** feitiços de invocador (por id numérico): nome e ícone */
+  summoners?: Record<string, NamedIcon>
+}
+
+export interface NamedIcon {
+  name: string
+  iconUrl: string
 }
 
 // ------------------------------------------------------------ Recomendação
@@ -242,4 +251,43 @@ export interface UpdateState {
   message?: string
   /** ISO da última verificação concluída */
   checkedAt?: string
+}
+
+// ------------------------------------------------------------ Tela "Meta"
+
+export type Tier = 'S' | 'A' | 'B' | 'C' | 'D'
+
+export interface MetaTierRow {
+  championId: number
+  games: number
+  /** winrate bruto (0..1) */
+  winrate: number
+  /** diferença para 50% em pontos, já com suavização (poucos jogos puxam para 0) */
+  delta: number
+  /** participação do campeão nas partidas da rota (0..1) */
+  presence: number
+  tier: Tier
+  hasBuild: boolean
+}
+
+export interface MetaMatchupRow {
+  championId: number
+  winrate: number
+  games: number
+}
+
+export interface MetaChampionDetail {
+  championId: number
+  role: Role
+  games: number
+  winrate: number
+  delta: number
+  presence: number
+  tier: Tier
+  /** contra quem este campeão vai melhor / pior (ao menos 8 jogos) */
+  best: MetaMatchupRow[]
+  worst: MetaMatchupRow[]
+  /** aliados com quem ele rende mais */
+  allies: { championId: number; delta: number; games: number }[]
+  build: ChampionBuild | null
 }

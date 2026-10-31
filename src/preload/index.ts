@@ -21,6 +21,7 @@ const api: LolApi = {
   applyLoadout: (req) => ipcRenderer.invoke(IPC.LOADOUT_APPLY, req),
   onIdentity: (cb) => subscribe(IPC.IDENTITY_UPDATE, cb),
   getIdentity: () => ipcRenderer.invoke(IPC.IDENTITY_GET),
+  getAccountStats: () => ipcRenderer.invoke(IPC.ACCOUNT_STATS),
   claimProfile: (id) => ipcRenderer.invoke(IPC.IDENTITY_CLAIM, id),
   onUpdateState: (cb) => subscribe(IPC.UPDATE_STATE, cb),
   getDiagnostics: () => ipcRenderer.invoke(IPC.DIAG_REPORT),
@@ -48,6 +49,8 @@ const api: LolApi = {
   getSpells: (key) => ipcRenderer.invoke(IPC.DDRAGON_GET_SPELLS, key),
 
   getMetaInfo: () => ipcRenderer.invoke(IPC.META_INFO),
+  getMetaTiers: (role) => ipcRenderer.invoke(IPC.META_TIERS, role),
+  getMetaDetail: (req) => ipcRenderer.invoke(IPC.META_DETAIL, req),
   getBuild: (req) => ipcRenderer.invoke(IPC.META_GET_BUILD, req),
   importMeta: () => ipcRenderer.invoke(IPC.META_IMPORT),
   updateMeta: () => ipcRenderer.invoke(IPC.META_UPDATE),

@@ -2,6 +2,7 @@
 // Histórico local das partidas analisadas (últimas 40) + cópia bruta das últimas respostas do cliente.
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { writeJsonAtomic } from '../store/fsJson'
 import { summarize, type PgDetail, type PgSummary, type MatchReport, type Analysis } from '../../shared/postgame'
 
 const MAX_ITEMS = 40
@@ -40,13 +41,11 @@ export class PostGameStore {
   }
 
   private persist(items: Item[]): Promise<void> {
-    this.writing = this.writing.then(async () => {
-      await fs.mkdir(path.dirname(this.file), { recursive: true })
-      const tmp = `${this.file}.tmp`
-      await fs.writeFile(tmp, JSON.stringify({ version: 1, items }), 'utf8')
-      await fs.rename(tmp, this.file)
-    })
-    return this.writing
+    // Uma gravação que falha (antivírus segurando o arquivo, disco cheio) não pode travar as próximas:
+    // a fila segue, e só quem pediu aquela gravação recebe o erro.
+    const job = this.writing.catch(() => undefined).then(() => writeJsonAtomic(this.file, { version: 1, items }))
+    this.writing = job.catch(() => undefined)
+    return job
   }
 
   async list(): Promise<PgSummary[]> {

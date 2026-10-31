@@ -1,12 +1,14 @@
 // src/shared/api.ts
 // Contrato do `window.api` exposto pelo preload. Main, Preload e Renderer usam estes tipos.
-import type { DraftState, LcuIdentity, LcuStatus, Role } from './types'
+import type { AccountStats, DraftState, LcuIdentity, LcuStatus, Role } from './types'
 import type {
   AppSettings,
   Catalog,
   ChampionBuild,
   FriendProfile,
+  MetaChampionDetail,
   MetaInfo,
+  MetaTierRow,
   Recommendation,
   SpellInfo,
   UpdateState
@@ -78,6 +80,8 @@ export interface LolApi {
   /** Coloca runas, feitiços e/ou itens da build no cliente (só quando o usuário clica em Importar). */
   applyLoadout(req: { championId: number; role: Role; parts: LoadoutParts }): Promise<LoadoutImportResult>
   getIdentity(): Promise<IdentityState>
+  /** Nível e elo da conta logada; null se o cliente não está aberto. */
+  getAccountStats(): Promise<AccountStats | null>
   /** "Esta conta é este perfil": grava Riot ID e puuid no perfil. */
   claimProfile(profileId: string): Promise<IdentityState>
 
@@ -93,6 +97,9 @@ export interface LolApi {
   getSpells(championKey: string): Promise<SpellInfo[]>
 
   getMetaInfo(): Promise<MetaInfo | null>
+  /** Ranking de campeões da rota (tela Meta). */
+  getMetaTiers(role: Role): Promise<MetaTierRow[]>
+  getMetaDetail(req: { championId: number; role: Role }): Promise<MetaChampionDetail | null>
   getBuild(req: { championId: number; role: Role }): Promise<ChampionBuild | null>
   importMeta(): Promise<ImportMetaResult>
   /** Baixa o meta do endereço configurado (ou do padrão do instalador). */

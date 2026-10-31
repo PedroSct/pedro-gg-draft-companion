@@ -41,6 +41,7 @@ export function ChampionPicker({ catalog, role, inPool, onToggle }: Props) {
   const [classes, setClasses] = useState<ChampionClass[]>([])
   const [styles, setStyles] = useState<Style[]>([])
   const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
 
   const filter = { ...defaultFilter(role), scope, lanes, classes, styles, query: normalize(query) }
   const activeExtras = (scope === 'all' ? lanes.length : 0) + classes.length + styles.length + (query ? 1 : 0)
@@ -92,8 +93,17 @@ export function ChampionPicker({ catalog, role, inPool, onToggle }: Props) {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className={`${btn} shrink-0 ${activeExtras - (query ? 1 : 0) > 0 ? 'border-gold/60 text-gold' : ''}`}
+        >
+          Filtros{activeExtras - (query ? 1 : 0) > 0 ? ` (${activeExtras - (query ? 1 : 0)})` : ''}
+        </button>
       </div>
 
+      {open && (
       <div className="mt-2.5 flex flex-col gap-1.5">
         {scope === 'all' && (
           <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por rota">
@@ -122,6 +132,7 @@ export function ChampionPicker({ catalog, role, inPool, onToggle }: Props) {
           ))}
         </div>
       </div>
+      )}
 
       <div className="mt-2 flex items-center gap-3 text-xs text-mist">
         <span role="status">

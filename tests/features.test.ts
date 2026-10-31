@@ -363,3 +363,14 @@ describe('pickAutoUpdater (electron-updater é CommonJS)', () => {
     expect(pickAutoUpdater({ default: {} })).toBeNull()
   })
 })
+
+describe('recomendação: oponente de rota sem a rota informada pela LCU', () => {
+  it('inimigo confirmado que joga quase sempre nesta rota desliga o alerta falso de counter', () => {
+    // Campeão 3 joga só de Meio (100%) nos dados; a LCU entrega o inimigo sem rota (null).
+    const enemyUnknownRole = recommend({ draft: draft({ enemies: [P(5, 3, 'locked', null)] }), profile: me([[1, 'A', 3]]), dataset })
+    expect(enemyUnknownRole.ranking[0].risk.level).toBe('none')
+    // Um inimigo que NÃO joga de Meio (campeão 4 é Top) não conta como oponente de rota.
+    const otherLane = recommend({ draft: draft({ enemies: [P(5, 4, 'locked', null)] }), profile: me([[1, 'A', 3]]), dataset })
+    expect(otherLane.ranking[0].risk.level).not.toBe('none')
+  })
+})

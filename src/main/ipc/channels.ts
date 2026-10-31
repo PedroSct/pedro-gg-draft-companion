@@ -14,6 +14,7 @@ export const IPC = {
   LOADOUT_APPLY: 'loadout:apply',
   IDENTITY_GET: 'identity:get',
   IDENTITY_CLAIM: 'identity:claim',
+  ACCOUNT_STATS: 'identity:stats',
   // Main → Renderer (push): conta detectada / amigo reconhecido
   IDENTITY_UPDATE: 'identity:update',
 
@@ -30,6 +31,8 @@ export const IPC = {
 
   META_INFO: 'meta:info',
   META_GET_BUILD: 'meta:getBuild',
+  META_TIERS: 'meta:tiers',
+  META_DETAIL: 'meta:detail',
   META_IMPORT: 'meta:import',
   META_UPDATE: 'meta:update',
 

@@ -8,6 +8,7 @@ import { ROLE_LABEL, ROLE_SHORT, splashUrl } from '../lib/format'
 import { btnGold } from '../lib/ui'
 import { ROLES } from '../../../shared/dataTypes'
 import { ChampionIcon, ItemIcon, SafeImg, useChampionName } from './Icons'
+import { RunesView, SpellsView } from './LoadoutView'
 
 const SKILLS: SkillKey[] = ['Q', 'W', 'E', 'R']
 
@@ -31,7 +32,7 @@ function SpellIcon({ spell, slot }: { spell: SpellInfo | undefined; slot: SkillK
   )
 }
 
-function SkillOrder({ build, spells }: { build: ChampionBuild; spells: SpellInfo[] }) {
+export function SkillOrder({ build, spells }: { build: ChampionBuild; spells: SpellInfo[] }) {
   const { priority, levels } = build.skillOrder
   const bySlot = (k: SkillKey): SpellInfo | undefined => spells.find((s) => s.slot === k)
 
@@ -86,7 +87,7 @@ function SkillOrder({ build, spells }: { build: ChampionBuild; spells: SpellInfo
   )
 }
 
-function ItemRow({ title, ids, chain = false }: { title: string; ids: number[]; chain?: boolean }) {
+export function ItemRow({ title, ids, chain = false }: { title: string; ids: number[]; chain?: boolean }) {
   if (!ids.length) return null
   return (
     <div>
@@ -103,7 +104,7 @@ function ItemRow({ title, ids, chain = false }: { title: string; ids: number[]; 
   )
 }
 
-function SituationalItem({ id, when }: { id: number; when: string }) {
+export function SituationalItem({ id, when }: { id: number; when: string }) {
   const name = useApp((s) => s.catalog?.items[String(id)]?.name ?? `Item ${id}`)
   return (
     <li className="flex items-center gap-3">
@@ -333,6 +334,13 @@ export function BuildPanel() {
 
         {status === 'ready' && build && (
           <>
+            {(build.runes || build.spells) && (
+              <div className="flex flex-col gap-3">
+                <h3 className="text-sm text-mist">Runas e feitiços</h3>
+                {build.runes && <RunesView runes={build.runes} />}
+                {build.spells && <SpellsView spells={build.spells} />}
+              </div>
+            )}
             <SkillOrder build={build} spells={data.spells} />
             <div className="flex flex-col gap-3">
               <h3 className="text-sm text-mist">Itens</h3>

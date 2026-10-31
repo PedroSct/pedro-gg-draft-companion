@@ -1,0 +1,100 @@
+# Coleta partidas de alto elo na Match-v5 da Riot e publica o meta.json (winrates, confrontos, builds,
+# ordem de habilidades, runas e feitiços) na branch "data". O app dos seus amigos baixa de lá sozinho.
+#
+# Como usar:
+#   1. developer.riotgames.com > entre com a conta do LoL > copie a "Development API Key".
+#   2. Settings > Secrets and variables > Actions > New repository secret: nome RIOT_API_KEY, valor = a chave.
+#   3. Aba Actions > "Atualizar dados de meta" > Run workflow. Leva umas 2 a 3 horas.
+#
+# A chave de desenvolvimento expira em 24 h: se vencer no meio, o que já foi coletado é publicado mesmo assim
+# (desde que seja suficiente) e a próxima execução continua de onde parou. Para rodar toda semana sem trocar a
+# chave, peça uma "Personal API Key" no mesmo portal e coloque no mesmo secret.
+name: Atualizar dados de meta
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Servidor dos jogadores (br1, na1, euw1, kr...)
+        default: br1
+      max_matches:
+        description: Partidas a coletar
+        default: '3000'
+  schedule:
+    - cron: '0 7 * * 3' # quartas, 07:00 UTC (só funciona se a chave ainda estiver válida)
+
+permissions:
+  contents: write # publicar a branch "data"
+
+concurrency:
+  group: update-meta
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Conferir a chave
+        env:
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+        run: |
+          if [ -z "$RIOT_API_KEY" ]; then
+            echo "::error::Falta o secret RIOT_API_KEY (veja as instruções no topo deste arquivo)."
+            exit 1
+          fi
+
+      # O progresso fica guardado entre execuções: se a chave vencer, a próxima continua de onde parou.
+      - name: Recuperar o progresso
+        uses: actions/cache/restore@v4
+        with:
+          path: meta-work
+          key: meta-work-${{ github.run_id }}
+          restore-keys: meta-work-
+
+      - name: Coletar partidas
+        id: collect
+        continue-on-error: true
+        env:
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+        run: pnpm meta:build -- --platform "${{ inputs.platform || 'br1' }}" --max-matches "${{ inputs.max_matches || '3000' }}" --out meta.json --work meta-work
+
+      - name: Guardar o progresso
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: meta-work
+          key: meta-work-${{ github.run_id }}
+
+      # Se a coleta parou no meio (chave vencida, limite), monta o arquivo com o que já foi coletado.
+      - name: Montar o meta.json com o que foi coletado
+        if: steps.collect.outcome == 'failure'
+        run: pnpm meta:build -- --platform "${{ inputs.platform || 'br1' }}" --finalize-only --out meta.json --work meta-work
+
+      - name: Conferir a qualidade
+        run: pnpm meta:check -- meta.json --strict
+
+      - name: Publicar na branch data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir pub && cp meta.json pub/meta.json && cd pub
+          git init -q
+          git config user.name "pedro-gg-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -q --orphan data
+          git add meta.json
+          git commit -q -m "Dados de meta ($(date -u +%F))"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" data
+
+      - name: Resultado
+        if: steps.collect.outcome == 'failure'
+        run: echo "::warning::A coleta parou antes do fim (provavelmente a chave venceu). Os dados parciais foram publicados; rode de novo com uma chave nova para completar."

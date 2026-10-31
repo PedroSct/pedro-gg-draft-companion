@@ -13,6 +13,7 @@ import { btn } from './lib/ui'
 // Telas pesadas só são carregadas quando abrem: o app inicia mais rápido e gasta menos memória.
 const PoolEditor = lazy(() => import('./components/PoolEditor').then((m) => ({ default: m.PoolEditor })))
 const SettingsDialog = lazy(() => import('./components/SettingsDialog').then((m) => ({ default: m.SettingsDialog })))
+const MetaScreen = lazy(() => import('./components/MetaScreen').then((m) => ({ default: m.MetaScreen })))
 const PostGameScreen = lazy(() => import('./components/PostGame').then((m) => ({ default: m.PostGameScreen })))
 
 /** "15.20.1" e "15.20" são o mesmo patch: compara só os dois primeiros números. */
@@ -29,6 +30,7 @@ function Banners() {
   const catalog = useApp((s) => s.catalog)
   const updateMeta = useApp((s) => s.updateMeta)
   const [refreshing, setRefreshing] = useState(false)
+  const [fetchMsg, setFetchMsg] = useState<string | null>(null)
   const gamePatch = catalog ? patchOf(catalog.version) : null
   const metaPatch = metaInfo && !metaInfo.isSample ? patchOf(metaInfo.patch) : null
   const stale = gamePatch !== null && metaPatch !== null && gamePatch !== metaPatch
@@ -62,11 +64,28 @@ function Banners() {
         </div>
       )}
       {metaInfo?.isSample && (
-        <div className="flex items-center gap-3 border-b border-gold/30 bg-gold/10 px-5 py-2 text-sm text-gold">
-          <span>As sugestões usam dados de amostra, que não refletem o meta real.</span>
-          <button type="button" className="underline underline-offset-4 hover:text-snow" onClick={openSettings}>
-            Importar dados reais
+        <div className="flex flex-wrap items-center gap-3 border-b border-gold/30 bg-gold/10 px-5 py-2 text-sm text-gold">
+          <span>As sugestões usam dados de amostra (poucos campeões), que não refletem o meta real.</span>
+          <button
+            type="button"
+            className="underline underline-offset-4 hover:text-snow disabled:opacity-50"
+            disabled={refreshing}
+            onClick={() => {
+              setRefreshing(true)
+              setFetchMsg(null)
+              void updateMeta()
+                .then((r) => {
+                  if (!r.ok) setFetchMsg(r.reason === 'network' ? 'Ainda não há dados publicados (ou sem internet).' : (r.message ?? 'Não foi possível baixar.'))
+                })
+                .finally(() => setRefreshing(false))
+            }}
+          >
+            {refreshing ? 'Baixando…' : 'Baixar dados reais'}
           </button>
+          <button type="button" className="underline underline-offset-4 hover:text-snow" onClick={openSettings}>
+            Importar arquivo
+          </button>
+          {fetchMsg && <span role="status" className="text-snow">{fetchMsg}</span>}
         </div>
       )}
     </>
@@ -136,7 +155,7 @@ export default function App() {
         <UpdateBanner />
         <Banners />
         <main className="min-h-0 flex-1 p-5">
-          <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : draft ? <DraftScreen /> : <IdleScreen />}</Suspense>
+          <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : view === 'meta' ? <MetaScreen /> : draft ? <DraftScreen /> : <IdleScreen />}</Suspense>
         </main>
         <Suspense fallback={null}>
           {poolOpen && <PoolEditor />}

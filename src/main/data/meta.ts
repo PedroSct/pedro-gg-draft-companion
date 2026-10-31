@@ -134,6 +134,25 @@ export function validateDataset(raw: unknown): MetaDataset {
 const UPDATE_TIMEOUT_MS = 20_000
 
 /** kind: 'network' = sem internet/servidor fora; 'invalid' = o arquivo baixado não serve. */
+/** Segue no máximo 3 redirecionamentos e recusa qualquer um que saia do https, antes de baixar o conteúdo. */
+async function fetchHttps(fetchFn: typeof fetch, url: string, headers: Record<string, string>): Promise<Response> {
+  let current = url
+  for (let hop = 0; hop <= 3; hop++) {
+    const res = await fetchFn(current, { headers, redirect: 'manual', signal: AbortSignal.timeout(UPDATE_TIMEOUT_MS) })
+    if (res.status < 300 || res.status >= 400 || res.status === 304) return res
+    const loc = res.headers.get('location')
+    let next: URL
+    try {
+      next = new URL(loc ?? '', current)
+    } catch {
+      throw new MetaUpdateError('invalid', 'O servidor mandou um redirecionamento inválido')
+    }
+    if (next.protocol !== 'https:') throw new MetaUpdateError('invalid', 'O servidor redirecionou para um endereço sem https')
+    current = next.href
+  }
+  throw new MetaUpdateError('invalid', 'Redirecionamentos demais')
+}
+
 export class MetaUpdateError extends Error {
   constructor(
     readonly kind: 'network' | 'invalid',
@@ -223,8 +242,9 @@ export class MetaStore {
 
     let res: Response
     try {
-      res = await fetchFn(parsed.href, { headers, signal: AbortSignal.timeout(UPDATE_TIMEOUT_MS) })
-    } catch {
+      res = await fetchHttps(fetchFn, parsed.href, headers)
+    } catch (err) {
+      if (err instanceof MetaUpdateError) throw err
       throw new MetaUpdateError('network', 'Não foi possível acessar o servidor')
     }
     if (res.status === 304 && this.dataset) return { changed: false, info: this.info() as MetaInfo }

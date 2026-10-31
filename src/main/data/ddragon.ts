@@ -3,7 +3,7 @@
 // depois da primeira execução o app funciona offline com a última versão baixada.
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import type { Catalog, ChampionInfo, ItemInfo, SpellInfo } from '../../shared/dataTypes'
+import type { Catalog, ChampionInfo, ItemInfo, NamedIcon, SpellInfo } from '../../shared/dataTypes'
 import { readJson, writeJsonAtomic } from '../store/fsJson'
 
 const DEFAULT_BASE = 'https://ddragon.leagueoflegends.com'
@@ -162,7 +162,47 @@ export class DataDragon {
         goldTotal: gold
       }
     }
-    return { version, locale, champions, items }
+    const [runes, summoners] = await Promise.all([this.runesOf(version, locale), this.summonersOf(version, locale)])
+    return { version, locale, champions, items, ...(runes ? { runes } : {}), ...(summoners ? { summoners } : {}) }
+  }
+
+  /** Árvores e runas com nome e ícone. Parte opcional: se falhar, o catálogo segue sem runas. */
+  private async runesOf(version: string, locale: string): Promise<Record<string, NamedIcon> | undefined> {
+    try {
+      const raw = await this.dataFile(version, locale, 'runesReforged.json')
+      if (!Array.isArray(raw)) return undefined
+      const out: Record<string, NamedIcon> = {}
+      const add = (o: unknown): void => {
+        if (!isRecord(o) || typeof o.id !== 'number' || typeof o.name !== 'string' || typeof o.icon !== 'string') return
+        if (!/^[\w\-./]+$/.test(o.icon) || o.icon.includes('..')) return
+        out[String(o.id)] = { name: o.name, iconUrl: `${this.baseUrl}/cdn/img/${o.icon}` }
+      }
+      for (const style of raw) {
+        add(style)
+        if (!isRecord(style) || !Array.isArray(style.slots)) continue
+        for (const slot of style.slots) if (isRecord(slot) && Array.isArray(slot.runes)) slot.runes.forEach(add)
+      }
+      return Object.keys(out).length ? out : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  private async summonersOf(version: string, locale: string): Promise<Record<string, NamedIcon> | undefined> {
+    try {
+      const raw = await this.dataFile(version, locale, 'summoner.json')
+      if (!isRecord(raw) || !isRecord(raw.data)) return undefined
+      const out: Record<string, NamedIcon> = {}
+      for (const s of Object.values(raw.data)) {
+        if (!isRecord(s) || !isRecord(s.image) || typeof s.name !== 'string') continue
+        const id = Number(s.key)
+        if (!Number.isInteger(id)) continue
+        out[String(id)] = { name: s.name, iconUrl: `${this.baseUrl}/cdn/${version}/img/spell/${encodeURIComponent(String(s.image.full))}` }
+      }
+      return Object.keys(out).length ? out : undefined
+    } catch {
+      return undefined
+    }
   }
 
   /** Passiva + Q/W/E/R do campeão (descrições sem HTML). `key` = id do Data Dragon, ex.: "Ahri". */

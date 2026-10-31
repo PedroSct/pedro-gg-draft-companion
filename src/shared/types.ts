@@ -42,6 +42,17 @@ export interface LcuIdentity {
   tagLine: string
 }
 
+/** Nível e classificação da conta logada (leitura do cliente; qualquer campo pode faltar). */
+export interface AccountStats {
+  level: number | null
+  /** Ex.: 'GOLD'. null = sem classificação na Solo/Duo. */
+  tier: string | null
+  division: string | null
+  lp: number | null
+  wins: number | null
+  losses: number | null
+}
+
 export interface DraftState {
   phase: DraftPhase
   localPlayerCellId: number

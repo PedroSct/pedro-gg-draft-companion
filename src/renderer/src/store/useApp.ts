@@ -47,14 +47,14 @@ interface AppState {
   autoAcceptedAt: number | null
 
   /** tela principal: seleção de campeões ou análise das partidas */
-  view: 'draft' | 'postgame'
+  view: 'draft' | 'postgame' | 'meta'
   postList: PgSummary[]
   postSelectedId: number | null
   postDetail: PgDetail | null
   postBusy: boolean
   postMessage: { ok: boolean; text: string } | null
 
-  setView: (view: 'draft' | 'postgame') => void
+  setView: (view: 'draft' | 'postgame' | 'meta') => void
   loadPostGames: (selectLatest?: boolean) => Promise<void>
   selectPostGame: (gameId: number) => Promise<void>
   fetchLatestPostGame: () => Promise<void>

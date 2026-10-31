@@ -7,6 +7,7 @@ import App from '../src/renderer/src/App'
 import { useApp } from '../src/renderer/src/store/useApp'
 import { recommend } from '../src/main/data/recommender'
 import { validateDataset } from '../src/main/data/meta'
+import { championDetail, tierRows } from '../src/main/data/metaStats'
 import type { DraftPlayer, DraftState, LcuStatus } from '../src/shared/types'
 import type { AppSettings, Catalog, FriendProfile, UpdateState } from '../src/shared/dataTypes'
 import type { DecodeResult } from '../src/shared/poolShare'
@@ -187,6 +188,9 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
       opts.metaPatch
         ? { source: 'https://x.test/meta.json', patch: opts.metaPatch, generatedAt: '', isSample: false, champions: 7 }
         : { source: 'sample', patch: 'sample', generatedAt: '', isSample: true, champions: 7 },
+    getMetaTiers: async (role) => tierRows(dataset, role),
+    getAccountStats: async () => ({ level: 312, tier: 'GOLD', division: 'II', lp: 45, wins: 52, losses: 48 }),
+    getMetaDetail: async ({ championId, role }) => championDetail(dataset, championId, role),
     getBuild: async ({ championId, role }) => dataset.champions[String(championId)]?.roles[role]?.build ?? null,
     importMeta: async () => ({ ok: false, reason: 'canceled' }),
     updateMeta: async () => ({ ok: false, reason: 'no-url' })
@@ -251,7 +255,7 @@ describe('Companion App', () => {
     installApi()
     render(<App />)
     expect(await screen.findByText('Conectado. Entre em uma fila.')).toBeInTheDocument()
-    expect(screen.getByText(/dados de amostra, que não refletem o meta real/)).toBeInTheDocument()
+    expect(screen.getByText(/dados de amostra \(poucos campeões\), que não refletem o meta real/)).toBeInTheDocument()
   })
 
   it('sem perfis, convida a criar o primeiro', async () => {
@@ -379,6 +383,24 @@ describe('Companion App', () => {
     expect(await within(panel).findByText(/Runas: Runas aplicadas/)).toBeInTheDocument()
   })
 
+  it('a aba Meta mostra o ranking da rota e o detalhe do campeão', async () => {
+    const user = userEvent.setup()
+    installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Meta' }))
+
+    const list = await screen.findByRole('list', { name: 'Ranking de Meio' })
+    expect(within(list).getAllByRole('button').length).toBeGreaterThan(1)
+    const first = within(list).getAllByRole('button')[0]
+    await user.click(first)
+    const detail = await screen.findByRole('region', { name: /Detalhes de/ })
+    expect(within(detail).getByText('Vai melhor contra')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Suporte' }))
+    expect(await screen.findByText(/não têm campeões para esta rota/)).toBeInTheDocument()
+  })
+
   it('o fim do draft volta para a tela de espera', async () => {
     const fake = installApi()
     render(<App />)
@@ -414,7 +436,7 @@ describe('Companion App', () => {
     await user.click(await within(dialog).findByRole('button', { name: 'Zed' }))
     expect(save).toBeEnabled()
 
-    const poolList = within(dialog).getByRole('list', { name: 'Pool de Meio' })
+    const poolList = within(dialog).getByLabelText('Pool de Meio')
     const zedRow = within(poolList).getByText('Zed').closest('li') as HTMLElement
     await user.click(within(zedRow).getByRole('button', { name: '5 de 5' }))
 
@@ -474,6 +496,7 @@ describe('Pools: filtros, importação e compartilhamento', () => {
   it('filtra por classe e por função, e "Limpar filtros" desfaz', async () => {
     const { user, dialog } = await openPool()
     await user.click(within(dialog).getByRole('button', { name: 'Todos' }))
+    await user.click(within(dialog).getByRole('button', { name: /^Filtros/ }))
 
     await user.click(within(within(dialog).getByRole('group', { name: 'Filtrar por classe' })).getByRole('button', { name: 'Tanque' }))
     expect(grid(dialog).sort()).toEqual(['Garen', 'Leona'])

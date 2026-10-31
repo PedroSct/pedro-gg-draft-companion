@@ -47,6 +47,8 @@ const PRIOR_GAMES = 100
 /** Inimigo só conta como oponente de rota se jogar nela em pelo menos 20% das partidas. */
 const MIN_LANE_SHARE = 0.2
 const HIGH_COVERAGE = 0.6
+/** Inimigo confirmado com mais desta fatia das partidas na rota = oponente de rota (a LCU não informa a rota deles). */
+const LANE_OPPONENT_SHARE = 0.7
 /** Counter = o oponente vence o seu campeão com winrate (suavizado) igual ou acima de 53%. */
 const COUNTER_WR = 0.47
 const HIGH_RISK_WR = 0.45
@@ -138,6 +140,9 @@ function riskOf(
   const none: PickRisk = { level: 'none', counters: [] }
   // Já sabemos quem é o oponente de rota (rota informada e pick confirmado)? Aí não há o que temer em aberto.
   if (draft.enemies.some((e) => e.role === role && e.status === 'locked' && e.championId > 0)) return none
+  // A LCU não revela a rota do time inimigo. Se um inimigo já confirmado joga quase sempre nesta rota
+  // (mais de 70% das partidas), ele é o oponente de rota na prática e o alerta de "counter ainda disponível" é falso.
+  if (draft.enemies.some((e) => e.status === 'locked' && e.championId > 0 && (roleShare(dataset, e.championId, role) ?? 0) > LANE_OPPONENT_SHARE)) return none
   const openSlots = draft.enemies.some((e) => e.status !== 'locked') || draft.enemies.length < 5
   if (!openSlots) return none
 

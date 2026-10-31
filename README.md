@@ -51,6 +51,12 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   Só acontece ao clicar e só no que estiver marcado. Precisa de runas/feitiços no `meta.json` (o gerador novo coleta);
   sem eles o botão explica o que falta. Caminhos escritos: `/lol-perks/v1/pages`, `/lol-perks/v1/currentpage`,
   `/lol-champ-select/v1/session/my-selection` e `/lol-item-sets/v1/item-sets/{id}/sets`.
+- **Aba Meta**: ranking de campeões por rota (tier), melhores e piores confrontos, sinergias, runas, ordem de habilidades
+  e itens, tudo a partir do `meta.json`.
+- **Pools**: filtros recolhidos atrás de "Filtros", pool agrupada por conforto (Main, Muito bom...), anotações sob demanda
+  e, na conta vinculada, nível e elo Solo/Duo lidos do cliente.
+- **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
+  da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
   menos movimento opcional e telas pesadas carregadas só quando abertas.
 - **Configurações** em seções (Geral, Partida, Dados, Aplicativo), com o relatório de diagnóstico para copiar.
@@ -77,10 +83,10 @@ mostra "O Windows protegeu seu PC": clique em *Mais informações* e *Executar a
 
 O app procura versões novas nos *Releases* do GitHub do projeto (ao abrir e a cada 4 horas). Para lançar uma:
 
-1. Mude `"version"` no `package.json` (ex.: `0.4.0`) e faça commit/push.
-2. Crie a tag com o mesmo número e envie: `git tag v0.4.0` e `git push origin v0.4.0`.
+1. Mude `"version"` no `package.json` (ex.: `0.5.0`) e faça commit/push.
+2. Crie a tag com o mesmo número e envie: `git tag v0.5.0` e `git push origin v0.5.0`.
 3. O GitHub Actions gera o instalador e cria o Release (`.exe`, `latest.yml` e `.blockmap`).
-4. Quem já tem o app instalado vê o aviso "A versão 0.4.0 está disponível" e decide quando atualizar.
+4. Quem já tem o app instalado vê o aviso "A versão 0.5.0 está disponível" e decide quando atualizar.
 
 Detalhes: o repositório de atualizações entra no instalador sozinho quando ele é gerado pelo Actions
 (`GITHUB_REPOSITORY`). Num `pnpm build:win` local, preencha `DEFAULT_UPDATE_REPO` em `src/shared/config.ts`
@@ -113,10 +119,22 @@ rode o mesmo comando de novo: ela retoma de onde parou, sem contar partidas em d
 lista todas as opções. O resultado inclui confrontos, **sinergias entre aliados**, builds, ordem de habilidades, **runas e feitiços** mais usados nas vitórias.
 Rode o gerador de novo para o botão de importar ter runas e feitiços (os dados antigos continuam funcionando, só sem essa parte).
 
-O resultado é o `meta.json`. Para chegar aos amigos:
-1. Suba o `meta.json` para um repositório público (ex.: link "raw" do GitHub).
-2. Coloque o endereço em `src/shared/config.ts` (`DEFAULT_META_URL`) **antes** de gerar o instalador. Quem já instalou
-   pode colar o endereço em Configurações. O app baixa a versão nova sozinho ao abrir, se a opção estiver ligada.
+### Automático pelo GitHub (recomendado)
+
+O repositório tem o workflow **Atualizar dados de meta** (`.github/workflows/update-meta.yml`). Ele roda o gerador nos
+servidores do GitHub, valida o resultado (`pnpm meta:check --strict`) e publica o `meta.json` na branch `data`; o app já
+vem apontando para ela (`DEFAULT_META_URL` em `src/shared/config.ts`). Configuração, uma vez só:
+
+1. No GitHub: **Settings > Secrets and variables > Actions > New repository secret**, nome `RIOT_API_KEY`, valor a chave
+   `RGAPI-...` de developer.riotgames.com (chave de desenvolvimento vale 24 h; para ficar permanente, peça uma chave
+   pessoal no portal da Riot).
+2. **Actions > Atualizar dados de meta > Run workflow** (plataforma `br1`, ~3000 partidas leva de 2 a 3 horas; se a chave
+   vencer no meio, rode de novo: o progresso fica em cache).
+3. Depois disso roda sozinho toda semana. Se a validação falhar (poucos campeões/partidas), nada é publicado.
+
+Para chegar aos amigos sem o workflow: suba o `meta.json` para um repositório público, coloque o endereço em
+`DEFAULT_META_URL` **antes** de gerar o instalador (quem já instalou cola em Configurações). O app baixa a versão nova ao
+abrir, se a opção estiver ligada.
 
 Também dá para importar um `meta.json` manualmente em Configurações > Importar dados de meta.
 

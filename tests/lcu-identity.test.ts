@@ -46,7 +46,8 @@ beforeAll(async () => {
         res.writeHead(code, { 'content-type': 'application/json' })
         res.end(JSON.stringify(body))
       }
-      if (req.url === '/lol-summoner/v1/current-summoner') return send(200, { puuid: 'puuid-pedro-0001', gameName: 'Pedro', tagLine: 'BR1', summonerId: 7 })
+      if (req.url === '/lol-summoner/v1/current-summoner') return send(200, { puuid: 'puuid-pedro-0001', gameName: 'Pedro', tagLine: 'BR1', summonerId: 7, summonerLevel: 312 })
+      if (req.url === '/lol-ranked/v1/current-ranked-stats') return send(200, { queueMap: { RANKED_SOLO_5x5: { tier: 'GOLD', division: 'II', leaguePoints: 45, wins: 52, losses: 48 }, RANKED_FLEX_SR: { tier: '', division: 'NA' } } })
       if (req.url === '/lol-summoner/v1/summoners-by-puuid-cached/puuid-pedro-0001') return send(200, { gameName: 'Pedro', tagLine: 'BR1' })
       if (req.url === '/lol-summoner/v1/summoners-by-puuid-cached/puuid-caio-00003') return send(200, { gameName: 'Caio', tagLine: 'LOL' })
       if (req.url === '/lol-champ-select/v1/session') return send(200, session)
@@ -85,6 +86,18 @@ describe('LcuConnector: conta e nomes', () => {
       expect(requests.some((r) => r.url.endsWith('puuid-aline-0002'))).toBe(false)
       expect(requests.every((r) => r.method === 'GET')).toBe(true)
       expect(drafts.length).toBeGreaterThanOrEqual(1)
+    } finally {
+      lcu.stop()
+    }
+  })
+
+  it('lê nível e elo Solo/Duo da conta', async () => {
+    const lcu = new LcuConnector(() => lockfile)
+    lcu.start()
+    try {
+      await until(() => lcu.getStatus() === 'connected')
+      await until(() => lcu.getIdentity() !== null)
+      expect(await lcu.getAccountStats()).toEqual({ level: 312, tier: 'GOLD', division: 'II', lp: 45, wins: 52, losses: 48 })
     } finally {
       lcu.stop()
     }

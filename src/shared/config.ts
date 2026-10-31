@@ -3,12 +3,12 @@
 
 /**
  * Endereço (https) do meta.json que os apps instalados baixam sozinhos.
- * Ex.: 'https://raw.githubusercontent.com/SEU-USUARIO/pedro-gg-meta/main/meta.json'
+ * O workflow "Atualizar dados de meta" publica o arquivo na branch `data` deste repositório.
  *
  * Vazio = o app só usa o dataset de amostra até o usuário importar um arquivo
  * ou informar um endereço em Configurações. O usuário pode trocar o endereço lá.
  */
-export const DEFAULT_META_URL = ''
+export const DEFAULT_META_URL = 'https://raw.githubusercontent.com/PedroSct/pedro-gg-draft-companion/data/meta.json'
 
 /**
  * Repositório do GitHub que publica as versões novas do app, no formato "dono/repositório"
@@ -17,4 +17,4 @@ export const DEFAULT_META_URL = ''
  * Não precisa preencher se o instalador for gerado pelo GitHub Actions deste projeto: o workflow
  * já informa o repositório sozinho (variável GITHUB_REPOSITORY) na hora de gerar o instalador.
  */
-export const DEFAULT_UPDATE_REPO = ''
+export const DEFAULT_UPDATE_REPO = 'PedroSct/pedro-gg-draft-companion'

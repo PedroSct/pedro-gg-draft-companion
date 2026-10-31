@@ -4,7 +4,7 @@ import https from 'node:https'
 import WebSocket from 'ws'
 import { findLockfilePath, readLockfile, type LockfileData } from './lockfile'
 import { normalizeSession } from './champSelect'
-import type { DraftState, LcuIdentity, LcuStatus, ReadyCheck } from '../../shared/types'
+import type { AccountStats, DraftState, LcuIdentity, LcuStatus, ReadyCheck } from '../../shared/types'
 
 const HOST = '127.0.0.1'
 const SESSION_PATH = '/lol-champ-select/v1/session'
@@ -117,6 +117,40 @@ export class LcuConnector extends EventEmitter {
     } catch {
       return this.identity
     }
+  }
+
+  /** Nível (current-summoner) e elo Solo/Duo (current-ranked-stats). Tudo opcional: endpoints não oficiais. */
+  async getAccountStats(): Promise<AccountStats | null> {
+    if (!this.identity) return null
+    const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+    const out: AccountStats = { level: null, tier: null, division: null, lp: null, wins: null, losses: null }
+    try {
+      const me = await this.get(ME_PATH)
+      if (me.status === 200 && me.data && typeof me.data === 'object') out.level = num((me.data as Record<string, unknown>).summonerLevel)
+    } catch {
+      /* segue sem nível */
+    }
+    try {
+      const r = await this.get('/lol-ranked/v1/current-ranked-stats')
+      if (r.status === 200 && r.data && typeof r.data === 'object') {
+        const d = r.data as Record<string, unknown>
+        const queues = d.queueMap && typeof d.queueMap === 'object' ? (d.queueMap as Record<string, unknown>) : {}
+        const solo = (queues.RANKED_SOLO_5x5 ?? (Array.isArray(d.queues) ? d.queues.find((q) => (q as Record<string, unknown>)?.queueType === 'RANKED_SOLO_5x5') : null)) as Record<string, unknown> | null | undefined
+        if (solo && typeof solo === 'object') {
+          const tier = typeof solo.tier === 'string' ? solo.tier.toUpperCase() : ''
+          if (tier && tier !== 'NA' && tier !== 'NONE') {
+            out.tier = tier
+            out.division = typeof solo.division === 'string' && solo.division !== 'NA' ? solo.division : null
+            out.lp = num(solo.leaguePoints)
+          }
+          out.wins = num(solo.wins)
+          out.losses = num(solo.losses)
+        }
+      }
+    } catch {
+      /* segue sem elo */
+    }
+    return out
   }
 
   /** Leitura genérica (GET). O app só lê do cliente, com a única exceção de `acceptReadyCheck`. */

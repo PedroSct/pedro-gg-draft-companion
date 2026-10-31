@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ROLES, type FriendProfile, type Pool, type PoolEntry } from '../../../shared/dataTypes'
-import type { Role } from '../../../shared/types'
+import type { AccountStats, Role } from '../../../shared/types'
 import { selectActiveProfile, useApp } from '../store/useApp'
 import { mergePools, type ImportMode, type SharedProfile } from '../../../shared/poolShare'
 import { ROLE_LABEL, ROLE_SHORT } from '../lib/format'
@@ -44,28 +44,63 @@ function PoolRow({
   onRemove: () => void
 }) {
   const name = useChampionName(entry.championId)
+  const [showNotes, setShowNotes] = useState(false)
+  const notesOpen = showNotes || !!entry.notes
   return (
-    <li className="flex items-center gap-3 rounded-xl border border-line bg-panel/70 px-2.5 py-2 transition-colors hover:border-mist/30">
-      <ChampionIcon id={entry.championId} size={44} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-3">
-          <span className="truncate font-display text-lg font-semibold">{name}</span>
-          <Stars value={entry.comfort} onChange={onComfort} label={`Conforto com ${name}`} />
-          <span className={`text-xs ${entry.comfort >= 4 ? 'text-gold' : 'text-dim'}`}>{COMFORT_LABEL[entry.comfort]}</span>
-        </div>
+    <li className="rise rounded-xl border border-line bg-panel/70 px-2.5 py-2 transition-colors hover:border-mist/30">
+      <div className="flex items-center gap-3">
+        <ChampionIcon id={entry.championId} size={40} />
+        <span className="min-w-0 flex-1 truncate font-display text-lg font-semibold">{name}</span>
+        <Stars value={entry.comfort} onChange={onComfort} label={`Conforto com ${name}`} />
+        {!notesOpen && (
+          <button type="button" className="text-xs text-dim hover:text-ink" onClick={() => setShowNotes(true)} aria-label={`Adicionar anotação sobre ${name}`}>
+            + nota
+          </button>
+        )}
+        <button type="button" className="text-xs text-dim hover:text-enemy" onClick={onRemove} aria-label={`Remover ${name} da Pool`}>
+          Remover
+        </button>
+      </div>
+      {notesOpen && (
         <input
-          className={`${input} mt-1 py-1 text-xs`}
+          className={`${input} mt-1.5 py-1 text-xs`}
           placeholder="Anotação (ex.: usar Flash + Ignite)"
           aria-label={`Anotação sobre ${name}`}
           value={entry.notes ?? ''}
           maxLength={500}
+          autoFocus={showNotes && !entry.notes}
           onChange={(e) => onNotes(e.target.value)}
         />
-      </div>
-      <button type="button" className={btn} onClick={onRemove} aria-label={`Remover ${name} da Pool`}>
-        Remover
-      </button>
+      )}
     </li>
+  )
+}
+
+const TIER_PT: Record<string, string> = {
+  IRON: 'Ferro', BRONZE: 'Bronze', SILVER: 'Prata', GOLD: 'Ouro', PLATINUM: 'Platina', EMERALD: 'Esmeralda',
+  DIAMOND: 'Diamante', MASTER: 'Mestre', GRANDMASTER: 'Grão-Mestre', CHALLENGER: 'Desafiante'
+}
+
+function AccountStatsLine() {
+  const [stats, setStats] = useState<AccountStats | null>(null)
+  useEffect(() => {
+    let off = false
+    void window.api.getAccountStats().then((s) => !off && setStats(s)).catch(() => undefined)
+    return () => {
+      off = true
+    }
+  }, [])
+  if (!stats) return null
+  const games = (stats.wins ?? 0) + (stats.losses ?? 0)
+  const wr = games > 0 && stats.wins !== null ? Math.round((stats.wins / games) * 100) : null
+  return (
+    <span className="flex flex-wrap items-center gap-2 text-xs text-mist" aria-label="Nível e elo da conta">
+      {stats.level !== null && <span className="rounded-full bg-panel px-2 py-0.5">Nível {stats.level}</span>}
+      <span className="rounded-full bg-panel px-2 py-0.5">
+        {stats.tier ? `${TIER_PT[stats.tier] ?? stats.tier}${stats.division ? ' ' + stats.division : ''}${stats.lp !== null ? ` · ${stats.lp} PdL` : ''}` : 'Sem classificação Solo/Duo'}
+      </span>
+      {wr !== null && <span className="rounded-full bg-panel px-2 py-0.5">{games} partidas · {wr}% vitórias</span>}
+    </span>
   )
 }
 
@@ -91,6 +126,7 @@ function AccountBar({
       <span className="text-mist">
         Conta no cliente: <span className="font-medium text-snow">{full}</span>
       </span>
+      <AccountStatsLine />
       {isThis ? (
         <span className="rounded-full bg-ally/15 px-2 py-0.5 text-xs font-medium text-ally">Este perfil é você</span>
       ) : formId ? (
@@ -131,13 +167,15 @@ export function PoolEditor() {
 
   const dirty = JSON.stringify(form) !== baseline.current
 
+  // O ouvinte do Esc é registrado uma vez; ele chama sempre a versão mais nova de requestClose.
+  const closeRef = useRef<() => void>(() => undefined)
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') requestClose()
+      if (e.key === 'Escape') closeRef.current()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  })
+  }, [])
 
   const load = (next: FormState): void => {
     setNotice(null)
@@ -152,6 +190,7 @@ export function PoolEditor() {
   function requestClose(): void {
     if (discardOk()) close()
   }
+  closeRef.current = requestClose
 
   function select(p: FriendProfile | null): void {
     if (!discardOk()) return
@@ -403,17 +442,30 @@ export function PoolEditor() {
                   Nenhum campeão ainda. Clique nos ícones ao lado para adicionar.
                 </p>
               ) : (
-                <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1" aria-label={`Pool de ${ROLE_LABEL[role]}`}>
-                  {form.pool[role].map((e) => (
-                    <PoolRow
-                      key={e.championId}
-                      entry={e}
-                      onComfort={(n) => patchRole(role, (l) => l.map((x) => (x.championId === e.championId ? { ...x, comfort: n } : x)))}
-                      onNotes={(t) => patchRole(role, (l) => l.map((x) => (x.championId === e.championId ? { ...x, notes: t } : x)))}
-                      onRemove={() => patchRole(role, (l) => l.filter((x) => x.championId !== e.championId))}
-                    />
-                  ))}
-                </ul>
+                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1" aria-label={`Pool de ${ROLE_LABEL[role]}`}>
+                  {[5, 4, 3, 2, 1].map((lvl) => {
+                    const group = form.pool[role].filter((e) => e.comfort === lvl)
+                    if (group.length === 0) return null
+                    return (
+                      <section key={lvl}>
+                        <h4 className={`mb-1 text-xs uppercase tracking-wider ${lvl >= 4 ? 'text-gold' : 'text-dim'}`}>
+                          {COMFORT_LABEL[lvl]} · {group.length}
+                        </h4>
+                        <ul className="flex flex-col gap-1.5">
+                          {group.map((e) => (
+                            <PoolRow
+                              key={e.championId}
+                              entry={e}
+                              onComfort={(n) => patchRole(role, (l) => l.map((x) => (x.championId === e.championId ? { ...x, comfort: n } : x)))}
+                              onNotes={(t) => patchRole(role, (l) => l.map((x) => (x.championId === e.championId ? { ...x, notes: t } : x)))}
+                              onRemove={() => patchRole(role, (l) => l.filter((x) => x.championId !== e.championId))}
+                            />
+                          ))}
+                        </ul>
+                      </section>
+                    )
+                  })}
+                </div>
               )}
             </div>
           </div>
