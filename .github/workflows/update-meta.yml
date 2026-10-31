@@ -65,7 +65,7 @@ jobs:
         continue-on-error: true
         env:
           RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
-        run: pnpm meta:build -- --platform "${{ inputs.platform || 'br1' }}" --max-matches "${{ inputs.max_matches || '3000' }}" --out meta.json --work meta-work
+        run: pnpm meta:build --platform "${{ inputs.platform || 'br1' }}" --max-matches "${{ inputs.max_matches || '3000' }}" --out meta.json --work meta-work
 
       - name: Guardar o progresso
         if: always()
