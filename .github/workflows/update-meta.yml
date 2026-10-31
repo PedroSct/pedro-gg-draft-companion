@@ -77,7 +77,7 @@ jobs:
       # Se a coleta parou no meio (chave vencida, limite), monta o arquivo com o que já foi coletado.
       - name: Montar o meta.json com o que foi coletado
         if: steps.collect.outcome == 'failure'
-        run: pnpm meta:build -- --platform "${{ inputs.platform || 'br1' }}" --finalize-only --out meta.json --work meta-work
+        run: pnpm meta:build --platform "${{ inputs.platform || 'br1' }}" --finalize-only --out meta.json --work meta-work
 
       - name: Conferir a qualidade
         run: pnpm meta:check -- meta.json --strict
