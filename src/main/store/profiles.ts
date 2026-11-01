@@ -23,6 +23,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   lastActiveProfileId: null,
   metaUrl: null,
   metaAutoUpdate: true,
+  metaRegion: 'global',
   pickMode: 'balanced',
   autoAccept: false,
   autoAcceptDelay: 1,
@@ -153,6 +154,11 @@ export function sanitizeSettingsPatch(raw: unknown): Partial<AppSettings> {
   if ('metaAutoUpdate' in raw) {
     if (typeof raw.metaAutoUpdate === 'boolean') out.metaAutoUpdate = raw.metaAutoUpdate
     else throw new Error('Configuração inválida: metaAutoUpdate')
+  }
+  if ('metaRegion' in raw) {
+    const v = raw.metaRegion
+    if (v === 'global' || (typeof v === 'string' && /^[a-z0-9]{2,8}$/.test(v))) out.metaRegion = v
+    else throw new Error('Configuração inválida: metaRegion')
   }
   if ('pickMode' in raw) {
     if (raw.pickMode === 'balanced' || raw.pickMode === 'comfort' || raw.pickMode === 'meta') out.pickMode = raw.pickMode

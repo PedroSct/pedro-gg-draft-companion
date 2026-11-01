@@ -276,9 +276,9 @@ export function PoolEditor() {
       )}
       <div role="dialog" aria-modal="true" aria-label="Perfis e Pools" className="mx-auto flex h-full max-w-[1240px] overflow-hidden rounded-2xl border border-line bg-deck shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]">
         {/* Perfis */}
-        <aside className="flex w-72 shrink-0 flex-col border-r border-line bg-night/40">
+        <aside className="flex w-72 shrink-0 flex-col max-[1000px]:w-56 max-[860px]:w-44 border-r border-line bg-night/40">
           <h2 className="px-4 pb-1 pt-4 font-display text-2xl font-semibold">Perfis</h2>
-          <p className="px-4 pb-3 text-xs text-mist">Um perfil por jogador. Com o Riot ID salvo, o app reconhece o amigo sozinho na seleção.</p>
+          <p className="px-4 pb-3 text-xs text-mist max-[860px]:hidden">Um perfil por jogador. Com o Riot ID salvo, o app reconhece o amigo sozinho na seleção.</p>
           <ul className="flex flex-1 flex-col gap-1.5 overflow-y-auto px-3 pb-3" aria-label="Perfis cadastrados">
             {profiles.map((p) => {
               const mine = identity?.profileId === p.id
@@ -349,7 +349,7 @@ export function PoolEditor() {
               onClaim={() => (form.id ? claimProfile(form.id) : Promise.resolve())}
             />
           )}
-          <div className="grid shrink-0 grid-cols-[1fr_1fr_auto] items-end gap-x-3 gap-y-2 border-b border-line px-4 py-3">
+          <div className="grid shrink-0 grid-cols-[1fr_1fr_auto] items-end gap-x-3 gap-y-2 border-b border-line px-4 py-3 max-[860px]:grid-cols-2 max-[860px]:px-3">
             <div>
               <label htmlFor="nick" className="mb-1 block text-sm text-mist">
                 Apelido
@@ -362,7 +362,7 @@ export function PoolEditor() {
               </label>
               <input id="riot" className={input} value={form.riotId} maxLength={40} placeholder="Nome#BR1" onChange={(e) => setForm({ ...form, riotId: e.target.value })} />
             </div>
-            <button type="button" className={btn} onClick={requestClose}>
+            <button type="button" className={`${btn} max-[860px]:col-span-2`} onClick={requestClose}>
               Fechar
             </button>
             <div className="col-span-2">
@@ -408,7 +408,7 @@ export function PoolEditor() {
             ))}
           </div>
 
-          <div className="grid min-h-0 flex-1 grid-cols-[1.35fr_1fr] gap-5 p-4">
+          <div className="grid min-h-0 flex-1 grid-cols-[1.35fr_1fr] gap-5 p-4 max-[1000px]:grid-cols-1 max-[1000px]:content-start max-[1000px]:overflow-y-auto max-[1000px]:[&>*]:min-h-[360px] max-[860px]:p-3">
             {/* Seletor de campeões */}
             {catalogError && !catalog ? (
               <div className="border border-enemy/40 bg-enemy/10 p-3 text-sm">

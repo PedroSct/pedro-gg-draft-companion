@@ -32,6 +32,7 @@ export const IPC = {
   META_INFO: 'meta:info',
   META_GET_BUILD: 'meta:getBuild',
   META_BUILD_SITUATION: 'meta:buildSituation',
+  DRAFT_BANS: 'draft:bans',
   META_TIERS: 'meta:tiers',
   META_DETAIL: 'meta:detail',
   META_IMPORT: 'meta:import',

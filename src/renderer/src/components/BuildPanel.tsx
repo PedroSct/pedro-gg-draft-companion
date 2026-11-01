@@ -1,121 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { Role } from '../../../shared/types'
 import type { LoadoutParts, PartResult } from '../../../shared/loadout'
-import type { BuildSituation, ChampionBuild, SkillKey, SpellInfo } from '../../../shared/dataTypes'
+import type { BuildSituation, ChampionBuild, SpellInfo } from '../../../shared/dataTypes'
 import { useApp } from '../store/useApp'
 import { useFocus } from '../lib/useFocus'
 import { ROLE_LABEL, ROLE_SHORT, splashUrl } from '../lib/format'
 import { btnGold } from '../lib/ui'
 import { ROLES } from '../../../shared/dataTypes'
-import { ChampionIcon, ItemIcon, SafeImg, useChampionName } from './Icons'
-import { RunesView, SpellsView } from './LoadoutView'
-
-const SKILLS: SkillKey[] = ['Q', 'W', 'E', 'R']
-
-function SpellIcon({ spell, slot }: { spell: SpellInfo | undefined; slot: SkillKey }) {
-  const letter = (
-    <div className="chamfer-sm num grid h-10 w-10 shrink-0 place-items-center bg-raised text-lg text-mist" aria-hidden="true">
-      {slot}
-    </div>
-  )
-  if (!spell) return letter
-  return (
-    <div className="relative shrink-0" title={`${slot}: ${spell.name}`}>
-      <SafeImg
-        src={spell.iconUrl}
-        alt={spell.name}
-        className="chamfer-sm h-10 w-10 bg-raised object-cover"
-        fallback={letter}
-      />
-      <span className="num absolute -bottom-1 -right-1 bg-night px-1 text-xs leading-4 text-gold">{slot}</span>
-    </div>
-  )
-}
-
-export function SkillOrder({ build, spells }: { build: ChampionBuild; spells: SpellInfo[] }) {
-  const { priority, levels } = build.skillOrder
-  const bySlot = (k: SkillKey): SpellInfo | undefined => spells.find((s) => s.slot === k)
-
-  return (
-    <div>
-      <h3 className="mb-2 text-sm text-mist">Ordem das habilidades</h3>
-      <div className="flex items-center gap-2" role="img" aria-label={priority.join(' > ')}>
-        {priority.map((k, i) => (
-          <div key={k} className="flex items-center gap-2" aria-hidden="true">
-            {i > 0 && <span className="text-dim">&gt;</span>}
-            <SpellIcon spell={bySlot(k)} slot={k} />
-          </div>
-        ))}
-      </div>
-
-      {levels && levels.length > 0 && (
-        <div className="mt-3 overflow-x-auto">
-          <table className="border-separate border-spacing-0.5 text-center" aria-label="Habilidade a evoluir em cada nível">
-            <thead>
-              <tr>
-                <th className="w-5" />
-                {levels.map((_, i) => (
-                  <th key={i} scope="col" className="num h-4 w-[18px] text-[11px] font-normal text-dim">
-                    {i + 1}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {SKILLS.map((k) => (
-                <tr key={k}>
-                  <th scope="row" className="num pr-1 text-left text-sm font-semibold text-mist">
-                    {k}
-                  </th>
-                  {levels.map((l, i) => (
-                    <td
-                      key={i}
-                      className={`num h-[18px] w-[18px] text-[11px] ${
-                        l === k ? (k === 'R' ? 'bg-gold text-night' : 'bg-ally/80 text-night') : 'bg-raised/60'
-                      }`}
-                    >
-                      {l === k ? i + 1 : ''}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export function ItemRow({ title, ids, chain = false }: { title: string; ids: number[]; chain?: boolean }) {
-  if (!ids.length) return null
-  return (
-    <div>
-      <h4 className="mb-1.5 text-xs text-mist">{title}</h4>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {ids.map((id, i) => (
-          <div key={`${id}-${i}`} className="flex items-center gap-1.5">
-            {chain && i > 0 && <span className="text-dim" aria-hidden="true">›</span>}
-            <ItemIcon id={id} size={42} />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-export function SituationalItem({ id, when }: { id: number; when: string }) {
-  const name = useApp((s) => s.catalog?.items[String(id)]?.name ?? `Item ${id}`)
-  return (
-    <li className="flex items-center gap-3">
-      <ItemIcon id={id} size={34} />
-      <span className="min-w-0 text-sm">
-        <span className="block truncate">{name}</span>
-        <span className="block truncate text-xs text-mist">{when}</span>
-      </span>
-    </li>
-  )
-}
+import { ChampionIcon, useChampionName } from './Icons'
+import { ItemRow, SituationalItem } from './BuildParts'
+import { BuildOptionsView } from './BuildOptionsView'
 
 const SPELL_NAME: Record<number, string> = {
   1: 'Limpar',
@@ -245,12 +139,11 @@ const FOCUS_TEXT: Record<NonNullable<BuildSituation['focus']>, string> = {
 const REASON_TEXT = { armor: 'armadura', 'magic-resist': 'resistência mágica', penetration: 'penetração' } as const
 
 /** "Para esta partida": o que muda na build por causa do time inimigo (só aparece com inimigos conhecidos). */
-function SituationCard({ situation, build }: { situation: BuildSituation; build: ChampionBuild }) {
+function SituationCard({ situation }: { situation: BuildSituation }) {
   const dmg = situation.enemyDamage
   if (!dmg || situation.enemiesKnown === 0) return null
   const ad = Math.round(dmg.physical * 100)
   const ap = 100 - ad
-  const variant = situation.variantIndex !== null ? build.variants?.[situation.variantIndex] : undefined
   return (
     <section aria-label="Para esta partida" className="rounded-xl border border-ally/25 bg-ally/5 p-3">
       <h3 className="font-display text-base font-semibold text-ally">Para esta partida</h3>
@@ -278,38 +171,12 @@ function SituationCard({ situation, build }: { situation: BuildSituation; build:
       {situation.focus && situation.picks.length === 0 && (
         <p className="mt-1 text-xs text-mist">Os dados deste campeão não trazem um item de {REASON_TEXT[situation.focus]} entre os mais comprados.</p>
       )}
-      {variant && (
+      {situation.variantCore && (
         <div className="mt-2">
-          <ItemRow title="Construção que encaixa melhor nesta partida" ids={variant.core} chain />
+          <ItemRow title="Construção que encaixa melhor nesta partida" ids={situation.variantCore} chain />
         </div>
       )}
     </section>
-  )
-}
-
-function VariantsView({ build, highlight }: { build: ChampionBuild; highlight: number | null }) {
-  const variants = build.variants
-  if (!variants || variants.length < 2) return null
-  return (
-    <div>
-      <h4 className="mb-1.5 text-xs text-mist">Outras construções frequentes nas vitórias</h4>
-      <ul className="flex flex-col gap-2">
-        {variants.map((v, i) => (
-          <li key={v.core.join('-')} className="flex flex-wrap items-center gap-2">
-            <span className="num w-10 text-sm text-mist">{Math.round(v.share * 100)}%</span>
-            <div className="flex items-center gap-1">
-              {v.core.map((id, k) => (
-                <div key={`${id}-${k}`} className="flex items-center gap-1">
-                  {k > 0 && <span className="text-dim" aria-hidden="true">›</span>}
-                  <ItemIcon id={id} size={32} />
-                </div>
-              ))}
-            </div>
-            {i === highlight && <span className="rounded-full bg-ally/15 px-2 py-0.5 text-xs text-ally">encaixa melhor agora</span>}
-          </li>
-        ))}
-      </ul>
-    </div>
   )
 }
 
@@ -428,32 +295,8 @@ export function BuildPanel() {
 
         {status === 'ready' && build && (
           <>
-            {(build.runes || build.spells) && (
-              <div className="flex flex-col gap-3">
-                <h3 className="text-sm text-mist">Runas e feitiços</h3>
-                {build.runes && <RunesView runes={build.runes} />}
-                {build.spells && <SpellsView spells={build.spells} />}
-              </div>
-            )}
-            {situation && <SituationCard situation={situation} build={build} />}
-            <SkillOrder build={build} spells={data.spells} />
-            <div className="flex flex-col gap-3">
-              <h3 className="text-sm text-mist">Itens</h3>
-              <ItemRow title="Inicial" ids={build.items.starting} />
-              <ItemRow title="Botas" ids={build.items.boots} />
-              <ItemRow title="Principais, na ordem de compra" ids={build.items.core} chain />
-              <VariantsView build={build} highlight={situation?.variantIndex ?? null} />
-              {build.items.situational.length > 0 && (
-                <div>
-                  <h4 className="mb-1.5 text-xs text-mist">Situacionais</h4>
-                  <ul className="flex flex-col gap-2">
-                    {build.items.situational.map((s) => (
-                      <SituationalItem key={s.itemId} id={s.itemId} when={s.when} />
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
+            {situation && <SituationCard situation={situation} />}
+            <BuildOptionsView build={build} spells={data.spells} highlightCore={situation?.variantCore} />
             {focus.role && <ImportPanel championId={focus.championId} role={focus.role} build={build} forLocal={focus.forLocal} />}
           </>
         )}

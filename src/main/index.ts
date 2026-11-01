@@ -14,8 +14,8 @@ async function createWindow(): Promise<void> {
   const win = new BrowserWindow({
     width: 1320,
     height: 820,
-    minWidth: 1120,
-    minHeight: 700,
+    minWidth: 760,
+    minHeight: 560,
     show: false,
     autoHideMenuBar: true,
     // Barra de título integrada ao cabeçalho do app (os botões de janela do sistema ficam por cima).

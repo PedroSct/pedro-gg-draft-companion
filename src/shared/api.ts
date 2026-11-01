@@ -3,6 +3,7 @@
 import type { AccountStats, DraftState, LcuIdentity, LcuStatus, Role } from './types'
 import type {
   AppSettings,
+  BanSuggestion,
   BuildSituation,
   Catalog,
   ChampionBuild,
@@ -100,6 +101,8 @@ export interface LolApi {
   getMetaInfo(): Promise<MetaInfo | null>
   /** Ranking de campeões da rota (tela Meta). */
   getMetaTiers(role: Role): Promise<MetaTierRow[]>
+  /** Sugestões de banimento para o draft atual ([] fora da fase de bans ou sem dados reais). */
+  getBanSuggestions(req: { profileId?: string }): Promise<BanSuggestion[]>
   getMetaDetail(req: { championId: number; role: Role }): Promise<MetaChampionDetail | null>
   getBuild(req: { championId: number; role: Role }): Promise<ChampionBuild | null>
   /** Ajustes da build para o time inimigo atual; null fora do draft. */

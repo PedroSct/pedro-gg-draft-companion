@@ -26,6 +26,18 @@ const TABS: { id: TabId; label: string; hint: string }[] = [
   { id: 'app', label: 'Aplicativo', hint: 'Versão e diagnóstico' }
 ]
 
+const DEFAULT_REGIONS = ['br1', 'euw1', 'kr']
+const REGION_NAMES: Record<string, string> = {
+  br1: 'Brasil (BR)',
+  euw1: 'Europa Oeste (EUW)',
+  eun1: 'Europa Nordeste (EUNE)',
+  kr: 'Coreia (KR)',
+  na1: 'América do Norte (NA)',
+  la1: 'LAN',
+  la2: 'LAS',
+  jp1: 'Japão (JP)'
+}
+
 function Row({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-6 border-b border-line/60 py-3 last:border-b-0">
@@ -87,6 +99,20 @@ export function SettingsDialog() {
   const account = useApp((s) => s.identity?.account)
   const pickMode = useApp((s) => s.settings?.pickMode ?? 'balanced')
   const setPickMode = useApp((s) => s.setPickMode)
+
+  const region = settings?.metaRegion ?? 'global'
+  const regionOptions = [...new Set([...DEFAULT_REGIONS, ...(metaInfo?.regions ?? []), ...(region !== 'global' ? [region] : [])])]
+
+  async function changeRegion(next: string): Promise<void> {
+    setMetaMessage(null)
+    try {
+      await saveSettings({ metaRegion: next })
+    } catch {
+      setMetaMessage({ ok: false, text: 'Região inválida.' })
+      return
+    }
+    await runUpdate()
+  }
 
   const effectiveUrl = (settings?.metaUrl ?? DEFAULT_META_URL) || null
 
@@ -311,6 +337,23 @@ export function SettingsDialog() {
                 ) : (
                   <p className="text-sm text-mist">Nenhum dado de meta carregado.</p>
                 )}
+
+                <Row title="Região dos dados" hint="Global junta todas as regiões coletadas (mais partidas, mais precisão). As outras usam só aquele servidor.">
+                  <select
+                    aria-label="Região dos dados"
+                    value={region}
+                    disabled={busy}
+                    onChange={(e) => void changeRegion(e.target.value)}
+                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                  >
+                    <option value="global">Global</option>
+                    {regionOptions.map((r) => (
+                      <option key={r} value={r}>
+                        {REGION_NAMES[r] ?? r.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </Row>
 
                 <label htmlFor="meta-url" className="mt-3 block text-sm text-mist">
                   Endereço do meta.json

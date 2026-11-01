@@ -5,8 +5,7 @@ import { useApp } from '../store/useApp'
 import { normalize, pct, ROLE_LABEL, signed, splashUrl } from '../lib/format'
 import { input } from '../lib/ui'
 import { ChampionIcon, useChampionName } from './Icons'
-import { ItemRow, SituationalItem, SkillOrder } from './BuildPanel'
-import { RunesView, SpellsView } from './LoadoutView'
+import { BuildOptionsView } from './BuildOptionsView'
 
 const TIER_STYLE: Record<Tier, string> = {
   S: 'bg-gold/20 text-gold border-gold/50',
@@ -28,7 +27,7 @@ function Row({ row, selected, onSelect }: { row: MetaTierRow; selected: boolean;
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
-        className={`grid w-full grid-cols-[28px_1fr_64px_64px_56px] items-center gap-3 rounded-xl border px-2.5 py-1.5 text-left transition-colors hover:bg-raised ${
+        className={`grid w-full grid-cols-[28px_minmax(0,1fr)_64px_64px_56px] items-center gap-3 rounded-xl border px-2.5 py-1.5 text-left transition-colors hover:bg-raised ${
           selected ? 'border-gold/60 bg-raised' : 'border-line/70 bg-panel/60'
         }`}
       >
@@ -38,7 +37,10 @@ function Row({ row, selected, onSelect }: { row: MetaTierRow; selected: boolean;
           <span className="truncate font-display text-lg font-semibold">{name}</span>
           {row.hasBuild && <span className="rounded-full bg-ally/10 px-1.5 text-[10px] text-ally">build</span>}
         </span>
-        <span className="num text-right text-base">{pct(row.winrate)}</span>
+        <span className="num text-right text-base" title={row.lowSample ? 'Poucos jogos: o número ainda oscila' : undefined}>
+          {pct(row.winrate)}
+          {row.lowSample && <span className="text-gold">*</span>}
+        </span>
         <span className="num text-right text-sm text-mist">{pct(row.presence)}</span>
         <span className="num text-right text-sm text-dim">{row.games.toLocaleString('pt-BR')}</span>
       </button>
@@ -66,9 +68,12 @@ function MatchupList({ title, rows, tone }: { title: string; rows: MetaMatchupRo
 function MatchupItem({ row, tone }: { row: MetaMatchupRow; tone: 'good' | 'bad' }) {
   const name = useChampionName(row.championId)
   return (
-    <li className="flex items-center gap-2 text-sm" title={`${row.games} partidas`}>
+    <li className="flex items-center gap-2 text-sm" title={`${row.games} partidas${row.anyLane ? ' (contra ele em qualquer rota)' : ''}`}>
       <ChampionIcon id={row.championId} size={26} />
-      <span className="min-w-0 flex-1 truncate">{name}</span>
+      <span className="min-w-0 flex-1 truncate">
+        {name}
+        {row.anyLane && <span className="ml-1 text-[10px] text-dim">(qualquer rota)</span>}
+      </span>
       <span className={`num ${tone === 'good' ? 'text-ally' : 'text-enemy'}`}>{pct(row.winrate)}</span>
     </li>
   )
@@ -152,39 +157,39 @@ function Detail({ championId, role }: { championId: number; role: Role }) {
                 )}
               </div>
             </div>
-            {!build && <p className="text-mist">Ainda não há build deste campeão nos dados (poucas vitórias com timeline).</p>}
-            {build && (
-              <>
-                {(build.runes || build.spells) && (
-                  <div className="flex flex-col gap-3">
-                    <h3 className="text-sm text-mist">Runas e feitiços</h3>
-                    {build.runes && <RunesView runes={build.runes} />}
-                    {build.spells && <SpellsView spells={build.spells} />}
-                  </div>
-                )}
-                <SkillOrder build={build} spells={spells} />
-                <div className="flex flex-col gap-3">
-                  <h3 className="text-sm text-mist">Itens</h3>
-                  <ItemRow title="Inicial" ids={build.items.starting} />
-                  <ItemRow title="Botas" ids={build.items.boots} />
-                  <ItemRow title="Principais, na ordem de compra" ids={build.items.core} chain />
-                  {build.items.situational.length > 0 && (
-                    <div>
-                      <h4 className="mb-1.5 text-xs text-mist">Situacionais</h4>
-                      <ul className="flex flex-col gap-2">
-                        {build.items.situational.map((s) => (
-                          <SituationalItem key={s.itemId} id={s.itemId} when={s.when} />
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
+            {!build && <p className="text-mist">Ainda não há build de {name} em {ROLE_LABEL[role]} nos dados: foram poucas partidas com timeline ({detail.games} partidas no total). Uma coleta maior preenche isso.</p>}
+            {build && <BuildOptionsView build={build} spells={spells} />}
           </>
         )}
       </div>
     </section>
+  )
+}
+
+type SortKey = 'tier' | 'winrate' | 'presence' | 'games'
+const TIER_ORDER: Tier[] = ['S', 'A', 'B', 'C', 'D']
+const TIERS: Tier[] = ['S', 'A', 'B', 'C', 'D']
+
+function sortRows(rows: MetaTierRow[], key: SortKey, dir: 'desc' | 'asc'): MetaTierRow[] {
+  const sign = dir === 'desc' ? 1 : -1
+  const value = (r: MetaTierRow): number =>
+    key === 'tier' ? -TIER_ORDER.indexOf(r.tier) * 1000 + r.score : key === 'winrate' ? r.winrate : key === 'presence' ? r.presence : r.games
+  return [...rows].sort((a, b) => sign * (value(b) - value(a)) || b.games - a.games || a.championId - b.championId)
+}
+
+function HeaderCell({ label, sortKey, current, dir, onSort, className = '' }: { label: string; sortKey: SortKey; current: SortKey; dir: 'desc' | 'asc'; onSort: (k: SortKey) => void; className?: string }) {
+  const active = current === sortKey
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      aria-label={`Ordenar por ${label}`}
+      aria-sort={active ? (dir === 'desc' ? 'descending' : 'ascending') : 'none'}
+      className={`flex items-center gap-0.5 rounded px-1 text-[11px] hover:text-snow ${active ? 'text-gold' : 'text-dim'} ${className}`}
+    >
+      {label}
+      <span aria-hidden="true">{active ? (dir === 'desc' ? '▾' : '▴') : ''}</span>
+    </button>
   )
 }
 
@@ -195,6 +200,9 @@ export function MetaScreen() {
   const [rows, setRows] = useState<MetaTierRow[] | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<number | null>(null)
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'desc' | 'asc' }>({ key: 'tier', dir: 'desc' })
+  const [tiers, setTiers] = useState<Tier[]>([])
+  const [reliableOnly, setReliableOnly] = useState(false)
 
   useEffect(() => {
     let off = false
@@ -202,7 +210,7 @@ export function MetaScreen() {
     void window.api.getMetaTiers(role).then((r) => {
       if (off) return
       setRows(r)
-      setSelected((cur) => (cur !== null && r.some((x) => x.championId === cur) ? cur : (r[0]?.championId ?? null)))
+      setSelected((cur) => (cur !== null && r.some((x) => x.championId === cur) ? cur : (sortRows(r, 'tier', 'desc')[0]?.championId ?? null)))
     })
     return () => {
       off = true
@@ -211,13 +219,23 @@ export function MetaScreen() {
 
   const shown = useMemo(() => {
     const q = normalize(query)
-    return (rows ?? []).filter((r) => !q || normalize(champById.get(r.championId)?.name ?? '').includes(q))
-  }, [rows, query, champById])
+    const filtered = (rows ?? []).filter(
+      (r) =>
+        (!q || normalize(champById.get(r.championId)?.name ?? '').includes(q)) &&
+        (tiers.length === 0 || tiers.includes(r.tier)) &&
+        (!reliableOnly || !r.lowSample)
+    )
+    return sortRows(filtered, sort.key, sort.dir)
+  }, [rows, query, champById, tiers, reliableOnly, sort])
+
+  const onSort = (key: SortKey): void => setSort((cur) => (cur.key === key ? { key, dir: cur.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' }))
+  const toggleTier = (t: Tier): void => setTiers((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]))
+  const filtersOn = tiers.length > 0 || reliableOnly || query !== ''
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 rounded-xl border border-line/70 bg-panel/70 p-1" role="tablist" aria-label="Rota do ranking">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex flex-wrap gap-1 rounded-xl border border-line/70 bg-panel/70 p-1" role="tablist" aria-label="Rota do ranking">
           {ROLES.map((r) => (
             <button
               key={r}
@@ -234,22 +252,58 @@ export function MetaScreen() {
         <label htmlFor="meta-search" className="sr-only">
           Buscar campeão no ranking
         </label>
-        <input id="meta-search" className={`${input} max-w-60`} placeholder="Buscar campeão" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input id="meta-search" className={`${input} w-48 max-w-full`} placeholder="Buscar campeão" value={query} onChange={(e) => setQuery(e.target.value)} />
         {metaInfo && (
           <p className="ml-auto text-xs text-mist">
             {metaInfo.isSample ? 'Dados de amostra' : `Patch ${metaInfo.patch}`} · {metaInfo.champions} campeões
+            {metaInfo.regions?.length ? ` · ${metaInfo.regions.join(', ')}` : ''}
           </p>
         )}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(420px,0.9fr)_minmax(460px,1.3fr)] gap-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Filtros do ranking">
+        <div className="flex items-center gap-1.5" role="group" aria-label="Filtrar por tier">
+          <span className="text-xs text-mist">Tier</span>
+          {TIERS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              aria-pressed={tiers.includes(t)}
+              onClick={() => toggleTier(t)}
+              className={`grid h-6 w-6 place-items-center rounded-md border font-display text-sm font-bold ${tiers.includes(t) ? TIER_STYLE[t] : 'border-line text-dim hover:text-snow'}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-2 text-xs text-mist">
+          <input type="checkbox" className="h-4 w-4 accent-[var(--color-gold)]" checked={reliableOnly} onChange={(e) => setReliableOnly(e.target.checked)} />
+          Só com amostra confiável
+        </label>
+        {filtersOn && (
+          <button
+            type="button"
+            className="text-xs text-mist underline hover:text-snow"
+            onClick={() => {
+              setTiers([])
+              setReliableOnly(false)
+              setQuery('')
+            }}
+          >
+            Limpar filtros
+          </button>
+        )}
+        <span className="ml-auto text-xs text-dim">{rows ? `${shown.length} de ${rows.length}` : ''}</span>
+      </div>
+
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)] gap-4 max-[1000px]:grid-cols-1 max-[1000px]:grid-rows-[minmax(180px,40%)_minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col">
-          <div className="grid grid-cols-[28px_1fr_64px_64px_56px] gap-3 px-2.5 pb-1 text-[11px] text-dim">
-            <span>Tier</span>
-            <span>Campeão</span>
-            <span className="text-right">Vitórias</span>
-            <span className="text-right">Presença</span>
-            <span className="text-right">Jogos</span>
+          <div className="grid grid-cols-[28px_minmax(0,1fr)_64px_64px_56px] gap-x-3 px-2.5 pb-1">
+            <HeaderCell label="Tier" sortKey="tier" current={sort.key} dir={sort.dir} onSort={onSort} className="-ml-1" />
+            <span className="text-[11px] text-dim">Campeão</span>
+            <HeaderCell label="Vitórias" sortKey="winrate" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />
+            <HeaderCell label="Presença" sortKey="presence" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />
+            <HeaderCell label="Jogos" sortKey="games" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />
           </div>
           {rows === null ? (
             <p className="text-mist">Carregando…</p>
@@ -260,7 +314,7 @@ export function MetaScreen() {
               {shown.map((r) => (
                 <Row key={r.championId} row={r} selected={selected === r.championId} onSelect={() => setSelected(r.championId)} />
               ))}
-              {shown.length === 0 && <li className="p-3 text-sm text-mist">Nenhum campeão com esse nome.</li>}
+              {shown.length === 0 && <li className="p-3 text-sm text-mist">Nenhum campeão com esses filtros.</li>}
             </ul>
           )}
         </div>

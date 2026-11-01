@@ -101,6 +101,7 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     lastActiveProfileId: profiles[0]?.id ?? null,
     metaUrl: null,
     metaAutoUpdate: true,
+    metaRegion: 'global',
     pickMode: 'balanced',
     autoAccept: false,
     autoAcceptDelay: 1,
@@ -194,6 +195,7 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     getAccountStats: async () => ({ level: 312, tier: 'GOLD', division: 'II', lp: 45, wins: 52, losses: 48 }),
     getMetaDetail: async ({ championId, role }) => championDetail(dataset, championId, role),
     getBuildSituation: async () => situation,
+    getBanSuggestions: async () => [],
     getBuild: async ({ championId, role }) => dataset.champions[String(championId)]?.roles[role]?.build ?? null,
     importMeta: async () => ({ ok: false, reason: 'canceled' }),
     updateMeta: async () => ({ ok: false, reason: 'no-url' })
@@ -397,7 +399,7 @@ describe('Companion App', () => {
       tankyEnemies: 0,
       focus: 'armor',
       picks: [{ itemId: 3089, reason: 'armor' }],
-      variantIndex: null
+      variantCore: null
     })
     render(<App />)
     await screen.findByText('Conectado. Entre em uma fila.')
@@ -427,6 +429,55 @@ describe('Companion App', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Suporte' }))
     expect(await screen.findByText(/não têm campeões para esta rota/)).toBeInTheDocument()
+  })
+
+  it('a aba Meta ordena pelos cabeçalhos e filtra por tier', async () => {
+    const user = userEvent.setup()
+    installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Meta' }))
+    const list = await screen.findByRole('list', { name: 'Ranking de Meio' })
+    const names = (): string[] => within(list).getAllByRole('button').map((b) => b.textContent ?? '')
+    const total = names().length
+    expect(total).toBeGreaterThan(1)
+
+    const games = screen.getByRole('button', { name: 'Ordenar por Jogos' })
+    expect(games).toHaveAttribute('aria-sort', 'none')
+    await user.click(games)
+    expect(games).toHaveAttribute('aria-sort', 'descending')
+    await user.click(games)
+    expect(games).toHaveAttribute('aria-sort', 'ascending')
+    const ascending = names()
+    await user.click(games)
+    expect(names()).not.toEqual(ascending)
+
+    expect(screen.getByText(`${total} de ${total}`)).toBeInTheDocument()
+    const s = screen.getByRole('button', { name: 'S' })
+    await user.click(s)
+    expect(s).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Limpar filtros' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Limpar filtros' }))
+    expect(s).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText(`${total} de ${total}`)).toBeInTheDocument()
+  })
+
+  it('mostra as sugestões de banimento durante os bans e deixa ocultar', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    ;(fake.api as { getBanSuggestions: LolApi['getBanSuggestions'] }).getBanSuggestions = async () => [
+      { championId: 238, score: 3, reasons: [{ kind: 'counter', championId: 103, nickname: 'Pedro', role: 'MIDDLE', winrate: 0.62, games: 40 }] },
+      { championId: 86, score: 1, reasons: [{ kind: 'meta', role: 'TOP', tier: 'S', winrate: 0.54, games: 900 }] }
+    ]
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+
+    const panel = await screen.findByRole('region', { name: 'Sugestões de banimento' })
+    expect(within(panel).getByText(/Atrapalha Ahri de Pedro/)).toBeInTheDocument()
+    expect(within(panel).getByText(/tier S/)).toBeInTheDocument()
+    await user.click(within(panel).getByRole('button', { name: /Sugestões de banimento/ }))
+    expect(within(panel).queryByText(/Atrapalha Ahri/)).not.toBeInTheDocument()
   })
 
   it('o fim do draft volta para a tela de espera', async () => {

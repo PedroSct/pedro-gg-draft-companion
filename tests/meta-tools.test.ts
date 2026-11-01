@@ -403,8 +403,8 @@ describe('buildMeta (Riot simulada)', () => {
     expect(ds.champions['238'].roles.MIDDLE!.matchups['103']).toEqual({ games: 5, wins: 2 })
 
     const build = ahri.build!
-    expect(build.skillOrder.priority).toEqual(['R', 'Q', 'E', 'W'])
-    expect(build.skillOrder.levels?.join('')).toBe(FULL)
+    expect(build.skillOrder!.priority).toEqual(['R', 'Q', 'E', 'W'])
+    expect(build.skillOrder!.levels?.join('')).toBe(FULL)
     expect(build.items.starting).toEqual([1056, 2003])
     expect(build.items.boots).toEqual([3020])
     expect(build.items.core).toEqual([6655, 4645, 3089])
@@ -432,7 +432,7 @@ describe('buildMeta (Riot simulada)', () => {
 
     const first = await buildMeta(options({ maxMatches: 2 }))
     expect(first.source).toBe('Riot Match-v5 (br1), 2 partidas')
-    expect(existsSync(join(dir, 'work', 'state-v2-br1-16.20.json'))).toBe(true)
+    expect(existsSync(join(dir, 'work', 'state-v3-br1-16.20.json'))).toBe(true)
     const downloadedFirst = matchHits()
     expect(downloadedFirst.length).toBeGreaterThanOrEqual(2)
 

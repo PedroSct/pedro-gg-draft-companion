@@ -2,7 +2,7 @@
 // Transforma partidas do Match-v5 (e suas timelines) em estatísticas e builds.
 // Tudo aqui é função pura sobre um estado serializável, então dá para retomar uma coleta interrompida.
 import type { Role } from '../../src/shared/types'
-import type { BuildVariant, ChampionBuild, ChampionProfile, MetaDataset, RoleMeta, SituationalItem, WinStats } from '../../src/shared/dataTypes'
+import type { BuildOption, BuildOptions, BuildVariant, ChampionBuild, ChampionProfile, RunePage, SkillKey, MetaDataset, RoleMeta, SituationalItem, WinStats } from '../../src/shared/dataTypes'
 
 // ------------------------------------------------------------ tipos crus da API (só o que usamos)
 
@@ -56,7 +56,23 @@ export interface CoreStat {
   /** soma da posição (0, 1, 2) em que o item foi completado, para ordenar a compra */
   posSum: number
 }
+/** Todas as partidas (vitória ou derrota), com vitórias: sustenta as opções com escolha e winrate. */
+export interface BuildOpts {
+  /** participantes com timeline analisada */
+  timeline: number
+  runes: Record<string, WinStats>
+  spells: Record<string, WinStats>
+  starting: Record<string, WinStats>
+  boots: Record<string, WinStats>
+  core: Record<string, WinStats>
+  /** "prioridade|9 primeiros níveis" */
+  skills: Record<string, WinStats>
+}
+export const newOpts = (): BuildOpts => ({ timeline: 0, runes: {}, spells: {}, starting: {}, boots: {}, core: {}, skills: {} })
+
 export interface BuildAgg {
+  /** todas as partidas, não só as vitórias (ausente em checkpoints antigos) */
+  opts?: BuildOpts
   /** vitórias com timeline analisadas */
   samples: number
   priority: Counter
@@ -96,6 +112,8 @@ export interface AggState {
   schemaVersion: 1
   patch: string
   matches: number
+  /** partidas com timeline baixada (ausente em checkpoints antigos) */
+  timelineMatches?: number
   champions: Record<string, Partial<Record<Role, RoleAgg>>>
 }
 export interface ItemRules {
@@ -125,6 +143,12 @@ function roleAgg(state: AggState, championId: number, role: Role): RoleAgg {
 
 const bump = (c: Counter, key: string, by = 1): void => {
   c[key] = (c[key] ?? 0) + by
+}
+
+const tally = (c: Record<string, WinStats>, key: string, win: boolean): void => {
+  const s = (c[key] ??= { games: 0, wins: 0 })
+  s.games++
+  if (win) s.wins++
 }
 
 /** "16.20.612.4409" → "16.20" */
@@ -197,6 +221,21 @@ export function isValidSkillSequence(seq: string): boolean {
   return true
 }
 
+/**
+ * Regra frouxa para campeões com habilidades fora do padrão (Udyr, Jayce, Aphelios, Zeri…): continua barrando
+ * o que é impossível em qualquer campeão (mais de 18 níveis ou pontos demais numa habilidade), mas não exige
+ * ultimate só nos níveis 6/11/16 nem o limite de metade dos níveis.
+ */
+export function isPlausibleSkillSequence(seq: string): boolean {
+  if (seq.length === 0 || seq.length > 18) return false
+  const count: Record<string, number> = { Q: 0, W: 0, E: 0, R: 0 }
+  for (const k of seq) {
+    if (!(k in count)) return false
+    count[k]++
+  }
+  return count.Q <= 5 && count.W <= 5 && count.E <= 5 && count.R <= 5
+}
+
 /** Sequência de letras (ex.: "QWEQQR…") do jogador, ou null se a timeline não for confiável. */
 export function extractSkillSequence(events: RawEvent[], participantId: number): string | null {
   const seen = new Set<string>()
@@ -210,7 +249,7 @@ export function extractSkillSequence(events: RawEvent[], participantId: number):
     seen.add(key)
     seq += SKILL_LETTERS[slot - 1]
   }
-  return isValidSkillSequence(seq) ? seq : null
+  return isValidSkillSequence(seq) || isPlausibleSkillSequence(seq) ? seq : null
 }
 
 /** "RQEW": R primeiro; depois Q/W/E na ordem em que chegam ao nível máximo. */
@@ -367,41 +406,55 @@ export function addMatch(state: AggState, match: RawMatch, timeline: RawTimeline
     }
   }
 
-  // Runas e feitiços vêm da própria partida (não precisam da timeline): só de quem venceu.
+  // Runas e feitiços vêm da própria partida (não precisam da timeline). O padrão usa só as vitórias;
+  // as opções com escolha e winrate usam todos os jogadores.
   for (const p of participants) {
     const role = toRole(p.teamPosition)
-    if (!role || !p.win || !(p.championId > 0)) continue
+    if (!role || !(p.championId > 0)) continue
     const build = roleAgg(state, p.championId, role).build
+    const opts = (build.opts ??= newOpts())
     const rk = runeKeyOf(p)
-    if (rk) bump((build.runes ??= {}), rk)
     const sk = spellKeyOf(p)
+    if (rk) tally(opts.runes, rk, p.win)
+    if (sk) tally(opts.spells, sk, p.win)
+    if (!p.win) continue
+    if (rk) bump((build.runes ??= {}), rk)
     if (sk) bump((build.spells ??= {}), sk)
   }
 
   if (!timeline) return true
+  state.timelineMatches = (state.timelineMatches ?? 0) + 1
   const events = (timeline.info?.frames ?? []).flatMap((f) => f.events ?? [])
   for (const p of participants) {
     const role = toRole(p.teamPosition)
-    if (!role || !p.win || !(p.championId > 0)) continue
+    if (!role || !(p.championId > 0)) continue
     const build = roleAgg(state, p.championId, role).build
-    build.samples++
+    const opts = (build.opts ??= newOpts())
+    opts.timeline++
 
     const seq = extractSkillSequence(events, p.participantId)
+    const purchases = extractPurchases(events, p.participantId)
+    const starting = purchases.filter((x) => x.t <= STARTING_WINDOW_MS).map((x) => x.itemId).sort((x, y) => x - y)
+    const firstBoots = purchases.find((x) => rules.boots.has(x.itemId))
+    const completed: number[] = []
+    for (const x of purchases) if (rules.completed.has(x.itemId) && !completed.includes(x.itemId)) completed.push(x.itemId)
+
+    // Todos os jogadores: opções com escolha e winrate
+    if (seq && seq.length >= MIN_LEVELS_FOR_BUILD) tally(opts.skills, `${priorityOf(seq)}|${seq.slice(0, PREFIX_LEVELS)}`, p.win)
+    if (starting.length) tally(opts.starting, starting.join(','), p.win)
+    if (firstBoots) tally(opts.boots, String(firstBoots.itemId), p.win)
+    if (completed.length >= 3) tally(opts.core, completed.slice(0, 3).join(','), p.win)
+
+    // Só as vitórias: build padrão (importar para o cliente)
+    if (!p.win) continue
+    build.samples++
     if (seq && seq.length >= MIN_LEVELS_FOR_BUILD) {
       const priority = priorityOf(seq)
       bump(build.priority, priority)
       bump(build.skillPrefix, `${priority}|${seq.slice(0, PREFIX_LEVELS)}`)
     }
-
-    const purchases = extractPurchases(events, p.participantId)
-    const starting = purchases.filter((x) => x.t <= STARTING_WINDOW_MS).map((x) => x.itemId).sort((x, y) => x - y)
     if (starting.length) bump(build.starting, starting.join(','))
-
-    const firstBoots = purchases.find((x) => rules.boots.has(x.itemId))
     if (firstBoots) bump(build.boots, String(firstBoots.itemId))
-
-    const completed: number[] = []
-    for (const x of purchases) if (rules.completed.has(x.itemId) && !completed.includes(x.itemId)) completed.push(x.itemId)
     if (completed.length >= 3) bump((build.variants ??= {}), `${completed.slice(0, 3).join(',')}|${firstBoots ? firstBoots.itemId : 0}`)
     completed.forEach((id, idx) => {
       if (idx < 3) {
@@ -423,6 +476,8 @@ export interface FinalizeOptions {
   minGames: number
   /** jogos mínimos de um confronto para entrar */
   minMatchupGames: number
+  /** jogos mínimos de uma sinergia ou de um "contra o time inimigo" (padrão: o mesmo dos confrontos) */
+  minPairGames?: number
   /** vitórias com habilidades válidas para publicar uma build */
   minBuildSamples: number
   source: string
@@ -438,47 +493,140 @@ const top = (c: Counter): string | null => {
 }
 const total = (c: Counter): number => Object.values(c).reduce((s, n) => s + n, 0)
 
-function buildFrom(b: BuildAgg, minSamples: number): ChampionBuild | undefined {
-  const priorityKey = top(b.priority)
-  if (!priorityKey || total(b.priority) < minSamples) return undefined
+/** As opções mais escolhidas de uma parte da build, com escolha e vitórias (só o que tem amostra mínima). */
+function topOptions<T>(
+  table: Record<string, WinStats> | undefined,
+  limit: number,
+  parse: (key: string, stats: WinStats) => T | null
+): BuildOption<T>[] {
+  const rows = Object.entries(table ?? {}).sort((x, y) => y[1].games - x[1].games || (x[0] < y[0] ? -1 : 1))
+  const sum = rows.reduce((n, [, s]) => n + s.games, 0)
+  const out: BuildOption<T>[] = []
+  for (const [key, s] of rows) {
+    if (out.length >= limit) break
+    // A primeira sempre entra; as demais precisam de amostra e de pelo menos 3% das escolhas
+    if (out.length > 0 && (s.games < 3 || s.games / Math.max(1, sum) < 0.03)) continue
+    const value = parse(key, s)
+    if (value !== null) out.push({ value, games: s.games, wins: s.wins })
+  }
+  return out
+}
 
-  // Prefixo de 9 níveis mais comum entre as partidas com essa prioridade
-  const prefixes: Counter = {}
-  for (const [k, v] of Object.entries(b.skillPrefix)) if (k.startsWith(`${priorityKey}|`)) prefixes[k.slice(priorityKey.length + 1)] = v
-  const prefix = top(prefixes)
-  let levels: string | undefined
-  if (prefix) {
-    const full = fillLevels(prefix, priorityKey)
-    if (full.length === 18 && isValidSkillSequence(full)) levels = full
+const ids = (key: string): number[] => key.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0)
+
+function optionsFrom(opts: BuildOpts | undefined, games: number): BuildOptions | undefined {
+  if (!opts) return undefined
+  const runes = topOptions<RunePage>(opts.runes, 3, (key) => {
+    const [primary, sub, list] = key.split('|')
+    const perkIds = ids(list ?? '')
+    return perkIds.length === 9 ? { primaryStyleId: Number(primary), subStyleId: Number(sub), perkIds } : null
+  })
+  const spells = topOptions<[number, number]>(opts.spells, 2, (key) => {
+    const [a, b] = ids(key)
+    return a && b ? [a, b] : null
+  })
+  const starting = topOptions<number[]>(opts.starting, 2, (key) => {
+    const list = ids(key)
+    return list.length ? list : null
+  })
+  const boots = topOptions<number>(opts.boots, 3, (key) => (Number(key) > 0 ? Number(key) : null))
+  const core = topOptions<number[]>(opts.core, 4, (key) => {
+    const list = ids(key)
+    return list.length === 3 ? list : null
+  })
+
+  // Habilidades: soma por prioridade e usa o prefixo mais comum de cada uma para completar os 18 níveis
+  const byPriority = new Map<string, { games: number; wins: number; prefix: string; best: number }>()
+  for (const [key, s] of Object.entries(opts.skills)) {
+    const [priority, prefix] = key.split('|')
+    if (!priority || !prefix) continue
+    const cur = byPriority.get(priority) ?? { games: 0, wins: 0, prefix, best: 0 }
+    cur.games += s.games
+    cur.wins += s.wins
+    if (s.games > cur.best) {
+      cur.best = s.games
+      cur.prefix = prefix
+    }
+    byPriority.set(priority, cur)
+  }
+  const skillTable: Record<string, WinStats> = {}
+  for (const [priority, v] of byPriority) skillTable[priority] = { games: v.games, wins: v.wins }
+  const skills = topOptions<{ priority: SkillKey[]; levels?: SkillKey[] }>(skillTable, 3, (priority) => {
+    const prefix = byPriority.get(priority)?.prefix ?? ''
+    const full = fillLevels(prefix, priority)
+    const levels = full.length === 18 && isValidSkillSequence(full) ? ([...full] as SkillKey[]) : undefined
+    return { priority: [...priority] as SkillKey[], ...(levels ? { levels } : {}) }
+  })
+
+  const out: BuildOptions = {
+    games,
+    timeline: opts.timeline,
+    ...(runes.length ? { runes } : {}),
+    ...(spells.length ? { spells } : {}),
+    ...(starting.length ? { starting } : {}),
+    ...(boots.length ? { boots } : {}),
+    ...(core.length ? { core } : {}),
+    ...(skills.length ? { skills } : {})
+  }
+  return Object.keys(out).length > 2 ? out : undefined
+}
+
+function buildFrom(b: BuildAgg, minSamples: number, games: number): ChampionBuild | undefined {
+  // Runas, feitiços e itens pedem menos amostra que a ordem de habilidades; nada depende de uma parte só.
+  const lite = Math.min(minSamples, 6)
+
+  const priorityKey = top(b.priority)
+  let skillOrder: ChampionBuild['skillOrder']
+  if (priorityKey && total(b.priority) >= minSamples) {
+    // Prefixo de 9 níveis mais comum entre as partidas com essa prioridade
+    const prefixes: Counter = {}
+    for (const [k, v] of Object.entries(b.skillPrefix)) if (k.startsWith(`${priorityKey}|`)) prefixes[k.slice(priorityKey.length + 1)] = v
+    const prefix = top(prefixes)
+    let levels: string | undefined
+    if (prefix) {
+      const full = fillLevels(prefix, priorityKey)
+      if (full.length === 18 && isValidSkillSequence(full)) levels = full
+    }
+    skillOrder = {
+      priority: [...priorityKey] as NonNullable<ChampionBuild['skillOrder']>['priority'],
+      ...(levels ? { levels: [...levels] as NonNullable<NonNullable<ChampionBuild['skillOrder']>['levels']> } : {})
+    }
   }
 
-  const starting = (top(b.starting) ?? '').split(',').map(Number).filter((n) => n > 0)
-  const boots = Object.entries(b.boots).sort((x, y) => y[1] - x[1] || Number(x[0]) - Number(y[0])).slice(0, 2).map(([id]) => Number(id))
+  const enoughItems = b.samples >= lite
+  const starting = enoughItems ? ids(top(b.starting) ?? '') : []
+  const boots = enoughItems
+    ? Object.entries(b.boots).sort((x, y) => y[1] - x[1] || Number(x[0]) - Number(y[0])).slice(0, 2).map(([id]) => Number(id))
+    : []
 
   // Os 3 itens mais frequentes entre os 3 primeiros completados, ordenados pela posição média de compra
   const coreRanked = Object.entries(b.core).sort((x, y) => y[1].count - x[1].count || Number(x[0]) - Number(y[0]))
-  const core = coreRanked
-    .slice(0, 3)
-    .sort((x, y) => x[1].posSum / x[1].count - y[1].posSum / y[1].count || Number(x[0]) - Number(y[0]))
-    .map(([id]) => Number(id))
+  const core = enoughItems
+    ? coreRanked
+        .slice(0, 3)
+        .sort((x, y) => x[1].posSum / x[1].count - y[1].posSum / y[1].count || Number(x[0]) - Number(y[0]))
+        .map(([id]) => Number(id))
+    : []
 
   // Situacionais: o que mais aparece depois dos 3 principais (ou como alternativa a eles)
   const rest: Counter = { ...b.other }
   for (const [id, stat] of coreRanked.slice(3)) bump(rest, id, stat.count)
-  const situational: SituationalItem[] = Object.entries(rest)
-    .sort((x, y) => y[1] - x[1] || Number(x[0]) - Number(y[0]))
-    .slice(0, 5)
-    .map(([id, n]) => ({ itemId: Number(id), when: `Comprado em ${Math.round((n / Math.max(1, b.samples)) * 100)}% das partidas vencidas` }))
+  const situational: SituationalItem[] = enoughItems
+    ? Object.entries(rest)
+        .sort((x, y) => y[1] - x[1] || Number(x[0]) - Number(y[0]))
+        .slice(0, 5)
+        .map(([id, n]) => ({ itemId: Number(id), when: `Comprado em ${Math.round((n / Math.max(1, b.samples)) * 100)}% das partidas vencidas` }))
+    : []
 
   const runeKey = top(b.runes ?? {})
   let runes: ChampionBuild['runes']
-  if (runeKey && total(b.runes ?? {}) >= minSamples) {
-    const [primary, sub, ids] = runeKey.split('|')
-    const perkIds = ids.split(',').map(Number)
+  if (runeKey && total(b.runes ?? {}) >= lite) {
+    const [primary, sub, list] = runeKey.split('|')
+    const perkIds = ids(list)
     if (perkIds.length === 9) runes = { primaryStyleId: Number(primary), subStyleId: Number(sub), perkIds }
   }
   const spellKey = top(b.spells ?? {})
-  const spells = spellKey && total(b.spells ?? {}) >= minSamples ? (spellKey.split(',').map(Number) as [number, number]) : undefined
+  const spells = spellKey && total(b.spells ?? {}) >= lite ? (ids(spellKey) as [number, number]) : undefined
 
   // Construções alternativas: as 3 mais usadas (a mais comum costuma coincidir com `items`)
   const variants: BuildVariant[] = Object.entries(b.variants ?? {})
@@ -495,14 +643,16 @@ function buildFrom(b: BuildAgg, minSamples: number): ChampionBuild | undefined {
       }
     })
 
+  const options = optionsFrom(b.opts, games)
+  const hasItems = core.length > 0 || starting.length > 0 || boots.length > 0
+  if (!skillOrder && !runes && !spells && !hasItems && !options) return undefined
+
   return {
     ...(runes ? { runes } : {}),
     ...(spells ? { spells } : {}),
     ...(variants.length > 1 ? { variants } : {}),
-    skillOrder: {
-      priority: [...priorityKey] as ChampionBuild['skillOrder']['priority'],
-      ...(levels ? { levels: [...levels] as NonNullable<ChampionBuild['skillOrder']['levels']> } : {})
-    },
+    ...(options ? { options } : {}),
+    ...(skillOrder ? { skillOrder } : {}),
     items: { starting, boots, core, situational }
   }
 }
@@ -549,6 +699,7 @@ export function mergeStates(states: AggState[]): { merged: AggState; used: numbe
     if (s.patch !== patch) return void skipped.push(i)
     used.push(i)
     merged.matches += s.matches
+    merged.timelineMatches = (merged.timelineMatches ?? 0) + (s.timelineMatches ?? 0)
     for (const [champId, roles] of Object.entries(s.champions)) {
       for (const [role, agg] of Object.entries(roles) as [Role, RoleAgg][]) {
         const t = roleAgg(merged, Number(champId), role)
@@ -579,6 +730,11 @@ export function mergeStates(states: AggState[]): { merged: AggState; used: numbe
         addCounter((b.runes ??= {}), from.runes)
         addCounter((b.spells ??= {}), from.spells)
         addCounter((b.variants ??= {}), from.variants)
+        if (from.opts) {
+          const t = (b.opts ??= newOpts())
+          t.timeline += from.opts.timeline
+          for (const k of ['runes', 'spells', 'starting', 'boots', 'core', 'skills'] as const) addStats(t[k], from.opts[k])
+        }
       }
     }
   })
@@ -594,11 +750,11 @@ export function finalize(state: AggState, o: FinalizeOptions): MetaDataset {
       const matchups: Record<string, WinStats> = {}
       for (const [vs, s] of Object.entries(agg.matchups)) if (s.games >= o.minMatchupGames) matchups[vs] = { games: s.games, wins: s.wins }
       const synergies: Record<string, WinStats> = {}
-      for (const [mate, s] of Object.entries(agg.synergies ?? {})) if (s.games >= o.minMatchupGames) synergies[mate] = { games: s.games, wins: s.wins }
+      for (const [mate, s] of Object.entries(agg.synergies ?? {})) if (s.games >= (o.minPairGames ?? o.minMatchupGames)) synergies[mate] = { games: s.games, wins: s.wins }
       const versus: Record<string, WinStats> = {}
-      for (const [foe, s] of Object.entries(agg.versus ?? {})) if (s.games >= o.minMatchupGames) versus[foe] = { games: s.games, wins: s.wins }
+      for (const [foe, s] of Object.entries(agg.versus ?? {})) if (s.games >= (o.minPairGames ?? o.minMatchupGames)) versus[foe] = { games: s.games, wins: s.wins }
       const profile = profileFrom(agg.prof, 20)
-      const build = buildFrom(agg.build, o.minBuildSamples)
+      const build = buildFrom(agg.build, o.minBuildSamples, agg.games)
       out[role] = {
         games: agg.games,
         wins: agg.wins,

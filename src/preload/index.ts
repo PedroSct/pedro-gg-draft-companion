@@ -49,6 +49,7 @@ const api: LolApi = {
   getSpells: (key) => ipcRenderer.invoke(IPC.DDRAGON_GET_SPELLS, key),
 
   getMetaInfo: () => ipcRenderer.invoke(IPC.META_INFO),
+  getBanSuggestions: (req) => ipcRenderer.invoke(IPC.DRAFT_BANS, req),
   getMetaTiers: (role) => ipcRenderer.invoke(IPC.META_TIERS, role),
   getMetaDetail: (req) => ipcRenderer.invoke(IPC.META_DETAIL, req),
   getBuild: (req) => ipcRenderer.invoke(IPC.META_GET_BUILD, req),

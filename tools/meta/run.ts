@@ -35,6 +35,9 @@ export interface BuildMetaOptions {
   minGames: number
   minMatchupGames: number
   minBuildSamples: number
+  /** timelines só para as N primeiras partidas contadas (as demais entram só com winrates e confrontos); 0 = todas */
+  timelineMatches?: number
+  minPairGames?: number
   /** false = não baixa timelines (sem builds, só winrates e confrontos; metade das requisições) */
   timeline: boolean
   seed: number
@@ -99,7 +102,7 @@ export async function buildMeta(o: BuildMetaOptions): Promise<MetaDataset> {
 
   // ---- Checkpoint
   await fs.mkdir(o.workDir, { recursive: true })
-  const stateFile = path.join(o.workDir, `state-v2-${o.platform}-${patch}.json`)
+  const stateFile = path.join(o.workDir, `state-v3-${o.platform}-${patch}.json`)
   const saved = await readJson<RunState>(stateFile)
   const run: RunState =
     saved && saved.agg?.patch === patch
@@ -130,6 +133,7 @@ export async function buildMeta(o: BuildMetaOptions): Promise<MetaDataset> {
       finalize(run.agg, {
         minGames: o.minGames,
         minMatchupGames: o.minMatchupGames,
+        minPairGames: o.minPairGames,
         minBuildSamples: o.minBuildSamples,
         source: `Riot Match-v5 (${o.platform}), ${run.agg.matches} partidas`,
         generatedAt: new Date().toISOString(),
@@ -202,7 +206,8 @@ export async function buildMeta(o: BuildMetaOptions): Promise<MetaDataset> {
         // Só baixa a timeline de partidas que serão contadas (poupa uma requisição das rejeitadas)
         const counts = (match.info?.queueId === 420) && match.info?.gameEndedInEarlySurrender !== true &&
           typeof match.info?.gameVersion === 'string' && patchOf(match.info.gameVersion) === patch
-        if (o.timeline && counts) timeline = await client.get<RawTimeline>('regional', `/lol/match/v5/matches/${encodeURIComponent(id)}/timeline`)
+        const withinBudget = !o.timelineMatches || (run.agg.timelineMatches ?? 0) < o.timelineMatches
+        if (o.timeline && counts && withinBudget) timeline = await client.get<RawTimeline>('regional', `/lol/match/v5/matches/${encodeURIComponent(id)}/timeline`)
         if (addMatch(run.agg, match, timeline, rules)) {
           sinceSave++
           if (run.agg.matches % CHECKPOINT_EVERY === 0) log(`${run.agg.matches}/${o.maxMatches} partidas`)

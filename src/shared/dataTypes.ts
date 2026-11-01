@@ -41,6 +41,8 @@ export interface AppSettings {
   metaUrl: string | null
   /** Baixa o meta novo sozinho ao abrir o app (só age se houver endereço). */
   metaAutoUpdate: boolean
+  /** Região dos dados de meta: "global" (todas juntas) ou o código de uma região (ex.: "br1"). */
+  metaRegion: string
   /** Como ordenar as sugestões: equilibrado, mais conforto ou mais meta. */
   pickMode: RecommendMode
   /** Aceita a partida encontrada sozinho (pelo cliente do LoL). Desligado por padrão. */
@@ -101,14 +103,38 @@ export interface ChampionProfile {
   cc: number
 }
 
+/** Uma opção de build com a amostra que a sustenta (escolha = jogos / total; vitórias = wins / jogos). */
+export interface BuildOption<T> {
+  value: T
+  games: number
+  wins: number
+}
+
+/** As opções mais usadas de cada parte da build, contando vitórias e derrotas (como o OP.GG). */
+export interface BuildOptions {
+  /** partidas do campeão nesta rota: base da escolha de runas e feitiços */
+  games: number
+  /** partidas com timeline analisada: base de itens e habilidades */
+  timeline: number
+  runes?: BuildOption<RunePage>[]
+  spells?: BuildOption<[number, number]>[]
+  starting?: BuildOption<number[]>[]
+  boots?: BuildOption<number>[]
+  core?: BuildOption<number[]>[]
+  skills?: BuildOption<{ priority: SkillKey[]; levels?: SkillKey[] }>[]
+}
+
 export interface ChampionBuild {
+  /** opções com escolha e winrate (ausente em dados anteriores à 0.5.2) */
+  options?: BuildOptions
   /** construções alternativas mais usadas nas vitórias (a principal vem em `items`) */
   variants?: BuildVariant[]
   /** runas mais usadas nas vitórias (ausente em dados antigos) */
   runes?: RunePage
   /** feitiços de invocador mais usados nas vitórias */
   spells?: [number, number]
-  skillOrder: {
+  /** ausente quando a timeline dos jogadores não permitiu ler a ordem das habilidades */
+  skillOrder?: {
     /** prioridade de evolução, ex.: ['R','Q','E','W'] */
     priority: SkillKey[]
     /** opcional: 18 níveis, um por nível de campeão */
@@ -152,6 +178,8 @@ export interface MetaInfo {
   generatedAt: string
   isSample: boolean
   champions: number
+  /** servidores que entraram nas estatísticas (ex.: ['br1','euw1']) */
+  regions?: string[]
 }
 
 // ------------------------------------------------------------ Data Dragon
@@ -275,8 +303,27 @@ export interface BuildSituation {
   focus: 'armor' | 'magic-resist' | 'penetration' | null
   /** itens do próprio campeão (situacionais e variantes) que atendem ao foco */
   picks: { itemId: number; reason: 'armor' | 'magic-resist' | 'penetration' }[]
-  /** índice em build.variants da construção que melhor encaixa; null = a principal */
-  variantIndex: number | null
+  /** os 3 itens da construção alternativa que melhor encaixa; null = a principal */
+  variantCore: number[] | null
+}
+
+export type BanReason =
+  | {
+      kind: 'counter'
+      /** o campeão seu ou de um amigo que ele atrapalha */
+      championId: number
+      nickname: string
+      role: Role
+      /** vitórias do campeão sugerido contra aquele (na rota) */
+      winrate: number
+      games: number
+    }
+  | { kind: 'meta'; role: Role; tier: Tier; winrate: number; games: number }
+
+export interface BanSuggestion {
+  championId: number
+  score: number
+  reasons: BanReason[]
 }
 
 export interface Recommendation {
@@ -324,16 +371,22 @@ export interface MetaTierRow {
   winrate: number
   /** diferença para 50% em pontos, já com suavização (poucos jogos puxam para 0) */
   delta: number
+  /** pontuação do ranking: igual a delta, mas dentro da faixa B quando há poucos jogos */
+  score: number
   /** participação do campeão nas partidas da rota (0..1) */
   presence: number
   tier: Tier
   hasBuild: boolean
+  /** poucos jogos: o tier fica em B e os números ainda oscilam */
+  lowSample: boolean
 }
 
 export interface MetaMatchupRow {
   championId: number
   winrate: number
   games: number
+  /** vem do desempenho contra o campeão em qualquer rota (não só na rota) */
+  anyLane?: boolean
 }
 
 export interface MetaChampionDetail {

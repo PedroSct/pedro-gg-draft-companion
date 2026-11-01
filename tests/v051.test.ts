@@ -271,7 +271,7 @@ describe('build ajustada à partida', () => {
     expect(s.enemyDamage!.physical).toBeGreaterThan(0.7)
     expect(s.focus).toBe('armor')
     expect(s.picks.map((p) => p.itemId)).toEqual([2])
-    expect(s.variantIndex).toBe(1)
+    expect(s.variantCore).toEqual([1, 2, 3])
   })
 
   it('inimigos mágicos → resistência mágica', () => {
@@ -282,12 +282,12 @@ describe('build ajustada à partida', () => {
 
   it('sem inimigos conhecidos não sugere nada', () => {
     const s = run([])
-    expect(s).toMatchObject({ enemiesKnown: 0, enemyDamage: null, focus: null, picks: [], variantIndex: null })
+    expect(s).toMatchObject({ enemiesKnown: 0, enemyDamage: null, focus: null, picks: [], variantCore: null })
   })
 
   it('dano equilibrado mantém a build padrão', () => {
     const s = run([player(5, 10, null), player(6, 12, null)])
     expect(s.focus).toBeNull()
-    expect(s.variantIndex).toBeNull()
+    expect(s.variantCore).toBeNull()
   })
 })

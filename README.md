@@ -65,6 +65,17 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
 - **Build para a partida (0.5.1)**: no painel de build aparece "Para esta partida": o dano do time inimigo, o foco
   (armadura, resistência mágica ou penetração), os itens do próprio campeão que atendem a esse foco e qual construção
   alternativa encaixa melhor.
+- **Meta mais completa (0.5.2)**: o ranking ordena por Tier, Vitórias, Presença ou Jogos (clique no cabeçalho), filtra por
+  tier e esconde campeões de amostra pequena. A build tem **várias opções** como no OP.GG (runas, feitiços, ordem de
+  habilidades, itens iniciais, botas e itens principais) com **% de escolha e % de vitória** de cada uma, contando
+  vitórias e derrotas. Campeões com poucos confrontos na rota usam o desempenho contra o campeão em qualquer rota. Quem
+  tem sequência de habilidades incomum (Aphelios, Jayce, Udyr, Zeri) deixou de ficar sem build.
+- **Sugestões de banimento (0.5.2)**: durante a fase de bans, o painel lista quem mais atrapalha os campeões de conforto
+  alto (4 e 5) de você e dos amigos reconhecidos, e quem está forte no meta, com o motivo de cada um.
+- **Região dos dados (0.5.2)**: em Configurações > Dados escolha **Global** (todas as regiões somadas, mais partidas e mais
+  precisão) ou só BR, EUW ou KR. O workflow publica `meta.json` (global) e `meta-<região>.json` na branch `data`.
+- **Janela redimensionável (0.5.2)**: o cabeçalho encolhe, o draft empilha as colunas e os perfis se reorganizam em
+  janelas estreitas (mínimo 760 × 560).
 - **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
   da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
@@ -93,10 +104,10 @@ mostra "O Windows protegeu seu PC": clique em *Mais informações* e *Executar a
 
 O app procura versões novas nos *Releases* do GitHub do projeto (ao abrir e a cada 4 horas). Para lançar uma:
 
-1. Mude `"version"` no `package.json` (ex.: `0.5.1`) e faça commit/push.
-2. Crie a tag com o mesmo número e envie: `git tag v0.5.1` e `git push origin v0.5.1`.
+1. Mude `"version"` no `package.json` (ex.: `0.5.2`) e faça commit/push.
+2. Crie a tag com o mesmo número e envie: `git tag v0.5.2` e `git push origin v0.5.2`.
 3. O GitHub Actions gera o instalador e cria o Release (`.exe`, `latest.yml` e `.blockmap`).
-4. Quem já tem o app instalado vê o aviso "A versão 0.5.1 está disponível" e decide quando atualizar.
+4. Quem já tem o app instalado vê o aviso "A versão 0.5.2 está disponível" e decide quando atualizar.
 
 Detalhes: o repositório de atualizações entra no instalador sozinho quando ele é gerado pelo Actions
 (`GITHUB_REPOSITORY`). Num `pnpm build:win` local, preencha `DEFAULT_UPDATE_REPO` em `src/shared/config.ts`
@@ -121,11 +132,11 @@ Nem o smartpick.gg nem o draftforge.gg oferecem API pública (veja `docs/pesquis
 **Match-v5 da Riot**:
 
     # Windows (PowerShell):  $env:RIOT_API_KEY = "RGAPI-..."
-    pnpm meta:build -- --platform br1 --max-matches 3000
+    pnpm meta:build --platform br1 --max-matches 3000
 
 A chave vem de developer.riotgames.com. Chaves de desenvolvimento expiram a cada 24 h e limitam as requisições, então a
 coleta é lenta (cerca de 0,8 requisição por segundo). Se for interrompida (Ctrl+C, queda de internet, chave vencida),
-rode o mesmo comando de novo: ela retoma de onde parou, sem contar partidas em dobro. `pnpm meta:build -- --help`
+rode o mesmo comando de novo: ela retoma de onde parou, sem contar partidas em dobro. `pnpm meta:build --help`
 lista todas as opções. O resultado inclui confrontos, **sinergias entre aliados**, builds, ordem de habilidades, **runas e feitiços** mais usados nas vitórias.
 Rode o gerador de novo para o botão de importar ter runas e feitiços (os dados antigos continuam funcionando, só sem essa parte).
 
@@ -139,10 +150,12 @@ vem apontando para ela (`DEFAULT_META_URL` em `src/shared/config.ts`). Configura
    `RGAPI-...` de developer.riotgames.com (chave de desenvolvimento vale 24 h; para ficar permanente, peça uma chave
    pessoal no portal da Riot).
 2. **Actions > Atualizar dados de meta > Run workflow**. Em "Servidores" escolha um ou mais (padrão `br1,euw1,kr`) e,
-   em "Partidas por servidor", quantas coletar (padrão 3000). Cada **cluster** da Riot (americas, europe, asia, sea)
+   em "Partidas por servidor", quantas coletar (padrão 6000) e, em "Partidas com timeline", quantas baixam a timeline
+   (builds, habilidades e itens; padrão 3000, 0 = todas). Cada **cluster** da Riot (americas, europe, asia, sea)
    tem o próprio limite da chave, então servidores de clusters diferentes rodam **em paralelo** (cada um leva de 2 a
    3 horas) e servidores do mesmo cluster (ex.: `br1,na1`) rodam em sequência no mesmo job (cabem uns dois). No fim, as
-   contagens de todos os servidores são **somadas num único `meta.json`** (só entram partidas do mesmo patch). Se a chave
+   contagens de todos os servidores são **somadas num `meta.json` global** (só entram partidas do mesmo patch) e cada servidor
+   também gera o seu `meta-<servidor>.json`. Se a chave
    vencer no meio, rode de novo: o progresso fica em cache.
 3. Depois disso roda sozinho toda semana. Se a validação falhar (poucos campeões/partidas), nada é publicado.
 

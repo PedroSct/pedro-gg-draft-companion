@@ -1,5 +1,6 @@
-# Coleta partidas de alto elo na Match-v5 da Riot em vários servidores e publica UM meta.json (winrates, confrontos,
-# contra o time inimigo, dano/tanque/CC, builds, ordem de habilidades, runas e feitiços) na branch "data".
+# Coleta partidas de alto elo na Match-v5 da Riot em vários servidores e publica o meta.json GLOBAL (todos somados)
+# e um arquivo por servidor (meta-br1.json...) para o app poder escolher. Os dados trazem winrates, confrontos,
+# desempenho contra o time inimigo, dano/tanque/CC, builds, ordem de habilidades, runas e feitiços, na branch "data".
 # O app dos seus amigos baixa de lá sozinho.
 #
 # Como usar:
@@ -23,7 +24,10 @@ on:
         description: Servidores separados por vírgula (br1, na1, euw1, eun1, kr, la1...). Um por cluster roda em paralelo.
         default: br1,euw1,kr
       max_matches:
-        description: Partidas a coletar POR servidor
+        description: Partidas a coletar POR servidor (winrates, confrontos, sinergias)
+        default: '6000'
+      timeline_matches:
+        description: Destas, quantas também baixam a timeline (builds, itens, habilidades). 0 = todas.
         default: '3000'
   schedule:
     - cron: '0 7 * * 3' # quartas, 07:00 UTC (só funciona se a chave ainda estiver válida)
@@ -90,13 +94,14 @@ jobs:
         env:
           RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
           PLATFORMS: ${{ matrix.platforms }}
-          MAX_MATCHES: ${{ inputs.max_matches || '3000' }}
+          MAX_MATCHES: ${{ inputs.max_matches || '6000' }}
+          TIMELINE_MATCHES: ${{ inputs.timeline_matches || '3000' }}
         run: |
           # Um servidor que falha (chave vencida, limite) não impede os outros do cluster; o progresso fica salvo.
           failed=0
           for p in $PLATFORMS; do
             echo "::group::Servidor $p"
-            pnpm meta:build --platform "$p" --max-matches "$MAX_MATCHES" --out "meta-$p.json" --work meta-work || failed=$((failed+1))
+            pnpm meta:build --platform "$p" --max-matches "$MAX_MATCHES" --timeline-matches "$TIMELINE_MATCHES" --out "meta-$p.json" --work meta-work || failed=$((failed+1))
             echo "::endgroup::"
           done
           if [ "$failed" -gt 0 ]; then
@@ -115,7 +120,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: states-${{ matrix.region }}
-          path: meta-work/state-v2-*.json
+          path: meta-work/state-v3-*.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -140,7 +145,7 @@ jobs:
           merge-multiple: true
 
       - name: Juntar os servidores
-        run: pnpm meta:merge --out meta.json states/*.json
+        run: pnpm meta:merge --per-region --out meta.json states/*.json
 
       - name: Conferir a qualidade
         run: pnpm meta:check meta.json --strict
@@ -149,11 +154,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir pub && cp meta.json pub/meta.json && cd pub
+          mkdir pub && cp meta.json meta-*.json pub/ && cd pub
           git init -q
           git config user.name "pedro-gg-bot"
           git config user.email "actions@users.noreply.github.com"
           git checkout -q --orphan data
-          git add meta.json
+          git add meta.json meta-*.json
           git commit -q -m "Dados de meta ($(date -u +%F))"
           git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" data

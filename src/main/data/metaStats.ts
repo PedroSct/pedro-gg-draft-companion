@@ -17,14 +17,21 @@ const PRIOR_GAMES = 100
 const TIER_PRIOR_GAMES = 300
 /** Com menos jogos que isto o tier nunca passa de B (amostra pequena demais para chamar de forte ou fraco). */
 const MIN_GAMES_FOR_TIER = 100
-const MIN_MATCHUP_GAMES = 8
+/** Confrontos e sinergias com poucos jogos entram na lista, mas puxados para 50% (com menos jogos pesam menos). */
+const MIN_MATCHUP_GAMES = 4
+const MIN_PAIR_GAMES = 6
+const MATCHUP_PRIOR_GAMES = 30
 const LIST_SIZE = 5
 
 const smooth = (s: WinStats, prior = PRIOR_GAMES): number => (s.wins + prior / 2) / (s.games + prior)
 
+/** Pontuação do ranking: com poucos jogos ela fica dentro da faixa B (amostra pequena não chama de forte nem fraco). */
+function scoreOf(delta: number, games: number): number {
+  return games < MIN_GAMES_FOR_TIER ? Math.max(-0.79, Math.min(0.79, delta)) : delta
+}
+
 function tierFor(delta: number, games: number): Tier {
-  const t = tierOf(delta)
-  return games < MIN_GAMES_FOR_TIER && (t === 'S' || t === 'A') ? 'B' : t
+  return tierOf(scoreOf(delta, games))
 }
 
 export function tierOf(deltaPoints: number): Tier {
@@ -55,11 +62,13 @@ export function tierRows(ds: MetaDataset, role: Role): MetaTierRow[] {
       winrate: m.wins / m.games,
       delta,
       presence: total > 0 ? m.games / total : 0,
+      score: scoreOf(delta, m.games),
       tier: tierFor(delta, m.games),
-      hasBuild: !!m.build
+      hasBuild: !!m.build,
+      lowSample: m.games < MIN_GAMES_FOR_TIER
     })
   }
-  return rows.sort((a, b) => b.delta - a.delta || b.games - a.games || a.championId - b.championId)
+  return rows.sort((a, b) => b.score - a.score || b.games - a.games || a.championId - b.championId)
 }
 
 export function championDetail(ds: MetaDataset, championId: number, role: Role): MetaChampionDetail | null {
@@ -75,19 +84,35 @@ export function championDetail(ds: MetaDataset, championId: number, role: Role):
     const mirror = c.roles[role]?.matchups[String(championId)]
     if (mirror && !vs.has(Number(id))) vs.set(Number(id), { games: mirror.games, wins: mirror.games - mirror.wins })
   }
-  const rows: (MetaMatchupRow & { sm: number })[] = []
+  type Row = MetaMatchupRow & { sm: number }
+  const rows: Row[] = []
   for (const [id, s] of vs) {
     if (s.games < MIN_MATCHUP_GAMES || id === championId) continue
-    rows.push({ championId: id, winrate: s.wins / s.games, games: s.games, sm: smooth(s) })
+    rows.push({ championId: id, winrate: s.wins / s.games, games: s.games, sm: smooth(s, MATCHUP_PRIOR_GAMES) })
   }
   rows.sort((a, b) => b.sm - a.sm || b.games - a.games)
-  const strip = ({ sm: _sm, ...r }: MetaMatchupRow & { sm: number }): MetaMatchupRow => r
-  const best = rows.filter((r) => r.sm > 0.5).slice(0, LIST_SIZE).map(strip)
-  const worst = rows.filter((r) => r.sm < 0.5).slice(-LIST_SIZE).reverse().map(strip)
+  const strip = ({ sm: _sm, ...r }: Row): MetaMatchupRow => r
+  let best = rows.filter((r) => r.sm > 0.5).slice(0, LIST_SIZE).map(strip)
+  let worst = rows.filter((r) => r.sm < 0.5).slice(-LIST_SIZE).reverse().map(strip)
+
+  // Poucos confrontos diretos na rota (campeão raro ou pouca coleta): completa com o desempenho contra o
+  // campeão em qualquer rota ("vs time inimigo"), que tem bem mais partidas. Fica marcado como tal.
+  if (best.length < 3 || worst.length < 3) {
+    const lane = new Set(rows.map((r) => r.championId))
+    const wide: Row[] = []
+    for (const [id, s] of Object.entries(m.versus ?? {})) {
+      const foe = Number(id)
+      if (s.games < MIN_PAIR_GAMES || foe === championId || lane.has(foe)) continue
+      wide.push({ championId: foe, winrate: s.wins / s.games, games: s.games, sm: smooth(s, MATCHUP_PRIOR_GAMES), anyLane: true })
+    }
+    wide.sort((a, b) => b.sm - a.sm || b.games - a.games)
+    if (best.length < 3) best = [...best, ...wide.filter((r) => r.sm > 0.5).slice(0, LIST_SIZE - best.length).map(strip)]
+    if (worst.length < 3) worst = [...worst, ...wide.filter((r) => r.sm < 0.5).slice(-(LIST_SIZE - worst.length)).reverse().map(strip)]
+  }
 
   const base = smooth(m)
   const allies = Object.entries(m.synergies ?? {})
-    .filter(([, s]) => s.games >= MIN_MATCHUP_GAMES)
+    .filter(([, s]) => s.games >= MIN_PAIR_GAMES)
     .map(([id, s]) => ({ championId: Number(id), delta: (smooth(s) - base) * 100, games: s.games }))
     .filter((a) => a.delta > 0)
     .sort((a, b) => b.delta - a.delta)

@@ -9,9 +9,10 @@ import { DataDragon } from '../data/ddragon'
 import { MetaStore, MetaUpdateError } from '../data/meta'
 import { recommend } from '../data/recommender'
 import { buildSituation } from '../data/situation'
+import { banPhaseOpen, suggestBans } from '../data/bans'
 import { championDetail, tierRows } from '../data/metaStats'
 import { ROLES, type ChampionInfo, type ItemInfo } from '../../shared/dataTypes'
-import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO } from '../../shared/config'
+import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO, regionUrl } from '../../shared/config'
 import { decodeShare, encodeShare, toFileJson } from '../store/share'
 import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
 import { AutoAccept } from '../autoAccept'
@@ -268,6 +269,18 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     if (typeof req.championId !== 'number' || !ROLES.includes(role)) return null
     return meta.getBuild(req.championId, role)
   })
+  // ---- Sugestões de banimento (só enquanto os bans ainda estão abertos)
+  handle(IPC.DRAFT_BANS, (raw) => {
+    const req = isRecord(raw) ? raw : {}
+    const draft = annotatedDraft()
+    if (!draft || !banPhaseOpen(draft)) return []
+    return suggestBans({
+      draft,
+      dataset: meta.get(),
+      profiles: profiles.list(),
+      fallbackProfileId: typeof req.profileId === 'string' ? req.profileId : undefined
+    })
+  })
   // ---- Build ajustada à partida (time inimigo atual)
   handle(IPC.META_BUILD_SITUATION, async (raw) => {
     const req = isRecord(raw) ? raw : {}
@@ -321,7 +334,11 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   })
 
   // ---- Atualização do meta pela internet (endereço do usuário, ou o padrão do instalador)
-  const metaUrl = (): string | null => profiles.getSettings().metaUrl ?? (DEFAULT_META_URL || null)
+  const metaUrl = (): string | null => {
+    const s = profiles.getSettings()
+    const base = s.metaUrl ?? (DEFAULT_META_URL || null)
+    return base ? regionUrl(base, s.metaRegion) : null
+  }
 
   async function updateMeta(): Promise<UpdateMetaResult> {
     const url = metaUrl()

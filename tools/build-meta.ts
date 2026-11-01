@@ -21,7 +21,9 @@ Requer a variável de ambiente RIOT_API_KEY (developer.riotgames.com).
   --rps <n>                          requisições por segundo (padrão: 0.8, o limite da chave de desenvolvimento)
   --no-timeline                      não baixa timelines: sem builds, metade das requisições
   --min-games <n>                    jogos mínimos de um campeão numa rota (padrão: 30)
-  --min-matchup-games <n>            jogos mínimos de um confronto (padrão: 8)
+  --min-matchup-games <n>            jogos mínimos de um confronto de rota (padrão: 3)
+  --min-pair-games <n>               jogos mínimos de uma sinergia ou "contra o time inimigo" (padrão: 6)
+  --timeline-matches <n>             timelines (builds) só nas n primeiras partidas; as demais contam só winrates e confrontos (padrão: todas)
   --min-build-samples <n>            vitórias mínimas para publicar uma build (padrão: 15)
   --out <arquivo>                    saída (padrão: meta.json)
   --work <pasta>                     checkpoint (padrão: meta-work)
@@ -43,7 +45,9 @@ const { values: v } = parseArgs({
     rps: { type: 'string', default: '0.8' },
     'no-timeline': { type: 'boolean', default: false },
     'min-games': { type: 'string', default: '30' },
-    'min-matchup-games': { type: 'string', default: '8' },
+    'min-matchup-games': { type: 'string', default: '3' },
+    'min-pair-games': { type: 'string', default: '6' },
+    'timeline-matches': { type: 'string', default: '0' },
     'min-build-samples': { type: 'string', default: '15' },
     out: { type: 'string', default: 'meta.json' },
     work: { type: 'string', default: 'meta-work' },
@@ -89,6 +93,8 @@ async function main(): Promise<void> {
     out: String(v.out),
     minGames: num('min-games', v['min-games'], 1),
     minMatchupGames: num('min-matchup-games', v['min-matchup-games'], 1),
+    minPairGames: num('min-pair-games', v['min-pair-games'], 1),
+    timelineMatches: num('timeline-matches', v['timeline-matches'], 0),
     minBuildSamples: num('min-build-samples', v['min-build-samples'], 1),
     timeline: !v['no-timeline'],
     seed: num('seed', v.seed, 1),

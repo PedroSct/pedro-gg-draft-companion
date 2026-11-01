@@ -18,3 +18,12 @@ export const DEFAULT_META_URL = 'https://raw.githubusercontent.com/PedroSct/pedr
  * já informa o repositório sozinho (variável GITHUB_REPOSITORY) na hora de gerar o instalador.
  */
 export const DEFAULT_UPDATE_REPO = 'PedroSct/pedro-gg-draft-companion'
+
+/**
+ * Endereço do arquivo de uma região. O workflow publica `meta.json` (global) e `meta-<região>.json`
+ * lado a lado; só endereços que terminam em `/meta.json` são trocados (endereços próprios ficam como estão).
+ */
+export function regionUrl(url: string, region: string): string {
+  if (region === 'global' || !/^[a-z0-9]{2,8}$/.test(region)) return url
+  return url.replace(/\/meta\.json(?=$|[?#])/, `/meta-${region}.json`)
+}

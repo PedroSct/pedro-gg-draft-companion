@@ -42,7 +42,7 @@ export function buildSituation(input: {
   const total = physical + magic
   const enemyDamage = known > 0 && total > 0 ? { physical: physical / total, magic: magic / total } : null
 
-  const out: BuildSituation = { enemiesKnown: known, enemyDamage, tankyEnemies: tanky, focus: null, picks: [], variantIndex: null }
+  const out: BuildSituation = { enemiesKnown: known, enemyDamage, tankyEnemies: tanky, focus: null, picks: [], variantCore: null }
   if (!build || !enemyDamage || weight < 1) return out
 
   let focus: BuildSituation['focus'] = null
@@ -64,6 +64,7 @@ export function buildSituation(input: {
   const seen = new Set<number>()
   const pool: number[] = []
   for (const s of build.items.situational) pool.push(s.itemId)
+  for (const v of build.options?.core ?? []) for (const id of v.value) pool.push(id)
   for (const v of build.variants ?? []) for (const id of v.core) pool.push(id)
   for (const id of pool) {
     if (seen.has(id) || main.has(id)) continue
@@ -73,20 +74,19 @@ export function buildSituation(input: {
   }
 
   // Construção alternativa que mais encaixa (a principal continua valendo se nenhuma ajudar mais)
-  const variants = build.variants ?? []
+  const variants: number[][] = build.options?.core?.map((c) => c.value) ?? build.variants?.map((v) => v.core) ?? []
   if (variants.length > 1) {
-    const score = (ids: number[]): number => ids.filter((id) => tagsFor(id)).length
-    const base = score(variants[0].core)
+    const score = (list: number[]): number => list.filter((id) => tagsFor(id)).length
     let best = 0
-    let bestScore = base
+    let bestScore = score(variants[0])
     variants.forEach((v, i) => {
-      const s = score(v.core)
+      const s = score(v)
       if (s > bestScore) {
         best = i
         bestScore = s
       }
     })
-    if (best > 0) out.variantIndex = best
+    if (best > 0) out.variantCore = variants[best]
   }
   return out
 }

@@ -5,12 +5,15 @@ import { promises as fs } from 'node:fs'
 import type { Role } from '../../shared/types'
 import {
   ROLES,
+  type BuildOption,
+  type BuildOptions,
   type BuildVariant,
   type ChampionBuild,
   type ChampionProfile,
   type MetaDataset,
   type MetaInfo,
   type RoleMeta,
+  type RunePage,
   type SkillKey,
   type WinStats
 } from '../../shared/dataTypes'
@@ -72,13 +75,57 @@ function parseVariants(raw: unknown): BuildVariant[] {
   })
 }
 
+function asOpt<T>(v: unknown, parse: (value: unknown) => T | null): BuildOption<T>[] {
+  if (!Array.isArray(v)) return []
+  return v.slice(0, 8).flatMap((o: unknown) => {
+    if (!isRecord(o)) return []
+    const stats = asStats(o)
+    const value = stats ? parse(o.value) : null
+    return stats && value !== null ? [{ value, games: stats.games, wins: stats.wins }] : []
+  })
+}
+
+function parseOptions(raw: unknown): BuildOptions | undefined {
+  if (!isRecord(raw)) return undefined
+  const games = typeof raw.games === 'number' && raw.games >= 0 ? raw.games : 0
+  const timeline = typeof raw.timeline === 'number' && raw.timeline >= 0 ? raw.timeline : 0
+  const runes = asOpt<RunePage>(raw.runes, (v) => parseRunes({ runes: v }).runes ?? null)
+  const spells = asOpt<[number, number]>(raw.spells, (v) => parseRunes({ spells: v }).spells ?? null)
+  const starting = asOpt<number[]>(raw.starting, (v) => {
+    const list = idList(v)
+    return list.length ? list : null
+  })
+  const boots = asOpt<number>(raw.boots, (v) => (Number.isInteger(v) && (v as number) > 0 ? (v as number) : null))
+  const core = asOpt<number[]>(raw.core, (v) => {
+    const list = idList(v)
+    return list.length === 3 ? list : null
+  })
+  const skills = asOpt<{ priority: SkillKey[]; levels?: SkillKey[] }>(raw.skills, (v) => {
+    if (!isRecord(v)) return null
+    const pick = (x: unknown): SkillKey[] => (Array.isArray(x) ? x.filter((k): k is SkillKey => typeof k === 'string' && SKILL_KEYS.includes(k)) : [])
+    const priority = pick(v.priority)
+    const levels = pick(v.levels)
+    return priority.length ? { priority, ...(levels.length === 18 ? { levels } : {}) } : null
+  })
+  const out: BuildOptions = {
+    games,
+    timeline,
+    ...(runes.length ? { runes } : {}),
+    ...(spells.length ? { spells } : {}),
+    ...(starting.length ? { starting } : {}),
+    ...(boots.length ? { boots } : {}),
+    ...(core.length ? { core } : {}),
+    ...(skills.length ? { skills } : {})
+  }
+  return Object.keys(out).length > 2 ? out : undefined
+}
+
 function parseBuild(raw: unknown): ChampionBuild | undefined {
-  if (!isRecord(raw) || !isRecord(raw.skillOrder) || !isRecord(raw.items)) return undefined
+  if (!isRecord(raw) || !isRecord(raw.items)) return undefined
   const skills = (v: unknown): SkillKey[] =>
     Array.isArray(v) ? v.filter((k): k is SkillKey => typeof k === 'string' && SKILL_KEYS.includes(k)) : []
-  const priority = skills(raw.skillOrder.priority)
-  if (!priority.length) return undefined
-  const levels = skills(raw.skillOrder.levels)
+  const priority = isRecord(raw.skillOrder) ? skills(raw.skillOrder.priority) : []
+  const levels = isRecord(raw.skillOrder) ? skills(raw.skillOrder.levels) : []
 
   const situational = Array.isArray(raw.items.situational)
     ? raw.items.situational.flatMap((s: unknown) =>
@@ -89,16 +136,22 @@ function parseBuild(raw: unknown): ChampionBuild | undefined {
     : []
 
   const variants = parseVariants(raw.variants)
+  const options = parseOptions(raw.options)
+  const items = {
+    starting: idList(raw.items.starting),
+    boots: idList(raw.items.boots),
+    core: idList(raw.items.core),
+    situational
+  }
+  const runesSpells = parseRunes(raw)
+  // Uma build precisa de pelo menos uma parte útil
+  if (!priority.length && !runesSpells.runes && !runesSpells.spells && !options && !items.core.length && !items.starting.length && !items.boots.length) return undefined
   return {
-    ...parseRunes(raw),
+    ...runesSpells,
     ...(variants.length ? { variants } : {}),
-    skillOrder: { priority, ...(levels.length ? { levels } : {}) },
-    items: {
-      starting: idList(raw.items.starting),
-      boots: idList(raw.items.boots),
-      core: idList(raw.items.core),
-      situational
-    }
+    ...(options ? { options } : {}),
+    ...(priority.length ? { skillOrder: { priority, ...(levels.length ? { levels } : {}) } } : {}),
+    items
   }
 }
 
@@ -246,7 +299,8 @@ export class MetaStore {
       patch: d.patch,
       generatedAt: d.generatedAt,
       isSample: d.isSample === true || d.source === 'sample',
-      champions: Object.keys(d.champions).length
+      champions: Object.keys(d.champions).length,
+      ...(d.regions?.length ? { regions: d.regions } : {})
     }
   }
 
@@ -287,6 +341,8 @@ export class MetaStore {
       throw new MetaUpdateError('network', 'Não foi possível acessar o servidor')
     }
     if (res.status === 304 && this.dataset) return { changed: false, info: this.info() as MetaInfo }
+    if (res.status === 404)
+      throw new MetaUpdateError('network', 'Esse arquivo de dados ainda não foi publicado (rode o workflow “Atualizar dados de meta”)')
     if (!res.ok) throw new MetaUpdateError('network', `O servidor respondeu ${res.status}`)
     if (res.url && !res.url.startsWith('https:')) throw new MetaUpdateError('invalid', 'O servidor redirecionou para um endereço sem https')
 

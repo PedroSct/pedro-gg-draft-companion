@@ -1,10 +1,11 @@
 // tools/merge-meta.ts
-// Junta as coletas de vários servidores (arquivos state-v2-<plataforma>-<patch>.json) em um único meta.json.
+// Junta as coletas de vários servidores (arquivos state-v3-<plataforma>-<patch>.json) em um único meta.json.
 //
 //   pnpm meta:merge --out meta.json states/state-v2-br1-16.21.json states/state-v2-kr-16.21.json
 //
 // As contagens são somadas (um servidor com mais partidas pesa mais). Coletas de outro patch são ignoradas.
 import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { validateDataset } from '../src/main/data/meta'
 import { writeJsonAtomic } from '../src/main/store/fsJson'
@@ -16,7 +17,9 @@ const { values: v, positionals } = parseArgs({
   options: {
     out: { type: 'string', default: 'meta.json' },
     'min-games': { type: 'string', default: '30' },
-    'min-matchup-games': { type: 'string', default: '8' },
+    'min-matchup-games': { type: 'string', default: '3' },
+    'min-pair-games': { type: 'string', default: '6' },
+    'per-region': { type: 'boolean', default: false },
     'min-build-samples': { type: 'string', default: '15' }
   }
 })
@@ -26,12 +29,12 @@ interface Saved {
 }
 
 function regionOf(file: string): string {
-  return /state-v2-([a-z0-9]+)-/.exec(file)?.[1] ?? 'desconhecido'
+  return /state-v\d+-([a-z0-9]+)-/.exec(file)?.[1] ?? 'desconhecido'
 }
 
 function main(): void {
   if (positionals.length === 0) {
-    console.error('Uso: pnpm meta:merge --out meta.json <state-v2-*.json>...')
+    console.error('Uso: pnpm meta:merge --out meta.json <state-v3-*.json>...')
     process.exit(2)
   }
   const loaded: { file: string; agg: AggState }[] = []
@@ -56,19 +59,43 @@ function main(): void {
   const { merged, used, skipped } = mergeStates(loaded.map((l) => l.agg))
   for (const i of skipped) console.error(`Patch diferente (${loaded[i].agg.patch} ≠ ${patch}), ignorado: ${loaded[i].file}`)
   const regions = [...new Set(used.map((i) => regionOf(loaded[i].file)))]
+  const options = {
+    minGames: Number(v['min-games']),
+    minMatchupGames: Number(v['min-matchup-games']),
+    minPairGames: Number(v['min-pair-games']),
+    minBuildSamples: Number(v['min-build-samples'])
+  }
+  const out = String(v.out)
   const dataset = validateDataset(
     finalize(merged, {
-      minGames: Number(v['min-games']),
-      minMatchupGames: Number(v['min-matchup-games']),
-      minBuildSamples: Number(v['min-build-samples']),
+      ...options,
       source: `Riot Match-v5 (${regions.join('+')}), ${merged.matches} partidas`,
       generatedAt: new Date().toISOString(),
       regions
     })
   )
-  void writeJsonAtomic(String(v.out), dataset).then(() => {
-    console.error(`Gerado ${v.out}: ${Object.keys(dataset.champions).length} campeões, ${merged.matches} partidas, servidores: ${regions.join(', ')}`)
-  })
+  const writes: Promise<void>[] = [writeJsonAtomic(out, dataset)]
+  console.error(`Gerado ${out}: ${Object.keys(dataset.champions).length} campeões, ${merged.matches} partidas, servidores: ${regions.join(', ')}`)
+
+  // Um arquivo por servidor (meta-br1.json...), para o app poder escolher entre "Global" e um servidor.
+  if (v['per-region']) {
+    for (const i of used) {
+      const region = regionOf(loaded[i].file)
+      const one = loaded[i].agg
+      const file = path.join(path.dirname(out), `meta-${region}.json`)
+      const ds = validateDataset(
+        finalize(one, {
+          ...options,
+          source: `Riot Match-v5 (${region}), ${one.matches} partidas`,
+          generatedAt: new Date().toISOString(),
+          regions: [region]
+        })
+      )
+      writes.push(writeJsonAtomic(file, ds))
+      console.error(`Gerado ${file}: ${Object.keys(ds.champions).length} campeões, ${one.matches} partidas`)
+    }
+  }
+  void Promise.all(writes)
 }
 
 main()
