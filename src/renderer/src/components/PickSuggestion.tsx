@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Role } from '../../../shared/types'
-import { ROLES, type Confidence, type PickScore, type PickRisk, type RecommendMode } from '../../../shared/dataTypes'
+import { ROLES, type CompReason, type Confidence, type PickScore, type PickRisk, type RecommendMode } from '../../../shared/dataTypes'
 import type { ExclusionReason } from '../../../shared/dataTypes'
 import { selectActiveProfile, selectFocusPlayer, selectFocusProfile, useApp } from '../store/useApp'
 import { pct, ROLE_LABEL, ROLE_SHORT, signed } from '../lib/format'
@@ -147,7 +147,7 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
         </div>
       </div>
       <dl
-        className="grid grid-cols-4 gap-px bg-line/60 text-center"
+        className="grid grid-cols-3 gap-px bg-line/60 text-center sm:grid-cols-6"
         title="Quanto cada fator somou ao score, em pontos"
       >
         {(
@@ -155,6 +155,8 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
             ['Matchup', pick.factors.matchup],
             ['Rota', pick.factors.baseline],
             ['Sinergia', pick.factors.synergy],
+            ['Vs time inimigo', pick.factors.versus],
+            ['Composição', pick.factors.comp],
             ['Conforto', pick.factors.comfort]
           ] as const
         ).map(([label, value]) => (
@@ -198,6 +200,32 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
           )}
         </div>
       )}
+      {(pick.compReasons.length > 0 || pick.versusList.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-deck px-4 pb-2.5" aria-label="Encaixe no time">
+          {pick.compReasons.map((r) => (
+            <span
+              key={r}
+              className={`rounded-full px-2.5 py-0.5 text-xs ${COMP_GOOD.has(r) ? 'bg-ally/15 text-ally' : 'bg-enemy/15 text-enemy'}`}
+            >
+              {COMP_TEXT[r]}
+            </span>
+          ))}
+          {pick.versusList.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5" aria-label="Desempenho contra o time inimigo">
+              <span className="text-xs text-mist">Vs time</span>
+              {pick.versusList.slice(0, 3).map((m) => (
+                <ChampChip
+                  key={m.withChampionId}
+                  id={m.withChampionId}
+                  text={signed(m.delta)}
+                  tone={m.delta >= 0.5 ? 'good' : m.delta <= -0.5 ? 'bad' : 'neutral'}
+                  title={`${signed(m.delta)} pontos de vitória contra ele em qualquer rota (${m.games} partidas)`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {pick.risk.level !== 'none' && (
         <div className="bg-deck px-4 pb-3">
           <RiskBadge risk={pick.risk} />
@@ -207,6 +235,17 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
     </section>
   )
 }
+
+const COMP_TEXT: Record<CompReason, string> = {
+  'adds-magic': 'Traz dano mágico que o time não tem',
+  'adds-physical': 'Traz dano físico que o time não tem',
+  'too-much-physical': 'Time já tem muito dano físico',
+  'too-much-magic': 'Time já tem muito dano mágico',
+  'adds-frontline': 'Dá frontline ao time',
+  'frontline-surplus': 'O time já tem tanque suficiente',
+  'adds-cc': 'Traz controle de grupo'
+}
+const COMP_GOOD = new Set<CompReason>(['adds-magic', 'adds-physical', 'adds-frontline', 'adds-cc'])
 
 function AltRow({ pick, selected, onSelect }: { pick: PickScore; selected: boolean; onSelect: () => void }) {
   const name = useChampionName(pick.championId)

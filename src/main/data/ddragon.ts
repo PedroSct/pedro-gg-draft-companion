@@ -159,7 +159,8 @@ export class DataDragon {
         id: Number(id),
         name: it.name,
         iconUrl: this.imgUrl(version, 'item', String(it.image.full)),
-        goldTotal: gold
+        goldTotal: gold,
+        ...(Array.isArray(it.tags) ? { tags: it.tags.filter((t): t is string => typeof t === 'string') } : {})
       }
     }
     const [runes, summoners] = await Promise.all([this.runesOf(version, locale), this.summonersOf(version, locale)])

@@ -81,7 +81,29 @@ export interface RunePage {
   perkIds: number[]
 }
 
+/** Uma construção alternativa: os 3 primeiros itens completos (na ordem de compra) e a bota inicial. */
+export interface BuildVariant {
+  core: number[]
+  boots?: number
+  /** fração (0..1) das vitórias analisadas que seguiram esta construção */
+  share: number
+}
+
+/** Como o campeão joga de verdade (médias reais de partidas), por rota. */
+export interface ChampionProfile {
+  /** fatias do dano causado a campeões; somam 1 */
+  physical: number
+  magic: number
+  true: number
+  /** dano sofrido + mitigado por minuto */
+  durability: number
+  /** segundos de controle de grupo aplicados por minuto */
+  cc: number
+}
+
 export interface ChampionBuild {
+  /** construções alternativas mais usadas nas vitórias (a principal vem em `items`) */
+  variants?: BuildVariant[]
   /** runas mais usadas nas vitórias (ausente em dados antigos) */
   runes?: RunePage
   /** feitiços de invocador mais usados nas vitórias */
@@ -105,6 +127,10 @@ export interface RoleMeta extends WinStats {
   matchups: Record<string, WinStats>
   /** chave = championId de um aliado (em qualquer rota): partidas em que os dois jogaram no mesmo time */
   synergies?: Record<string, WinStats>
+  /** chave = campeão do time inimigo (em qualquer rota): partidas em que enfrentaram este campeão */
+  versus?: Record<string, WinStats>
+  /** dano, tanque e CC reais do campeão nesta rota */
+  profile?: ChampionProfile
   build?: ChampionBuild
 }
 
@@ -114,6 +140,8 @@ export interface MetaDataset {
   isSample?: boolean
   patch: string
   generatedAt: string
+  /** servidores que entraram nas estatísticas (ex.: ['br1','kr']) */
+  regions?: string[]
   /** chave = championId (string) */
   champions: Record<string, { roles: Partial<Record<Role, RoleMeta>> }>
 }
@@ -143,6 +171,8 @@ export interface ItemInfo {
   name: string
   iconUrl: string
   goldTotal: number
+  /** categorias do Data Dragon (ex.: 'Armor', 'SpellBlock', 'ArmorPenetration'); ausente em caches antigos */
+  tags?: string[]
 }
 
 export interface SpellInfo {
@@ -216,7 +246,37 @@ export interface PickScore {
   synergies: SynergyFactor[]
   risk: PickRisk
   /** contribuição de cada fator no score, em pontos */
-  factors: { matchup: number; baseline: number; comfort: number; synergy: number }
+  factors: { matchup: number; baseline: number; comfort: number; synergy: number; versus: number; comp: number }
+  /** desempenho médio contra os campeões inimigos (fora da rota), em pontos percentuais; null = sem dados */
+  versusDelta: number | null
+  versusList: SynergyFactor[]
+  /** o que este pick muda na composição do time */
+  compReasons: CompReason[]
+}
+
+/** Motivos de composição (o texto fica na interface). */
+export type CompReason =
+  | 'adds-magic'
+  | 'adds-physical'
+  | 'too-much-physical'
+  | 'too-much-magic'
+  | 'adds-frontline'
+  | 'frontline-surplus'
+  | 'adds-cc'
+
+/** Ajustes de build para a partida atual (time inimigo e aliado). */
+export interface BuildSituation {
+  /** inimigos já conhecidos (escolhidos ou em hover) */
+  enemiesKnown: number
+  /** fatias do dano do time inimigo; null se não há inimigos conhecidos */
+  enemyDamage: { physical: number; magic: number } | null
+  /** inimigos com muito tanque */
+  tankyEnemies: number
+  focus: 'armor' | 'magic-resist' | 'penetration' | null
+  /** itens do próprio campeão (situacionais e variantes) que atendem ao foco */
+  picks: { itemId: number; reason: 'armor' | 'magic-resist' | 'penetration' }[]
+  /** índice em build.variants da construção que melhor encaixa; null = a principal */
+  variantIndex: number | null
 }
 
 export interface Recommendation {

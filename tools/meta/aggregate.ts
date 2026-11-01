@@ -2,7 +2,7 @@
 // Transforma partidas do Match-v5 (e suas timelines) em estatísticas e builds.
 // Tudo aqui é função pura sobre um estado serializável, então dá para retomar uma coleta interrompida.
 import type { Role } from '../../src/shared/types'
-import type { ChampionBuild, MetaDataset, RoleMeta, SituationalItem, WinStats } from '../../src/shared/dataTypes'
+import type { BuildVariant, ChampionBuild, ChampionProfile, MetaDataset, RoleMeta, SituationalItem, WinStats } from '../../src/shared/dataTypes'
 
 // ------------------------------------------------------------ tipos crus da API (só o que usamos)
 
@@ -12,6 +12,12 @@ export interface RawParticipant {
   teamId: number
   teamPosition?: string
   win: boolean
+  physicalDamageDealtToChampions?: number
+  magicDamageDealtToChampions?: number
+  trueDamageDealtToChampions?: number
+  totalDamageTaken?: number
+  damageSelfMitigated?: number
+  timeCCingOthers?: number
   summoner1Id?: number
   summoner2Id?: number
   perks?: {
@@ -63,11 +69,27 @@ export interface BuildAgg {
   runes?: Counter
   /** "feitiçoA,feitiçoB" (ordenados) → vitórias */
   spells?: Counter
+  /** "a,b,c|botas" (3 primeiros itens completos em ordem de compra) → vitórias */
+  variants?: Counter
+}
+/** Somas para o perfil de um campeão (dano por tipo, tanque e CC). */
+export interface ProfAgg {
+  n: number
+  minutes: number
+  physical: number
+  magic: number
+  true: number
+  /** dano sofrido + mitigado */
+  absorbed: number
+  cc: number
 }
 export interface RoleAgg extends WinStats {
   matchups: Record<string, WinStats>
   /** chave = campeão aliado (qualquer rota). Ausente em checkpoints antigos. */
   synergies?: Record<string, WinStats>
+  /** chave = campeão inimigo (qualquer rota). Ausente em checkpoints antigos. */
+  versus?: Record<string, WinStats>
+  prof?: ProfAgg
   build: BuildAgg
 }
 export interface AggState {
@@ -307,6 +329,33 @@ export function addMatch(state: AggState, match: RawMatch, timeline: RawTimeline
     }
   }
 
+  // Contra o time inimigo inteiro (qualquer rota) e perfil real de dano/tanque/CC.
+  const minutes = (match.info?.gameDuration ?? 0) / 60
+  const num = (v: number | undefined): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0)
+  for (const me of participants) {
+    const role = toRole(me.teamPosition)
+    if (!role || !(me.championId > 0)) continue
+    const agg = roleAgg(state, me.championId, role)
+    const table = (agg.versus ??= {})
+    for (const foe of participants) {
+      if (foe.teamId === me.teamId || !(foe.championId > 0)) continue
+      const st = (table[String(foe.championId)] ??= { games: 0, wins: 0 })
+      st.games++
+      if (me.win) st.wins++
+    }
+    const prof = (agg.prof ??= { n: 0, minutes: 0, physical: 0, magic: 0, true: 0, absorbed: 0, cc: 0 })
+    const dealt = num(me.physicalDamageDealtToChampions) + num(me.magicDamageDealtToChampions) + num(me.trueDamageDealtToChampions)
+    if (minutes > 0 && dealt > 0) {
+      prof.n++
+      prof.minutes += minutes
+      prof.physical += num(me.physicalDamageDealtToChampions)
+      prof.magic += num(me.magicDamageDealtToChampions)
+      prof.true += num(me.trueDamageDealtToChampions)
+      prof.absorbed += num(me.totalDamageTaken) + num(me.damageSelfMitigated)
+      prof.cc += num(me.timeCCingOthers)
+    }
+  }
+
   // Confronto direto: só quando cada time tem exatamente um jogador na rota.
   for (const [role, list] of byRole) {
     if (list.length !== 2 || list[0].teamId === list[1].teamId) continue
@@ -353,6 +402,7 @@ export function addMatch(state: AggState, match: RawMatch, timeline: RawTimeline
 
     const completed: number[] = []
     for (const x of purchases) if (rules.completed.has(x.itemId) && !completed.includes(x.itemId)) completed.push(x.itemId)
+    if (completed.length >= 3) bump((build.variants ??= {}), `${completed.slice(0, 3).join(',')}|${firstBoots ? firstBoots.itemId : 0}`)
     completed.forEach((id, idx) => {
       if (idx < 3) {
         const stat = (build.core[String(id)] ??= { count: 0, posSum: 0 })
@@ -377,6 +427,8 @@ export interface FinalizeOptions {
   minBuildSamples: number
   source: string
   generatedAt: string
+  /** servidores que entraram nas estatísticas */
+  regions?: string[]
 }
 
 const top = (c: Counter): string | null => {
@@ -415,7 +467,7 @@ function buildFrom(b: BuildAgg, minSamples: number): ChampionBuild | undefined {
   for (const [id, stat] of coreRanked.slice(3)) bump(rest, id, stat.count)
   const situational: SituationalItem[] = Object.entries(rest)
     .sort((x, y) => y[1] - x[1] || Number(x[0]) - Number(y[0]))
-    .slice(0, 3)
+    .slice(0, 5)
     .map(([id, n]) => ({ itemId: Number(id), when: `Comprado em ${Math.round((n / Math.max(1, b.samples)) * 100)}% das partidas vencidas` }))
 
   const runeKey = top(b.runes ?? {})
@@ -428,15 +480,109 @@ function buildFrom(b: BuildAgg, minSamples: number): ChampionBuild | undefined {
   const spellKey = top(b.spells ?? {})
   const spells = spellKey && total(b.spells ?? {}) >= minSamples ? (spellKey.split(',').map(Number) as [number, number]) : undefined
 
+  // Construções alternativas: as 3 mais usadas (a mais comum costuma coincidir com `items`)
+  const variants: BuildVariant[] = Object.entries(b.variants ?? {})
+    .filter(([, n]) => n >= 5 && b.samples > 0 && n / b.samples >= 0.06)
+    .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1))
+    .slice(0, 3)
+    .map(([key, n]) => {
+      const [items, boot] = key.split('|')
+      const bootId = Number(boot)
+      return {
+        core: items.split(',').map(Number),
+        ...(bootId > 0 ? { boots: bootId } : {}),
+        share: Math.round((n / b.samples) * 1000) / 1000
+      }
+    })
+
   return {
     ...(runes ? { runes } : {}),
     ...(spells ? { spells } : {}),
+    ...(variants.length > 1 ? { variants } : {}),
     skillOrder: {
       priority: [...priorityKey] as ChampionBuild['skillOrder']['priority'],
       ...(levels ? { levels: [...levels] as NonNullable<ChampionBuild['skillOrder']['levels']> } : {})
     },
     items: { starting, boots, core, situational }
   }
+}
+
+const round3 = (n: number): number => Math.round(n * 1000) / 1000
+
+function profileFrom(p: ProfAgg | undefined, minSamples: number): ChampionProfile | undefined {
+  if (!p || p.n < minSamples || p.minutes <= 0) return undefined
+  const dealt = p.physical + p.magic + p.true
+  if (dealt <= 0) return undefined
+  return {
+    physical: round3(p.physical / dealt),
+    magic: round3(p.magic / dealt),
+    true: round3(p.true / dealt),
+    durability: Math.round(p.absorbed / p.minutes),
+    cc: round3(p.cc / p.minutes)
+  }
+}
+
+// ----------------------------------------------------------------- juntar várias coletas
+
+const addStats = (into: Record<string, WinStats>, from: Record<string, WinStats> | undefined): void => {
+  for (const [k, s] of Object.entries(from ?? {})) {
+    const t = (into[k] ??= { games: 0, wins: 0 })
+    t.games += s.games
+    t.wins += s.wins
+  }
+}
+const addCounter = (into: Counter, from: Counter | undefined): void => {
+  for (const [k, v] of Object.entries(from ?? {})) bump(into, k, v)
+}
+
+/**
+ * Soma as coletas de vários servidores (mesmo patch) num estado só. Estados de outro patch são ignorados;
+ * o chamador recebe a lista de quem entrou. Não altera os estados recebidos.
+ */
+export function mergeStates(states: AggState[]): { merged: AggState; used: number[]; skipped: number[] } {
+  if (states.length === 0) throw new Error('Nenhuma coleta para juntar')
+  const patch = states[0].patch
+  const merged = newState(patch)
+  const used: number[] = []
+  const skipped: number[] = []
+  states.forEach((s, i) => {
+    if (s.patch !== patch) return void skipped.push(i)
+    used.push(i)
+    merged.matches += s.matches
+    for (const [champId, roles] of Object.entries(s.champions)) {
+      for (const [role, agg] of Object.entries(roles) as [Role, RoleAgg][]) {
+        const t = roleAgg(merged, Number(champId), role)
+        t.games += agg.games
+        t.wins += agg.wins
+        addStats(t.matchups, agg.matchups)
+        addStats((t.synergies ??= {}), agg.synergies)
+        addStats((t.versus ??= {}), agg.versus)
+        if (agg.prof) {
+          const p = (t.prof ??= { n: 0, minutes: 0, physical: 0, magic: 0, true: 0, absorbed: 0, cc: 0 })
+          p.n += agg.prof.n
+          p.minutes += agg.prof.minutes
+          p.physical += agg.prof.physical
+          p.magic += agg.prof.magic
+          p.true += agg.prof.true
+          p.absorbed += agg.prof.absorbed
+          p.cc += agg.prof.cc
+        }
+        const b = t.build
+        const from = agg.build
+        b.samples += from.samples
+        for (const k of ['priority', 'skillPrefix', 'starting', 'boots', 'other'] as const) addCounter(b[k], from[k])
+        for (const [id, c] of Object.entries(from.core)) {
+          const x = (b.core[id] ??= { count: 0, posSum: 0 })
+          x.count += c.count
+          x.posSum += c.posSum
+        }
+        addCounter((b.runes ??= {}), from.runes)
+        addCounter((b.spells ??= {}), from.spells)
+        addCounter((b.variants ??= {}), from.variants)
+      }
+    }
+  })
+  return { merged, used, skipped }
 }
 
 export function finalize(state: AggState, o: FinalizeOptions): MetaDataset {
@@ -449,16 +595,29 @@ export function finalize(state: AggState, o: FinalizeOptions): MetaDataset {
       for (const [vs, s] of Object.entries(agg.matchups)) if (s.games >= o.minMatchupGames) matchups[vs] = { games: s.games, wins: s.wins }
       const synergies: Record<string, WinStats> = {}
       for (const [mate, s] of Object.entries(agg.synergies ?? {})) if (s.games >= o.minMatchupGames) synergies[mate] = { games: s.games, wins: s.wins }
+      const versus: Record<string, WinStats> = {}
+      for (const [foe, s] of Object.entries(agg.versus ?? {})) if (s.games >= o.minMatchupGames) versus[foe] = { games: s.games, wins: s.wins }
+      const profile = profileFrom(agg.prof, 20)
       const build = buildFrom(agg.build, o.minBuildSamples)
       out[role] = {
         games: agg.games,
         wins: agg.wins,
         matchups,
         ...(Object.keys(synergies).length ? { synergies } : {}),
+        ...(Object.keys(versus).length ? { versus } : {}),
+        ...(profile ? { profile } : {}),
         ...(build ? { build } : {})
       }
     }
     if (Object.keys(out).length) champions[id] = { roles: out }
   }
-  return { schemaVersion: 1, source: o.source, isSample: false, patch: state.patch, generatedAt: o.generatedAt, champions }
+  return {
+    schemaVersion: 1,
+    source: o.source,
+    isSample: false,
+    patch: state.patch,
+    generatedAt: o.generatedAt,
+    ...(o.regions?.length ? { regions: o.regions } : {}),
+    champions
+  }
 }

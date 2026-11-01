@@ -9,7 +9,7 @@ import { recommend } from '../src/main/data/recommender'
 import { validateDataset } from '../src/main/data/meta'
 import { championDetail, tierRows } from '../src/main/data/metaStats'
 import type { DraftPlayer, DraftState, LcuStatus } from '../src/shared/types'
-import type { AppSettings, Catalog, FriendProfile, UpdateState } from '../src/shared/dataTypes'
+import type { AppSettings, BuildSituation, Catalog, FriendProfile, UpdateState } from '../src/shared/dataTypes'
 import type { DecodeResult } from '../src/shared/poolShare'
 import type { IdentityState, LolApi, ProfileInput } from '../src/shared/api'
 import { analyzeMatch, summarize, type PgDetail, type PgSummary } from '../src/shared/postgame'
@@ -74,6 +74,7 @@ const draftWithZed = (): DraftState => ({
 interface Fake {
   api: LolApi
   pushUpdate(u: UpdateState): void
+  setSituation(s: BuildSituation | null): void
   installUpdate: ReturnType<typeof vi.fn>
   decodeShare: ReturnType<typeof vi.fn>
   copyText: ReturnType<typeof vi.fn>
@@ -107,6 +108,7 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     reduceMotion: false
   }
   let identity: IdentityState = { account: null, profileId: null }
+  let situation: BuildSituation | null = null
   let update: UpdateState = { status: 'idle', current: '0.1.0' }
   const updateCbs = new Set<(s: UpdateState) => void>()
   const setUpdate = (u: UpdateState): UpdateState => {
@@ -191,6 +193,7 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     getMetaTiers: async (role) => tierRows(dataset, role),
     getAccountStats: async () => ({ level: 312, tier: 'GOLD', division: 'II', lp: 45, wins: 52, losses: 48 }),
     getMetaDetail: async ({ championId, role }) => championDetail(dataset, championId, role),
+    getBuildSituation: async () => situation,
     getBuild: async ({ championId, role }) => dataset.champions[String(championId)]?.roles[role]?.build ?? null,
     importMeta: async () => ({ ok: false, reason: 'canceled' }),
     updateMeta: async () => ({ ok: false, reason: 'no-url' })
@@ -204,6 +207,9 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     decodeShare,
     copyText,
     pushUpdate: (u) => act(() => void setUpdate(u)),
+    setSituation: (s) => {
+      situation = s
+    },
     pushStatus: (s) => {
       status = s
       statusCbs.forEach((cb) => cb(s))
@@ -381,6 +387,28 @@ describe('Companion App', () => {
 
     await waitFor(() => expect(apply).toHaveBeenCalledWith({ championId: 103, role: 'MIDDLE', parts: { runes: true, spells: true, items: false } }))
     expect(await within(panel).findByText(/Runas: Runas aplicadas/)).toBeInTheDocument()
+  })
+
+  it('mostra o painel "Para esta partida" com o foco da build e o motivo da composição', async () => {
+    const fake = installApi()
+    fake.setSituation({
+      enemiesKnown: 3,
+      enemyDamage: { physical: 0.8, magic: 0.2 },
+      tankyEnemies: 0,
+      focus: 'armor',
+      picks: [{ itemId: 3089, reason: 'armor' }],
+      variantIndex: null
+    })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    const locked = draftWithZed()
+    locked.allies[1] = player(1, 103, 'locked', 'MIDDLE')
+    act(() => fake.pushDraft(locked))
+
+    const panel = await screen.findByRole('region', { name: 'Para esta partida' })
+    expect(within(panel).getByText(/priorize armadura/)).toBeInTheDocument()
+    expect(within(panel).getByText(/3 de 5 inimigos conhecidos/)).toBeInTheDocument()
+    expect(within(panel).getByText(/Boa aqui: armadura/)).toBeInTheDocument()
   })
 
   it('a aba Meta mostra o ranking da rota e o detalhe do campeão', async () => {

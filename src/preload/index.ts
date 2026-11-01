@@ -52,6 +52,7 @@ const api: LolApi = {
   getMetaTiers: (role) => ipcRenderer.invoke(IPC.META_TIERS, role),
   getMetaDetail: (req) => ipcRenderer.invoke(IPC.META_DETAIL, req),
   getBuild: (req) => ipcRenderer.invoke(IPC.META_GET_BUILD, req),
+  getBuildSituation: (req) => ipcRenderer.invoke(IPC.META_BUILD_SITUATION, req),
   importMeta: () => ipcRenderer.invoke(IPC.META_IMPORT),
   updateMeta: () => ipcRenderer.invoke(IPC.META_UPDATE),
 

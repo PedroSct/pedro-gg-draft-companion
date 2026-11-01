@@ -31,6 +31,8 @@ Requer a variável de ambiente RIOT_API_KEY (developer.riotgames.com).
 Interrompeu? Rode o mesmo comando de novo: ele retoma de onde parou.`
 
 const { values: v } = parseArgs({
+  // O pnpm repassa o "--" ao script; ele não é um argumento.
+  args: process.argv.slice(2).filter((a) => a !== '--'),
   options: {
     platform: { type: 'string', default: 'br1' },
     tiers: { type: 'string', default: 'challenger,grandmaster,master' },

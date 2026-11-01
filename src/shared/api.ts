@@ -3,6 +3,7 @@
 import type { AccountStats, DraftState, LcuIdentity, LcuStatus, Role } from './types'
 import type {
   AppSettings,
+  BuildSituation,
   Catalog,
   ChampionBuild,
   FriendProfile,
@@ -101,6 +102,8 @@ export interface LolApi {
   getMetaTiers(role: Role): Promise<MetaTierRow[]>
   getMetaDetail(req: { championId: number; role: Role }): Promise<MetaChampionDetail | null>
   getBuild(req: { championId: number; role: Role }): Promise<ChampionBuild | null>
+  /** Ajustes da build para o time inimigo atual; null fora do draft. */
+  getBuildSituation(req: { championId: number; role: Role }): Promise<BuildSituation | null>
   importMeta(): Promise<ImportMetaResult>
   /** Baixa o meta do endereço configurado (ou do padrão do instalador). */
   updateMeta(): Promise<UpdateMetaResult>

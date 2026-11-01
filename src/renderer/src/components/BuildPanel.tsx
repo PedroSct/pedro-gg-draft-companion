@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Role } from '../../../shared/types'
 import type { LoadoutParts, PartResult } from '../../../shared/loadout'
-import type { ChampionBuild, SkillKey, SpellInfo } from '../../../shared/dataTypes'
+import type { BuildSituation, ChampionBuild, SkillKey, SpellInfo } from '../../../shared/dataTypes'
 import { useApp } from '../store/useApp'
 import { useFocus } from '../lib/useFocus'
 import { ROLE_LABEL, ROLE_SHORT, splashUrl } from '../lib/format'
@@ -237,6 +237,82 @@ function ImportPanel({ championId, role, build, forLocal }: { championId: number
 
 type Status = 'loading' | 'ready' | 'error'
 
+const FOCUS_TEXT: Record<NonNullable<BuildSituation['focus']>, string> = {
+  armor: 'O time inimigo causa quase só dano físico: priorize armadura.',
+  'magic-resist': 'O time inimigo causa quase só dano mágico: priorize resistência mágica.',
+  penetration: 'O time inimigo tem vários tanques: priorize penetração.'
+}
+const REASON_TEXT = { armor: 'armadura', 'magic-resist': 'resistência mágica', penetration: 'penetração' } as const
+
+/** "Para esta partida": o que muda na build por causa do time inimigo (só aparece com inimigos conhecidos). */
+function SituationCard({ situation, build }: { situation: BuildSituation; build: ChampionBuild }) {
+  const dmg = situation.enemyDamage
+  if (!dmg || situation.enemiesKnown === 0) return null
+  const ad = Math.round(dmg.physical * 100)
+  const ap = 100 - ad
+  const variant = situation.variantIndex !== null ? build.variants?.[situation.variantIndex] : undefined
+  return (
+    <section aria-label="Para esta partida" className="rounded-xl border border-ally/25 bg-ally/5 p-3">
+      <h3 className="font-display text-base font-semibold text-ally">Para esta partida</h3>
+      <div className="mt-2" role="img" aria-label={`Dano inimigo: ${ad}% físico, ${ap}% mágico`}>
+        <div className="flex h-2 overflow-hidden rounded-full bg-raised">
+          <span className="bg-gold" style={{ width: `${ad}%` }} />
+          <span className="bg-ally" style={{ width: `${ap}%` }} />
+        </div>
+        <p className="mt-1 flex justify-between text-xs text-mist">
+          <span>{ad}% físico</span>
+          <span>{ap}% mágico</span>
+        </p>
+      </div>
+      <p className="mt-2 text-sm">
+        {situation.focus ? FOCUS_TEXT[situation.focus] : 'Dano inimigo equilibrado: siga a build padrão.'}
+        {situation.enemiesKnown < 5 && <span className="text-mist"> ({situation.enemiesKnown} de 5 inimigos conhecidos)</span>}
+      </p>
+      {situation.picks.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-2">
+          {situation.picks.map((p) => (
+            <SituationalItem key={p.itemId} id={p.itemId} when={`Boa aqui: ${REASON_TEXT[p.reason]}`} />
+          ))}
+        </ul>
+      )}
+      {situation.focus && situation.picks.length === 0 && (
+        <p className="mt-1 text-xs text-mist">Os dados deste campeão não trazem um item de {REASON_TEXT[situation.focus]} entre os mais comprados.</p>
+      )}
+      {variant && (
+        <div className="mt-2">
+          <ItemRow title="Construção que encaixa melhor nesta partida" ids={variant.core} chain />
+        </div>
+      )}
+    </section>
+  )
+}
+
+function VariantsView({ build, highlight }: { build: ChampionBuild; highlight: number | null }) {
+  const variants = build.variants
+  if (!variants || variants.length < 2) return null
+  return (
+    <div>
+      <h4 className="mb-1.5 text-xs text-mist">Outras construções frequentes nas vitórias</h4>
+      <ul className="flex flex-col gap-2">
+        {variants.map((v, i) => (
+          <li key={v.core.join('-')} className="flex flex-wrap items-center gap-2">
+            <span className="num w-10 text-sm text-mist">{Math.round(v.share * 100)}%</span>
+            <div className="flex items-center gap-1">
+              {v.core.map((id, k) => (
+                <div key={`${id}-${k}`} className="flex items-center gap-1">
+                  {k > 0 && <span className="text-dim" aria-hidden="true">›</span>}
+                  <ItemIcon id={id} size={32} />
+                </div>
+              ))}
+            </div>
+            {i === highlight && <span className="rounded-full bg-ally/15 px-2 py-0.5 text-xs text-ally">encaixa melhor agora</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function BuildPanel() {
   const focus = useFocus()
   const champ = useApp((s) => (focus ? s.champById.get(focus.championId) : undefined))
@@ -244,6 +320,9 @@ export function BuildPanel() {
   const setRoleOverride = useApp((s) => s.setRoleOverride)
   const [data, setData] = useState<{ build: ChampionBuild | null; spells: SpellInfo[] }>({ build: null, spells: [] })
   const [status, setStatus] = useState<Status>('loading')
+  const [situation, setSituation] = useState<BuildSituation | null>(null)
+  // Muda quando um inimigo é escolhido, trocado ou travado: refaz os ajustes da build.
+  const enemySignature = useApp((s) => (s.draft ? s.draft.enemies.map((e) => `${e.championId}${e.status}`).join(',') : ''))
 
   const championId = focus?.championId
   const role = focus?.role
@@ -269,6 +348,21 @@ export function BuildPanel() {
       cancelled = true
     }
   }, [championId, role, key])
+
+  useEffect(() => {
+    if (championId === undefined || !role) {
+      setSituation(null)
+      return
+    }
+    let cancelled = false
+    window.api
+      .getBuildSituation({ championId, role })
+      .then((s) => !cancelled && setSituation(s))
+      .catch(() => !cancelled && setSituation(null))
+    return () => {
+      cancelled = true
+    }
+  }, [championId, role, enemySignature])
 
   if (!focus) {
     return (
@@ -341,12 +435,14 @@ export function BuildPanel() {
                 {build.spells && <SpellsView spells={build.spells} />}
               </div>
             )}
+            {situation && <SituationCard situation={situation} build={build} />}
             <SkillOrder build={build} spells={data.spells} />
             <div className="flex flex-col gap-3">
               <h3 className="text-sm text-mist">Itens</h3>
               <ItemRow title="Inicial" ids={build.items.starting} />
               <ItemRow title="Botas" ids={build.items.boots} />
               <ItemRow title="Principais, na ordem de compra" ids={build.items.core} chain />
+              <VariantsView build={build} highlight={situation?.variantIndex ?? null} />
               {build.items.situational.length > 0 && (
                 <div>
                   <h4 className="mb-1.5 text-xs text-mist">Situacionais</h4>

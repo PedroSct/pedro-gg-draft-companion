@@ -394,7 +394,7 @@ describe('buildMeta (Riot simulada)', () => {
   it('gera um dataset válido com winrates, confrontos e build', async () => {
     const ds = await buildMeta(options())
     expect(ds.patch).toBe('16.20')
-    expect(ds.source).toBe('Riot Match-v5, 5 partidas') // M6 (outro patch) e M7 (remake) ficaram de fora
+    expect(ds.source).toBe('Riot Match-v5 (br1), 5 partidas') // M6 (outro patch) e M7 (remake) ficaram de fora
 
     const ahri = ds.champions['103'].roles.MIDDLE!
     expect(ahri.games).toBe(5)
@@ -431,14 +431,14 @@ describe('buildMeta (Riot simulada)', () => {
     const matchHits = (): string[] => mock.hits.filter((p) => /\/lol\/match\/v5\/matches\/BR1_\d+$/.test(p))
 
     const first = await buildMeta(options({ maxMatches: 2 }))
-    expect(first.source).toBe('Riot Match-v5, 2 partidas')
-    expect(existsSync(join(dir, 'work', 'state-br1-16.20.json'))).toBe(true)
+    expect(first.source).toBe('Riot Match-v5 (br1), 2 partidas')
+    expect(existsSync(join(dir, 'work', 'state-v2-br1-16.20.json'))).toBe(true)
     const downloadedFirst = matchHits()
     expect(downloadedFirst.length).toBeGreaterThanOrEqual(2)
 
     mock.hits.length = 0
     const second = await buildMeta(options({ maxMatches: 100 }))
-    expect(second.source).toBe('Riot Match-v5, 5 partidas')
+    expect(second.source).toBe('Riot Match-v5 (br1), 5 partidas')
     const downloadedSecond = matchHits()
     for (const p of downloadedSecond) expect(downloadedFirst).not.toContain(p) // nada baixado de novo
     // somando as duas execuções, cada partida foi baixada uma única vez (BR1_3 aparece em dois jogadores)
@@ -454,7 +454,7 @@ describe('buildMeta (Riot simulada)', () => {
     const ds = await buildMeta(options())
     expect(waits).toContain(2000)
     expect(mock.hits).toContain('/lol/summoner/v4/summoners/s9')
-    expect(ds.source).toBe('Riot Match-v5, 5 partidas')
+    expect(ds.source).toBe('Riot Match-v5 (br1), 5 partidas')
   })
 
   it('sem timelines, gera estatísticas mas nenhuma build', async () => {
@@ -500,7 +500,7 @@ describe('buildMeta (Riot simulada)', () => {
 
     mock.hits.length = 0
     const full = await buildMeta(options())
-    expect(full.source).toBe('Riot Match-v5, 5 partidas')
+    expect(full.source).toBe('Riot Match-v5 (br1), 5 partidas')
     expect(full.champions['103'].roles.MIDDLE!.games).toBe(5) // nada contado em dobro
     const again = mock.hits.filter((p) => /\/lol\/match\/v5\/matches\/BR1_\d+$/.test(p)).map((p) => `${mock.base}${p}`)
     for (const url of again) expect(downloaded).not.toContain(url) // não rebaixou o que já tinha

@@ -7,11 +7,16 @@
 //  - baseline: (winrate suavizado do campeão na rota − 50%) × 100
 //  - conforto: (nível 1..5 − 3) por nível
 //  - sinergia: quanto o winrate do campeão muda quando os aliados já escolhidos estão no time
+//  - versus  : desempenho médio contra os outros campeões do time inimigo (qualquer rota)
+//  - comp    : encaixe na composição: equilíbrio de dano físico/mágico, frontline e controle de grupo
 // Além do score, cada pick traz um "risco" (como no Draftforge): counters que o inimigo ainda pode escolher.
 // Winrates passam por suavização bayesiana (puxa para 50% quando há poucos jogos).
 import type { DraftState, Role } from '../../shared/types'
+import { traitsOf, type Traits } from '../../shared/traits'
 import {
   ROLES,
+  type ChampionInfo,
+  type CompReason,
   type Confidence,
   type ExclusionReason,
   type FriendProfile,
@@ -31,15 +36,19 @@ export interface RecommendWeights {
   /** pontos por nível de conforto acima/abaixo de 3 */
   comfort: number
   synergy: number
+  /** contra o time inimigo inteiro */
+  versus: number
+  /** encaixe na composição */
+  comp: number
 }
 
-export const DEFAULT_WEIGHTS: RecommendWeights = { matchup: 1, baseline: 0.5, comfort: 0.75, synergy: 0.6 }
+export const DEFAULT_WEIGHTS: RecommendWeights = { matchup: 1, baseline: 0.5, comfort: 0.75, synergy: 0.6, versus: 0.5, comp: 1 }
 
 /** "Equilibrado" é o padrão; "Conforto" privilegia o que você domina; "Meta" privilegia os números. */
 export const MODE_WEIGHTS: Record<RecommendMode, RecommendWeights> = {
   balanced: DEFAULT_WEIGHTS,
-  comfort: { matchup: 0.5, baseline: 0.25, comfort: 2, synergy: 0.3 },
-  meta: { matchup: 1.2, baseline: 1, comfort: 0.1, synergy: 0.8 }
+  comfort: { matchup: 0.5, baseline: 0.25, comfort: 2, synergy: 0.3, versus: 0.25, comp: 0.5 },
+  meta: { matchup: 1.2, baseline: 1, comfort: 0.1, synergy: 0.8, versus: 0.8, comp: 1 }
 }
 
 /** "Jogos fictícios" a 50% — quanto maior, mais conservador com amostras pequenas. */
@@ -64,6 +73,8 @@ export interface RecommendInput {
   /** Preset de pesos (padrão: balanced). `weights` ajusta por cima. */
   mode?: RecommendMode
   weights?: Partial<RecommendWeights>
+  /** Data Dragon: estima dano/tanque quando o meta não tem o perfil do campeão. */
+  champions?: readonly ChampionInfo[]
 }
 
 const shrink = (s: WinStats): number => (s.wins + PRIOR_GAMES / 2) / (s.games + PRIOR_GAMES)
@@ -165,6 +176,105 @@ function riskOf(
   return { level, counters }
 }
 
+/** "Jogos fictícios" do desempenho contra um campeão (em torno do winrate do próprio campeão). */
+const VERSUS_PRIOR = 40
+
+/** Média ponderada do desempenho contra os inimigos que ainda não entraram como oponente de rota. */
+function versusOf(
+  dataset: MetaDataset,
+  draft: DraftState,
+  championId: number,
+  role: Role,
+  baseline: number,
+  skip: Set<number>
+): { delta: number | null; list: SynergyFactor[] } {
+  const table = dataset.champions[String(championId)]?.roles[role]?.versus
+  if (!table) return { delta: null, list: [] }
+  const list: SynergyFactor[] = []
+  let weighted = 0
+  let weights = 0
+  for (const e of draft.enemies) {
+    if (e.championId <= 0 || e.championId === championId || skip.has(e.championId)) continue
+    const stats = table[String(e.championId)]
+    if (!stats || stats.games <= 0) continue
+    const w = e.status === 'locked' ? 1 : 0.5
+    const delta = ((stats.wins + VERSUS_PRIOR * baseline) / (stats.games + VERSUS_PRIOR) - baseline) * 100
+    weighted += w * delta
+    weights += w
+    list.push({ withChampionId: e.championId, delta, games: stats.games })
+  }
+  list.sort((x, y) => y.delta - x.delta)
+  return { delta: weights > 0 ? weighted / weights : null, list }
+}
+
+// ------------------------------------------------------------------ composição
+
+/** Quanto cada rota costuma contribuir com dano ao time. */
+const DAMAGE_WEIGHT: Record<Role, number> = { TOP: 0.8, JUNGLE: 0.7, MIDDLE: 1, BOTTOM: 1.1, UTILITY: 0.35 }
+/** Só olha a composição com pelo menos isto de aliados já conhecidos. */
+const MIN_ALLIES_FOR_COMP = 2
+/** Pontos por unidade de desequilíbrio de dano resolvido/criado (0..1). */
+const DAMAGE_BALANCE_POINTS = 25
+const FRONTLINE_POINTS = 8
+const CC_POINTS = 1.5
+
+interface CompFit {
+  points: number
+  reasons: CompReason[]
+}
+
+const imbalance = (magicShare: number): number => Math.max(0, Math.abs(magicShare - 0.5) - 0.2)
+
+/** O que o candidato muda no time: equilíbrio AP/AD, frontline e CC. */
+function compFitOf(
+  draft: DraftState,
+  candidate: Traits,
+  candidateRole: Role,
+  traitFor: (championId: number, role: Role | null) => Traits
+): CompFit {
+  const allies = draft.allies.filter((a) => a.cellId !== draft.localPlayerCellId && a.championId > 0)
+  if (allies.length < MIN_ALLIES_FOR_COMP) return { points: 0, reasons: [] }
+
+  let phys = 0
+  let magic = 0
+  let front = 0
+  let cc = 0
+  for (const a of allies) {
+    const t = traitFor(a.championId, a.role)
+    const presence = a.status === 'locked' ? 1 : 0.5
+    const dmg = (a.role ? DAMAGE_WEIGHT[a.role] : 0.8) * presence
+    phys += dmg * (t.physical + t.true * 0.5)
+    magic += dmg * (t.magic + t.true * 0.5)
+    front += presence * t.durability
+    cc += presence * t.cc
+  }
+  const before = phys + magic > 0 ? magic / (phys + magic) : 0.5
+  const own = DAMAGE_WEIGHT[candidateRole]
+  const phys1 = phys + own * (candidate.physical + candidate.true * 0.5)
+  const magic1 = magic + own * (candidate.magic + candidate.true * 0.5)
+  const after = phys1 + magic1 > 0 ? magic1 / (phys1 + magic1) : 0.5
+
+  const reasons: CompReason[] = []
+  let points = (imbalance(before) - imbalance(after)) * DAMAGE_BALANCE_POINTS
+  if (imbalance(before) - imbalance(after) > 0.02) reasons.push(before < 0.5 ? 'adds-magic' : 'adds-physical')
+  else if (imbalance(after) - imbalance(before) > 0.02 && imbalance(after) > 0) reasons.push(after < 0.5 ? 'too-much-physical' : 'too-much-magic')
+
+  // Frontline: o time precisa de pelo menos ~1,2 "unidades" de tanque (um tanque + um semi-tanque)
+  const need = Math.min(1, Math.max(-0.5, (1.2 - front) / 1.2))
+  const frontPoints = need * (candidate.durability - 0.45) * FRONTLINE_POINTS
+  points += frontPoints
+  if (frontPoints > 1) reasons.push('adds-frontline')
+  else if (frontPoints < -1 && candidate.durability > 0.6) reasons.push('frontline-surplus')
+
+  // CC: time sem controle de grupo (menos de ~0,8 unidades) ganha com quem tem
+  const ccNeed = Math.min(1, Math.max(0, (0.8 - cc) / 0.8))
+  const ccPoints = ccNeed * (candidate.cc - 0.4) * CC_POINTS * 2
+  points += ccPoints
+  if (ccPoints > 0.5) reasons.push('adds-cc')
+
+  return { points, reasons }
+}
+
 function unavailableChampions(draft: DraftState, allowMirror: boolean): Map<number, ExclusionReason> {
   const m = new Map<number, ExclusionReason>()
   for (const id of [...draft.bans.allies, ...draft.bans.enemies]) m.set(id, 'banned')
@@ -196,6 +306,17 @@ export function recommend(input: RecommendInput): Recommendation {
     const reason = unavailable.get(c.entry.championId)
     if (reason) excludedMap.set(c.entry.championId, reason)
     else candidates.push(c)
+  }
+  const champMap = input.champions ? new Map(input.champions.map((c) => [c.id, c])) : null
+  const traitCache = new Map<string, Traits>()
+  const traitFor = (championId: number, r: Role | null): Traits => {
+    const k = `${championId}|${r ?? ''}`
+    let t = traitCache.get(k)
+    if (!t) {
+      t = traitsOf(dataset, champMap, championId, r)
+      traitCache.set(k, t)
+    }
+    return t
   }
   const excluded = [...excludedMap].map(([championId, reason]) => ({ championId, reason }))
 
@@ -229,11 +350,18 @@ export function recommend(input: RecommendInput): Recommendation {
     const syn = dataset ? synergyOf(dataset, draft, id, r, baselineWinrate ?? 0.5) : { delta: null, list: [] }
     const risk = dataset ? riskOf(dataset, draft, unavailable, id, r) : { level: 'none' as const, counters: [] }
 
+    // Contra o resto do time inimigo: quem já entrou como oponente de rota não conta duas vezes.
+    const laneFoes = new Set(matchups.map((m) => m.vsChampionId))
+    const vs = dataset ? versusOf(dataset, draft, id, r, baselineWinrate ?? 0.5, laneFoes) : { delta: null, list: [] }
+    const comp = compFitOf(draft, traitFor(id, r), r, traitFor)
+
     const factors = {
       matchup: matchupWinrate === null ? 0 : (matchupWinrate - 0.5) * 100 * w.matchup,
       baseline: baselineWinrate === null ? 0 : (baselineWinrate - 0.5) * 100 * w.baseline,
       comfort: (Math.min(5, Math.max(1, entry.comfort)) - 3) * w.comfort,
-      synergy: syn.delta === null ? 0 : syn.delta * w.synergy
+      synergy: syn.delta === null ? 0 : syn.delta * w.synergy,
+      versus: vs.delta === null ? 0 : vs.delta * w.versus,
+      comp: comp.points * w.comp
     }
 
     const confidence: Confidence =
@@ -243,7 +371,7 @@ export function recommend(input: RecommendInput): Recommendation {
       championId: id,
       championKey: entry.championKey,
       role: r,
-      score: factors.matchup + factors.baseline + factors.comfort + factors.synergy,
+      score: factors.matchup + factors.baseline + factors.comfort + factors.synergy + factors.versus + factors.comp,
       comfort: entry.comfort,
       confidence,
       baselineWinrate,
@@ -253,7 +381,10 @@ export function recommend(input: RecommendInput): Recommendation {
       synergyDelta: syn.delta,
       synergies: syn.list,
       risk,
-      factors
+      factors,
+      versusDelta: vs.delta,
+      versusList: vs.list,
+      compReasons: comp.reasons
     }
   })
 

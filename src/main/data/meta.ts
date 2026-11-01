@@ -5,7 +5,9 @@ import { promises as fs } from 'node:fs'
 import type { Role } from '../../shared/types'
 import {
   ROLES,
+  type BuildVariant,
   type ChampionBuild,
+  type ChampionProfile,
   type MetaDataset,
   type MetaInfo,
   type RoleMeta,
@@ -48,6 +50,28 @@ function parseRunes(raw: Json): Pick<ChampionBuild, 'runes' | 'spells'> {
   return out
 }
 
+function parseProfile(raw: unknown): ChampionProfile | undefined {
+  if (!isRecord(raw)) return undefined
+  const n = (v: unknown, max: number): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? v : null)
+  const physical = n(raw.physical, 1)
+  const magic = n(raw.magic, 1)
+  const tru = n(raw.true, 1)
+  const durability = n(raw.durability, 100_000)
+  const cc = n(raw.cc, 1000)
+  if (physical === null || magic === null || tru === null || durability === null || cc === null) return undefined
+  return { physical, magic, true: tru, durability, cc }
+}
+
+function parseVariants(raw: unknown): BuildVariant[] {
+  if (!Array.isArray(raw)) return []
+  return raw.slice(0, 5).flatMap((v: unknown) => {
+    if (!isRecord(v)) return []
+    const core = idList(v.core)
+    if (core.length !== 3 || typeof v.share !== 'number' || !(v.share >= 0 && v.share <= 1)) return []
+    return [{ core, ...(Number.isInteger(v.boots) && (v.boots as number) > 0 ? { boots: v.boots as number } : {}), share: v.share }]
+  })
+}
+
 function parseBuild(raw: unknown): ChampionBuild | undefined {
   if (!isRecord(raw) || !isRecord(raw.skillOrder) || !isRecord(raw.items)) return undefined
   const skills = (v: unknown): SkillKey[] =>
@@ -64,8 +88,10 @@ function parseBuild(raw: unknown): ChampionBuild | undefined {
       )
     : []
 
+  const variants = parseVariants(raw.variants)
   return {
     ...parseRunes(raw),
+    ...(variants.length ? { variants } : {}),
     skillOrder: { priority, ...(levels.length ? { levels } : {}) },
     items: {
       starting: idList(raw.items.starting),
@@ -110,11 +136,21 @@ export function validateDataset(raw: unknown): MetaDataset {
           synergies[mate] = ss
         }
       }
+      const versus: Record<string, WinStats> = {}
+      if (isRecord(r.versus)) {
+        for (const [foe, s] of Object.entries(r.versus)) {
+          const vs = asStats(s)
+          if (/^\d+$/.test(foe) && vs) versus[foe] = vs // opcional: entrada ruim é ignorada
+        }
+      }
+      const profile = parseProfile(r.profile)
       const build = parseBuild(r.build)
       roles[role] = {
         ...stats,
         matchups,
         ...(Object.keys(synergies).length ? { synergies } : {}),
+        ...(Object.keys(versus).length ? { versus } : {}),
+        ...(profile ? { profile } : {}),
         ...(build ? { build } : {})
       }
     }
@@ -127,6 +163,9 @@ export function validateDataset(raw: unknown): MetaDataset {
     isSample: raw.isSample === true,
     patch: raw.patch,
     generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt : '',
+    ...(Array.isArray(raw.regions)
+      ? { regions: raw.regions.filter((x): x is string => typeof x === 'string' && /^[a-z0-9]{2,8}$/.test(x)).slice(0, 12) }
+      : {}),
     champions
   }
 }

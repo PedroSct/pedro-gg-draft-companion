@@ -55,6 +55,16 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   e itens, tudo a partir do `meta.json`.
 - **Pools**: filtros recolhidos atrás de "Filtros", pool agrupada por conforto (Main, Muito bom...), anotações sob demanda
   e, na conta vinculada, nível e elo Solo/Duo lidos do cliente.
+- **Mais dados (0.5.1)**: a coleta junta vários servidores e passa a guardar o **tipo de dano real** (físico/mágico/verdadeiro),
+  **tanque** e **CC** de cada campeão, o desempenho contra **cada campeão inimigo** (em qualquer rota) e as **construções
+  alternativas** mais usadas nas vitórias. Rode o workflow de novo para gerar esses campos (os dados antigos continuam
+  funcionando, só sem eles).
+- **Recomendação por composição (0.5.1)**: além de winrate, confronto de rota e sinergia, o pick considera o **equilíbrio
+  de dano físico/mágico** do seu time, **frontline**, **CC** e o desempenho contra os **outros inimigos** (não só o da
+  rota). Cada sugestão mostra o motivo ("traz dano mágico que o time não tem").
+- **Build para a partida (0.5.1)**: no painel de build aparece "Para esta partida": o dano do time inimigo, o foco
+  (armadura, resistência mágica ou penetração), os itens do próprio campeão que atendem a esse foco e qual construção
+  alternativa encaixa melhor.
 - **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
   da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
@@ -83,10 +93,10 @@ mostra "O Windows protegeu seu PC": clique em *Mais informações* e *Executar a
 
 O app procura versões novas nos *Releases* do GitHub do projeto (ao abrir e a cada 4 horas). Para lançar uma:
 
-1. Mude `"version"` no `package.json` (ex.: `0.5.0`) e faça commit/push.
-2. Crie a tag com o mesmo número e envie: `git tag v0.5.0` e `git push origin v0.5.0`.
+1. Mude `"version"` no `package.json` (ex.: `0.5.1`) e faça commit/push.
+2. Crie a tag com o mesmo número e envie: `git tag v0.5.1` e `git push origin v0.5.1`.
 3. O GitHub Actions gera o instalador e cria o Release (`.exe`, `latest.yml` e `.blockmap`).
-4. Quem já tem o app instalado vê o aviso "A versão 0.5.0 está disponível" e decide quando atualizar.
+4. Quem já tem o app instalado vê o aviso "A versão 0.5.1 está disponível" e decide quando atualizar.
 
 Detalhes: o repositório de atualizações entra no instalador sozinho quando ele é gerado pelo Actions
 (`GITHUB_REPOSITORY`). Num `pnpm build:win` local, preencha `DEFAULT_UPDATE_REPO` em `src/shared/config.ts`
@@ -128,8 +138,12 @@ vem apontando para ela (`DEFAULT_META_URL` em `src/shared/config.ts`). Configura
 1. No GitHub: **Settings > Secrets and variables > Actions > New repository secret**, nome `RIOT_API_KEY`, valor a chave
    `RGAPI-...` de developer.riotgames.com (chave de desenvolvimento vale 24 h; para ficar permanente, peça uma chave
    pessoal no portal da Riot).
-2. **Actions > Atualizar dados de meta > Run workflow** (plataforma `br1`, ~3000 partidas leva de 2 a 3 horas; se a chave
-   vencer no meio, rode de novo: o progresso fica em cache).
+2. **Actions > Atualizar dados de meta > Run workflow**. Em "Servidores" escolha um ou mais (padrão `br1,euw1,kr`) e,
+   em "Partidas por servidor", quantas coletar (padrão 3000). Cada **cluster** da Riot (americas, europe, asia, sea)
+   tem o próprio limite da chave, então servidores de clusters diferentes rodam **em paralelo** (cada um leva de 2 a
+   3 horas) e servidores do mesmo cluster (ex.: `br1,na1`) rodam em sequência no mesmo job (cabem uns dois). No fim, as
+   contagens de todos os servidores são **somadas num único `meta.json`** (só entram partidas do mesmo patch). Se a chave
+   vencer no meio, rode de novo: o progresso fica em cache.
 3. Depois disso roda sozinho toda semana. Se a validação falhar (poucos campeões/partidas), nada é publicado.
 
 Para chegar aos amigos sem o workflow: suba o `meta.json` para um repositório público, coloque o endereço em

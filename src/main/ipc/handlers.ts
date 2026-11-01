@@ -8,8 +8,9 @@ import { ProfileStore } from '../store/profiles'
 import { DataDragon } from '../data/ddragon'
 import { MetaStore, MetaUpdateError } from '../data/meta'
 import { recommend } from '../data/recommender'
+import { buildSituation } from '../data/situation'
 import { championDetail, tierRows } from '../data/metaStats'
-import { ROLES } from '../../shared/dataTypes'
+import { ROLES, type ChampionInfo, type ItemInfo } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO } from '../../shared/config'
 import { decodeShare, encodeShare, toFileJson } from '../store/share'
 import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
@@ -139,6 +140,8 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   const postGames = new PostGameStore(path.join(userData, 'postgame', 'history.json'), path.join(userData, 'postgame', 'raw'))
   const champKeys = new Map<number, string>()
   const champNames = new Map<number, string>()
+  let champInfos: ChampionInfo[] = []
+  let itemInfos: Record<string, ItemInfo> = {}
   async function warmChampionKeys(): Promise<void> {
     if (champKeys.size > 0) return
     try {
@@ -147,6 +150,8 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
         champKeys.set(c.id, c.key)
         champNames.set(c.id, c.name)
       }
+      champInfos = cat.champions
+      itemInfos = cat.items
     } catch {
       /* sem catálogo: as rotas ausentes ficam em branco */
     }
@@ -263,6 +268,22 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     if (typeof req.championId !== 'number' || !ROLES.includes(role)) return null
     return meta.getBuild(req.championId, role)
   })
+  // ---- Build ajustada à partida (time inimigo atual)
+  handle(IPC.META_BUILD_SITUATION, async (raw) => {
+    const req = isRecord(raw) ? raw : {}
+    const role = req.role as Role
+    const draft = annotatedDraft()
+    if (!draft || typeof req.championId !== 'number' || !ROLES.includes(role)) return null
+    await warmChampionKeys()
+    return buildSituation({
+      dataset: meta.get(),
+      draft,
+      build: meta.getBuild(req.championId, role),
+      championId: req.championId,
+      champions: champInfos,
+      items: itemInfos
+    })
+  })
   // ---- Importar runas/feitiços/itens para o cliente (só por clique do usuário; a build vem do meta, não do renderer)
   handle(IPC.LOADOUT_APPLY, async (raw) => {
     const req = isRecord(raw) ? raw : {}
@@ -323,7 +344,7 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   }
 
   // ---- Recomendação (usa o último draft recebido da LCU)
-  handle(IPC.DRAFT_RECOMMEND, (raw) => {
+  handle(IPC.DRAFT_RECOMMEND, async (raw) => {
     const req = isRecord(raw) ? raw : {}
     const profile = typeof req.profileId === 'string' ? profiles.get(req.profileId) : undefined
     let draft = annotatedDraft()
@@ -335,7 +356,8 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
       draft = { ...draft, localPlayerCellId: who.cellId, localRole: who.role }
     }
     const role = ROLES.includes(req.role as Role) ? (req.role as Role) : null
-    return recommend({ draft, profile, dataset: meta.get(), role, mode: profiles.getSettings().pickMode })
+    await warmChampionKeys()
+    return recommend({ draft, profile, dataset: meta.get(), role, mode: profiles.getSettings().pickMode, champions: champInfos })
   })
 
   // ---- Compartilhar Pool (código ou arquivo)

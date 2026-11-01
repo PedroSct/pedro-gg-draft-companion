@@ -99,7 +99,7 @@ export async function buildMeta(o: BuildMetaOptions): Promise<MetaDataset> {
 
   // ---- Checkpoint
   await fs.mkdir(o.workDir, { recursive: true })
-  const stateFile = path.join(o.workDir, `state-${o.platform}-${patch}.json`)
+  const stateFile = path.join(o.workDir, `state-v2-${o.platform}-${patch}.json`)
   const saved = await readJson<RunState>(stateFile)
   const run: RunState =
     saved && saved.agg?.patch === patch
@@ -131,8 +131,9 @@ export async function buildMeta(o: BuildMetaOptions): Promise<MetaDataset> {
         minGames: o.minGames,
         minMatchupGames: o.minMatchupGames,
         minBuildSamples: o.minBuildSamples,
-        source: `Riot Match-v5, ${run.agg.matches} partidas`,
-        generatedAt: new Date().toISOString()
+        source: `Riot Match-v5 (${o.platform}), ${run.agg.matches} partidas`,
+        generatedAt: new Date().toISOString(),
+        regions: [o.platform]
       })
     )
     await writeJsonAtomic(o.out, dataset)
