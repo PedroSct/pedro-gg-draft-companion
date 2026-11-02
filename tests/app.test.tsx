@@ -323,6 +323,11 @@ describe('Companion App', () => {
     const build = await screen.findByRole('region', { name: 'Build' })
     expect(await within(build).findByText('Seu campeão, Meio')).toBeInTheDocument()
     expect(await within(build).findByRole('img', { name: 'R > Q > E > W' })).toBeInTheDocument()
+    // pick travado: as sugestões somem e fica só o campeão escolhido
+    const lockedCard = screen.getByRole('region', { name: 'Pick travado' })
+    expect(within(lockedCard).getByText('Ahri')).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Outras opções da Pool' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Melhor pick da sua Pool')).not.toBeInTheDocument()
   })
 
   it('sem rota atribuída, pede a rota e recomenda depois da escolha', async () => {
@@ -387,7 +392,12 @@ describe('Companion App', () => {
     await user.click(within(panel).getByRole('checkbox', { name: /Itens/ })) // desmarca os itens
     await user.click(within(panel).getByRole('button', { name: 'Importar para o cliente' }))
 
-    await waitFor(() => expect(apply).toHaveBeenCalledWith({ championId: 103, role: 'MIDDLE', parts: { runes: true, spells: true, items: false } }))
+    await waitFor(() => expect(apply).toHaveBeenCalledWith({
+        championId: 103,
+        role: 'MIDDLE',
+        parts: { runes: true, spells: true, items: false },
+        selection: { runes: 0, spells: 0, starting: 0, boots: 0, core: 0 }
+      }))
     expect(await within(panel).findByText(/Runas: Runas aplicadas/)).toBeInTheDocument()
   })
 

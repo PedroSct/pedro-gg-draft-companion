@@ -10,6 +10,7 @@ import { MetaStore, MetaUpdateError } from '../data/meta'
 import { recommend } from '../data/recommender'
 import { buildSituation } from '../data/situation'
 import { banPhaseOpen, suggestBans } from '../data/bans'
+import { applyBuildSelection, sanitizeSelection } from '../../shared/buildSelection'
 import { championDetail, tierRows } from '../data/metaStats'
 import { ROLES, type ChampionInfo, type ItemInfo } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO, regionUrl } from '../../shared/config'
@@ -125,7 +126,10 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     readyPoll = null
   }
   lcu.on('gameflow', (phase) => {
-    if (phase !== 'ReadyCheck') return stopReadyPoll()
+    if (phase !== 'ReadyCheck') {
+      autoAccept.reset()
+      return stopReadyPoll()
+    }
     if (readyPoll || !profiles.getSettings().autoAccept) return
     diag.log('aceite', 'fase ReadyCheck: conferindo o cliente a cada 0,7 s')
     const started = Date.now()
@@ -304,8 +308,10 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     const parts = isRecord(req.parts) ? req.parts : {}
     if (typeof req.championId !== 'number' || !ROLES.includes(role)) return { ok: false, message: 'Pedido inválido.' }
     if (lcu.getStatus() !== 'connected') return { ok: false, message: 'O cliente do LoL não está conectado.' }
-    const build = meta.getBuild(req.championId, role)
-    if (!build) return { ok: false, message: 'Não há build deste campeão nos dados de meta.' }
+    const base = meta.getBuild(req.championId, role)
+    if (!base) return { ok: false, message: 'Não há build deste campeão nos dados de meta.' }
+    // A opção escolhida na tela (só índices): quem monta a build é o main, a partir do meta.
+    const build = applyBuildSelection(base, sanitizeSelection(req.selection))
     await warmChampionKeys()
     const result = await applyLoadout(
       { get: (p) => lcu.get(p), write: (m, p, b) => lcu.write(m, p, b) },

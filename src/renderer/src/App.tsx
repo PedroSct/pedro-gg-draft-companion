@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { useApp } from './store/useApp'
 import { Header } from './components/Header'
 import { TeamColumn } from './components/TeamColumn'
@@ -95,12 +95,19 @@ function Banners() {
 
 function DraftScreen() {
   const draft = useApp((s) => s.draft)
+  const centerRef = useRef<HTMLDivElement>(null)
+  const me = draft?.allies.find((p) => p.cellId === draft.localPlayerCellId)
+  const lockedId = me && me.status === 'locked' ? me.championId : 0
+  // Ao travar o pick, volta ao topo: o campeão e a build ficam à vista, não escondidos pela rolagem.
+  useEffect(() => {
+    if (lockedId > 0 && centerRef.current) centerRef.current.scrollTop = 0
+  }, [lockedId])
   if (!draft) return null
 
   return (
     <div className="grid h-full grid-cols-[minmax(210px,1fr)_minmax(0,1.7fr)_minmax(210px,1fr)] gap-5 max-[1000px]:grid-cols-2 max-[1000px]:content-start max-[1000px]:gap-3 max-[1000px]:overflow-y-auto">
       <TeamColumn side="ally" players={draft.allies} localCellId={draft.localPlayerCellId} />
-      <div className="flex min-w-0 flex-col gap-3 pr-1 min-[1001px]:min-h-0 min-[1001px]:overflow-y-auto max-[1000px]:order-last max-[1000px]:col-span-2 max-[1000px]:pr-0">
+      <div ref={centerRef} className="flex min-w-0 flex-col gap-3 pr-1 min-[1001px]:min-h-0 min-[1001px]:overflow-y-auto max-[1000px]:order-last max-[1000px]:col-span-2 max-[1000px]:pr-0">
         <BansBar allies={draft.bans.allies} enemies={draft.bans.enemies} />
         <BanSuggestions />
         <PickSuggestion />

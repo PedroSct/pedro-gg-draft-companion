@@ -36,11 +36,13 @@ export function useFocus(): Focus | null {
     const chosen = isLocal ? roleOverride : (friendRoles[player.cellId] ?? null)
     const role = (isLocal ? draft.localRole : player.role) ?? chosen ?? rec?.role ?? null
 
-    if (preview !== null) {
+    const mine = player ?? draft.allies.find((p) => p.cellId === draft.localPlayerCellId)
+    // Pick travado: a build é do campeão escolhido, mesmo que antes tenha clicado em uma alternativa.
+    const locked = !!mine && mine.status === 'locked' && mine.championId > 0
+    if (preview !== null && !locked) {
       const hit = rec?.ranking.find((r) => r.championId === preview)
       return { championId: preview, role: hit?.role ?? role ?? guessRole(profile, preview), source: 'preview' as const, forLocal: isLocal }
     }
-    const mine = player ?? draft.allies.find((p) => p.cellId === draft.localPlayerCellId)
     if (mine && mine.championId > 0) {
       return { championId: mine.championId, role: role ?? guessRole(profile, mine.championId), source: 'local' as const, forLocal: isLocal }
     }

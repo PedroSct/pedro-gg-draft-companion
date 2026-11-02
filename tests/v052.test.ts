@@ -5,6 +5,7 @@ import { addMatch, finalize, isValidSkillSequence, itemRulesFrom, mergeStates, n
 import { validateDataset } from '../src/main/data/meta'
 import { banPhaseOpen, suggestBans } from '../src/main/data/bans'
 import { sanitizeSettingsPatch } from '../src/main/store/profiles'
+import { applyBuildSelection, sanitizeSelection } from '../src/shared/buildSelection'
 import { regionUrl, DEFAULT_META_URL } from '../src/shared/config'
 import { emptyPool } from '../src/shared/poolShare'
 import type { FriendProfile, MetaDataset, RoleMeta } from '../src/shared/dataTypes'
@@ -203,5 +204,43 @@ describe('sugestões de banimento', () => {
     expect(banPhaseOpen(draft({ bans: { allies: [1, 2, 3, 4, 5], enemies: [6, 7, 8, 9, 10] } }))).toBe(false)
     expect(banPhaseOpen(draft({ allies: [pl(0, 5, 'MIDDLE', { status: 'locked' })] }))).toBe(false)
     expect(banPhaseOpen(draft({ phase: 'FINALIZATION' }))).toBe(false)
+  })
+})
+
+describe('opção escolhida para enviar ao LoL', () => {
+  const page = (n: number) => ({ primaryStyleId: 8100, subStyleId: 8200, perkIds: [n, 1, 2, 3, 4, 5, 6, 7, 8] })
+  const build = {
+    runes: page(1),
+    spells: [4, 14] as [number, number],
+    items: { starting: [1055], boots: [3020], core: [3089, 3157, 6653], situational: [] },
+    options: {
+      games: 100,
+      timeline: 80,
+      runes: [{ value: page(1), games: 60, wins: 30 }, { value: page(2), games: 40, wins: 22 }],
+      spells: [{ value: [4, 14] as [number, number], games: 70, wins: 35 }, { value: [4, 12] as [number, number], games: 30, wins: 16 }],
+      starting: [{ value: [1055], games: 50, wins: 25 }, { value: [1056, 2003], games: 30, wins: 15 }],
+      boots: [{ value: 3020, games: 50, wins: 25 }, { value: 3158, games: 30, wins: 14 }],
+      core: [{ value: [3089, 3157, 6653], games: 40, wins: 20 }, { value: [6653, 3089, 3157], games: 30, wins: 18 }]
+    }
+  }
+
+  it('troca runas, feitiços, inicial, botas e principais pelas opções escolhidas', () => {
+    const b = applyBuildSelection(build, { runes: 1, spells: 1, starting: 1, boots: 1, core: 1 })
+    expect(b.runes!.perkIds[0]).toBe(2)
+    expect(b.spells).toEqual([4, 12])
+    expect(b.items.starting).toEqual([1056, 2003])
+    expect(b.items.boots).toEqual([3158])
+    expect(b.items.core).toEqual([6653, 3089, 3157])
+  })
+
+  it('índice fora da lista cai na opção mais usada e build sem opções fica como está', () => {
+    expect(applyBuildSelection(build, { runes: 9, spells: 0, starting: 0, boots: 0, core: 0 }).runes!.perkIds[0]).toBe(1)
+    const legacy = { runes: page(1), spells: [4, 14] as [number, number], items: { starting: [], boots: [], core: [3089], situational: [] } }
+    expect(applyBuildSelection(legacy, { runes: 1, spells: 1, starting: 1, boots: 1, core: 1 })).toBe(legacy)
+  })
+
+  it('o main só aceita índices inteiros pequenos vindos da tela', () => {
+    expect(sanitizeSelection({ runes: 1, core: -1, boots: 2.5, spells: '1', starting: 99, x: 3 })).toEqual({ runes: 1, spells: 0, starting: 0, boots: 0, core: 0 })
+    expect(sanitizeSelection(null)).toEqual({ runes: 0, spells: 0, starting: 0, boots: 0, core: 0 })
   })
 })

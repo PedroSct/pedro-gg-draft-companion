@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Role } from '../../../shared/types'
+import type { DraftPlayer, Role } from '../../../shared/types'
 import { ROLES, type CompReason, type Confidence, type PickScore, type PickRisk, type RecommendMode } from '../../../shared/dataTypes'
 import type { ExclusionReason } from '../../../shared/dataTypes'
 import { selectActiveProfile, selectFocusPlayer, selectFocusProfile, useApp } from '../store/useApp'
@@ -308,7 +308,7 @@ function Unavailable({ items }: { items: { championId: number; reason: Exclusion
 }
 
 /** "Sugestões para: Você · Amigo (Mid) · …" — só amigos reconhecidos na seleção aparecem. */
-function FocusStrip() {
+function FocusStrip({ onlyWithFriends = false }: { onlyWithFriends?: boolean } = {}) {
   const draft = useApp((s) => s.draft)
   const profiles = useApp((s) => s.profiles)
   const owner = useApp(selectActiveProfile)
@@ -319,6 +319,7 @@ function FocusStrip() {
   const friends = draft.allies.filter((a) => a.profileId && a.cellId !== draft.localPlayerCellId && !a.isMe)
   const me = draft.allies.find((a) => a.cellId === draft.localPlayerCellId)
   const myProfile = profiles.find((p) => p.id === me?.profileId) ?? owner
+  if (onlyWithFriends && friends.length === 0) return null
 
   return (
     <div className="flex flex-col gap-1.5" role="group" aria-label="Para quem são as sugestões">
@@ -363,6 +364,23 @@ function FocusStrip() {
   )
 }
 
+function LockedPick({ player, isLocal, nickname }: { player: DraftPlayer; isLocal: boolean; nickname: string | null }) {
+  const name = useChampionName(player.championId)
+  return (
+    <div className="flex flex-col gap-2">
+      <FocusStrip onlyWithFriends />
+      <section aria-label="Pick travado" className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-gold/5 px-4 py-3">
+        <ChampionIcon id={player.championId} size={44} />
+        <div className="min-w-0">
+          <div className="text-xs text-mist">{isLocal ? 'Você travou' : `${nickname ?? 'Seu amigo'} travou`}</div>
+          <div className="truncate font-display text-xl font-semibold leading-tight text-snow">{name}</div>
+        </div>
+        <p className="ml-auto max-w-[16rem] text-right text-xs text-mist">As sugestões voltam se o pick for desfeito. A build está logo abaixo.</p>
+      </section>
+    </div>
+  )
+}
+
 export function PickSuggestion() {
   const draft = useApp((s) => s.draft)
   const rec = useApp((s) => s.recommendation)
@@ -392,6 +410,11 @@ export function PickSuggestion() {
         </button>
       </div>
     )
+  }
+
+  // Pick travado: some a lista de sugestões e fica só o campeão escolhido (a build aparece logo abaixo).
+  if (draft && focus && focus.status === 'locked' && focus.championId > 0) {
+    return <LockedPick player={focus} isLocal={isLocal} nickname={profile?.nickname ?? null} />
   }
 
   const needsRole = draft !== null && (subjectRole ?? null) === null

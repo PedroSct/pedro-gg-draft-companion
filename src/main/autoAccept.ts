@@ -22,6 +22,8 @@ export class AutoAccept {
   /** já tratamos esta janela de "partida encontrada"? (o cliente manda vários eventos por janela) */
   private handled = false
   private current: ReadyCheck | null = null
+  /** o cliente já mostrou uma resposta (Accepted/Declined) nesta janela */
+  private sawResponse = false
   private stopped = false
 
   constructor(private readonly o: AutoAcceptOptions) {}
@@ -33,17 +35,33 @@ export class AutoAccept {
     if (!open) {
       this.cancel()
       this.handled = false // próxima partida encontrada é uma janela nova
+      this.sawResponse = false
       return
     }
     if (check.playerResponse !== 'None') {
       this.cancel() // você (ou o app) já respondeu
       this.handled = true
+      this.sawResponse = true
       return
+    }
+    // Janela aberta SEM resposta depois de uma janela respondida: é uma partida nova. Acontece quando outro jogador
+    // não aceita e o cliente devolve você à fila sem avisar que a janela anterior fechou.
+    if (this.sawResponse) {
+      this.sawResponse = false
+      this.handled = false
     }
     if (this.handled || !this.o.isEnabled()) return
     this.handled = true
     const delay = Math.max(0, Math.min(8, this.o.getDelaySec())) * 1000
     this.timer = setTimeout(() => void this.fire(), delay)
+  }
+
+  /** O cliente saiu da fase "partida encontrada" (fila, seleção…): qualquer janela nova começa do zero. */
+  reset(): void {
+    this.cancel()
+    this.handled = false
+    this.sawResponse = false
+    this.current = null
   }
 
   /** Ligou a opção com a janela já aberta: aceita também. */

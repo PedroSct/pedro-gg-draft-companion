@@ -1,5 +1,6 @@
 // src/shared/api.ts
 // Contrato do `window.api` exposto pelo preload. Main, Preload e Renderer usam estes tipos.
+import type { BuildSelection } from './buildSelection'
 import type { AccountStats, DraftState, LcuIdentity, LcuStatus, Role } from './types'
 import type {
   AppSettings,
@@ -80,7 +81,7 @@ export interface LolApi {
   getCurrentDraft(): Promise<DraftState | null>
   recommend(req: { profileId: string; role: Role | null; cellId?: number }): Promise<Recommendation | null>
   /** Coloca runas, feitiços e/ou itens da build no cliente (só quando o usuário clica em Importar). */
-  applyLoadout(req: { championId: number; role: Role; parts: LoadoutParts }): Promise<LoadoutImportResult>
+  applyLoadout(req: { championId: number; role: Role; parts: LoadoutParts; selection?: BuildSelection }): Promise<LoadoutImportResult>
   getIdentity(): Promise<IdentityState>
   /** Nível e elo da conta logada; null se o cliente não está aberto. */
   getAccountStats(): Promise<AccountStats | null>

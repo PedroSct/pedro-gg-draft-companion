@@ -10,6 +10,7 @@ import { ROLES } from '../../../shared/dataTypes'
 import { ChampionIcon, useChampionName } from './Icons'
 import { ItemRow, SituationalItem } from './BuildParts'
 import { BuildOptionsView } from './BuildOptionsView'
+import { ZERO_SELECTION, type BuildSelection } from '../../../shared/buildSelection'
 
 const SPELL_NAME: Record<number, string> = {
   1: 'Limpar',
@@ -28,13 +29,13 @@ const SPELL_NAME: Record<number, string> = {
 const PART_LABEL: Record<keyof LoadoutParts, string> = { runes: 'Runas', spells: 'Feitiços', items: 'Itens' }
 
 /** "Importar para o cliente": só por clique, só desta partida, e só o que a pessoa marcar. */
-function ImportPanel({ championId, role, build, forLocal }: { championId: number; role: Role; build: ChampionBuild; forLocal: boolean }) {
+function ImportPanel({ championId, role, build, forLocal, selection }: { championId: number; role: Role; build: ChampionBuild; forLocal: boolean; selection: BuildSelection }) {
   const lcuStatus = useApp((s) => s.lcuStatus)
   const inDraft = useApp((s) => s.draft !== null)
   const name = useChampionName(championId)
   const available: Record<keyof LoadoutParts, boolean> = {
-    runes: !!build.runes,
-    spells: !!build.spells,
+    runes: !!(build.runes || build.options?.runes?.length),
+    spells: !!(build.spells || build.options?.spells?.length),
     items: build.items.core.length + build.items.starting.length + build.items.boots.length > 0
   }
   const [picked, setPicked] = useState<LoadoutParts>({ runes: true, spells: true, items: true })
@@ -65,7 +66,8 @@ function ImportPanel({ championId, role, build, forLocal }: { championId: number
       const res = await window.api.applyLoadout({
         championId,
         role,
-        parts: { runes: picked.runes && available.runes, spells: picked.spells && available.spells, items: picked.items && available.items }
+        parts: { runes: picked.runes && available.runes, spells: picked.spells && available.spells, items: picked.items && available.items },
+        selection
       })
       if (res.ok) setResults(res.parts)
       else setError(res.message)
@@ -83,34 +85,28 @@ function ImportPanel({ championId, role, build, forLocal }: { championId: number
   }
 
   return (
-    <section aria-label="Importar para o cliente" className="rounded-2xl border border-gold/25 bg-gold/5 p-4">
-      <h3 className="font-display text-lg font-semibold text-gold">Importar para o cliente</h3>
-      <p className="mt-0.5 text-xs text-mist">Só acontece quando você clicar, e só para esta partida: {name}, {ROLE_LABEL[role]}. Nada é alterado sem o seu pedido.</p>
-      <ul className="mt-3 flex flex-col gap-2">
+    <section aria-label="Importar para o cliente" className="rounded-2xl border border-gold/30 bg-gold/5 p-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h3 className="font-display text-lg font-semibold text-gold">Enviar para o LoL</h3>
         {(Object.keys(PART_LABEL) as (keyof LoadoutParts)[]).map((k) => (
-          <li key={k}>
-            <label className={`flex items-start gap-2.5 text-sm ${available[k] ? '' : 'opacity-50'}`}>
-              <input
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]"
-                disabled={!available[k] || !!blocked}
-                checked={available[k] && picked[k]}
-                onChange={(e) => setPicked((p) => ({ ...p, [k]: e.target.checked }))}
-              />
-              <span>
-                <span className="font-medium">{PART_LABEL[k]}</span>
-                <span className="block text-xs text-mist">{detail[k]}</span>
-              </span>
-            </label>
-          </li>
+          <label key={k} title={detail[k]} className={`flex items-center gap-1.5 text-sm ${available[k] ? '' : 'opacity-50'}`}>
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-[var(--color-gold)]"
+              disabled={!available[k] || !!blocked}
+              checked={available[k] && picked[k]}
+              onChange={(e) => setPicked((p) => ({ ...p, [k]: e.target.checked }))}
+            />
+            {PART_LABEL[k]}
+          </label>
         ))}
-      </ul>
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button type="button" className={btnGold} disabled={!!blocked || busy || chosen.length === 0} onClick={() => void run()}>
-          {busy ? 'Importando…' : 'Importar para o cliente'}
+        <button type="button" className={`${btnGold} ml-auto`} disabled={!!blocked || busy || chosen.length === 0} onClick={() => void run()}>
+          {busy ? 'Enviando…' : 'Importar para o cliente'}
         </button>
-        {blocked && <span className="text-xs text-mist">{blocked}</span>}
       </div>
+      <p className="mt-1.5 text-xs text-mist">
+        {blocked ?? `Envia a opção marcada abaixo de ${name} (${ROLE_LABEL[role]}) para o seu cliente. Só acontece quando você clica; o app mexe apenas na página de runas e no conjunto de itens “Pedro.gg”.`}
+      </p>
       {error && (
         <p role="alert" className="mt-2 text-sm text-enemy">
           {error}
@@ -188,6 +184,7 @@ export function BuildPanel() {
   const [data, setData] = useState<{ build: ChampionBuild | null; spells: SpellInfo[] }>({ build: null, spells: [] })
   const [status, setStatus] = useState<Status>('loading')
   const [situation, setSituation] = useState<BuildSituation | null>(null)
+  const [selection, setSelection] = useState<BuildSelection>(ZERO_SELECTION)
   // Muda quando um inimigo é escolhido, trocado ou travado: refaz os ajustes da build.
   const enemySignature = useApp((s) => (s.draft ? s.draft.enemies.map((e) => `${e.championId}${e.status}`).join(',') : ''))
 
@@ -295,9 +292,9 @@ export function BuildPanel() {
 
         {status === 'ready' && build && (
           <>
+            {focus.role && <ImportPanel championId={focus.championId} role={focus.role} build={build} forLocal={focus.forLocal} selection={selection} />}
             {situation && <SituationCard situation={situation} />}
-            <BuildOptionsView build={build} spells={data.spells} highlightCore={situation?.variantCore} />
-            {focus.role && <ImportPanel championId={focus.championId} role={focus.role} build={build} forLocal={focus.forLocal} />}
+            <BuildOptionsView build={build} spells={data.spells} highlightCore={situation?.variantCore} selection={selection} onSelect={setSelection} />
           </>
         )}
       </div>

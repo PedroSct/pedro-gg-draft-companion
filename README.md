@@ -76,6 +76,12 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   precisão) ou só BR, EUW ou KR. O workflow publica `meta.json` (global) e `meta-<região>.json` na branch `data`.
 - **Janela redimensionável (0.5.2)**: o cabeçalho encolhe, o draft empilha as colunas e os perfis se reorganizam em
   janelas estreitas (mínimo 760 × 560).
+- **Pick travado e envio para o LoL (0.5.3)**: ao travar o campeão, as sugestões somem e ficam só ele e a build. O bloco
+  **Enviar para o LoL** fica no topo da build e envia ao cliente a **opção que estiver marcada** de runas, feitiços,
+  itens iniciais, botas e itens principais (clique numa opção para trocar). Cria/atualiza a página de runas e o conjunto
+  de itens "Pedro.gg" e troca os feitiços (estes só durante a seleção). Só age quando você clica.
+- **Aceite automático (0.5.3)**: depois de uma partida em que outro jogador não aceitou, o app passa a reconhecer a
+  janela seguinte e aceita de novo.
 - **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
   da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
@@ -104,10 +110,10 @@ mostra "O Windows protegeu seu PC": clique em *Mais informações* e *Executar a
 
 O app procura versões novas nos *Releases* do GitHub do projeto (ao abrir e a cada 4 horas). Para lançar uma:
 
-1. Mude `"version"` no `package.json` (ex.: `0.5.2`) e faça commit/push.
-2. Crie a tag com o mesmo número e envie: `git tag v0.5.2` e `git push origin v0.5.2`.
+1. Mude `"version"` no `package.json` (ex.: `0.5.3`) e faça commit/push.
+2. Crie a tag com o mesmo número e envie: `git tag v0.5.3` e `git push origin v0.5.3`.
 3. O GitHub Actions gera o instalador e cria o Release (`.exe`, `latest.yml` e `.blockmap`).
-4. Quem já tem o app instalado vê o aviso "A versão 0.5.2 está disponível" e decide quando atualizar.
+4. Quem já tem o app instalado vê o aviso "A versão 0.5.3 está disponível" e decide quando atualizar.
 
 Detalhes: o repositório de atualizações entra no instalador sozinho quando ele é gerado pelo Actions
 (`GITHUB_REPOSITORY`). Num `pnpm build:win` local, preencha `DEFAULT_UPDATE_REPO` em `src/shared/config.ts`

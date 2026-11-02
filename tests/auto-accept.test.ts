@@ -86,6 +86,28 @@ describe('AutoAccept', () => {
     expect(accept).toHaveBeenCalledTimes(2)
   })
 
+  it('partida nova depois de outro jogador não aceitar (sem aviso de que a janela fechou) é aceita', async () => {
+    const { aa, accept } = make(true, 0)
+    aa.update(open)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(accept).toHaveBeenCalledTimes(1)
+    aa.update({ state: 'InProgress', playerResponse: 'Accepted' })
+    // o cliente devolve você à fila e abre outra janela, sem evento de "fechou" no meio
+    aa.update(open)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(accept).toHaveBeenCalledTimes(2)
+  })
+
+  it('reset (cliente saiu de "partida encontrada") libera a próxima janela mesmo sem ter visto a resposta', async () => {
+    const { aa, accept } = make(true, 0)
+    aa.update(open)
+    await vi.advanceTimersByTimeAsync(10)
+    aa.reset()
+    aa.update(open)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(accept).toHaveBeenCalledTimes(2)
+  })
+
   it('erro ao aceitar não derruba nem conta como aceito', async () => {
     const accept = vi.fn(async (): Promise<{ ok: boolean; status: number }> => {
       throw new Error('cliente fechou')
