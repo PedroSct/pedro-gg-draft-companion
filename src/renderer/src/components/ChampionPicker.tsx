@@ -157,8 +157,13 @@ export function ChampionPicker({ catalog, role, inPool, onToggle }: Props) {
                 aria-pressed={on}
                 aria-label={c.name}
                 onClick={() => onToggle({ id: c.id, key: c.key })}
-                className={`flex w-full flex-col items-center gap-0.5 rounded-xl p-1 transition-colors ${on ? 'bg-gold/90 text-night' : 'hover:bg-raised'}`}
+                className={`relative flex w-full flex-col items-center gap-0.5 rounded-xl p-1 transition-colors ${on ? 'bg-gold/10 text-gold ring-2 ring-gold/70' : 'hover:bg-raised'}`}
               >
+                {on && (
+                  <span aria-hidden="true" className="absolute right-0.5 top-0.5 z-10 grid h-4 w-4 place-items-center rounded-full bg-gold text-[10px] font-bold text-night">
+                    ✓
+                  </span>
+                )}
                 <ChampionIcon id={c.id} size={44} />
                 <span className="w-full truncate text-center text-[11px] leading-tight">{c.name}</span>
               </button>

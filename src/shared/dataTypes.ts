@@ -49,6 +49,8 @@ export interface AppSettings {
   autoAccept: boolean
   /** Segundos de espera antes de aceitar (0 a 8). */
   autoAcceptDelay: number
+  /** O tutorial de primeira vez já foi visto (ou pulado). */
+  tourDone: boolean
   /** Animação de abertura do app. */
   introAnimation: boolean
   /** Menos movimento: desliga animações e transições. */

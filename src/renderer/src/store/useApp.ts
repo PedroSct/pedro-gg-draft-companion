@@ -37,7 +37,10 @@ interface AppState {
   roleOverride: Role | null
   /** Campeão da lista de alternativas que o usuário clicou para ver a build. */
   previewChampionId: number | null
-  poolOpen: boolean
+  /** o editor de Pools tem alterações ainda não salvas (para avisar antes de sair da tela) */
+  poolDirty: boolean
+  /** tutorial de primeira vez aberto */
+  tourOpen: boolean
   settingsOpen: boolean
   /** estado da atualização do app (null até o main responder) */
   update: UpdateState | null
@@ -47,14 +50,17 @@ interface AppState {
   autoAcceptedAt: number | null
 
   /** tela principal: seleção de campeões ou análise das partidas */
-  view: 'draft' | 'postgame' | 'meta'
+  view: 'draft' | 'postgame' | 'meta' | 'pools'
   postList: PgSummary[]
   postSelectedId: number | null
   postDetail: PgDetail | null
   postBusy: boolean
   postMessage: { ok: boolean; text: string } | null
 
-  setView: (view: 'draft' | 'postgame' | 'meta') => void
+  setView: (view: 'draft' | 'postgame' | 'meta' | 'pools') => void
+  setPoolDirty: (dirty: boolean) => void
+  openTour: () => void
+  finishTour: () => Promise<void>
   loadPostGames: (selectLatest?: boolean) => Promise<void>
   selectPostGame: (gameId: number) => Promise<void>
   fetchLatestPostGame: () => Promise<void>
@@ -78,7 +84,6 @@ interface AppState {
   /** Salva só as chaves enviadas; lança se o main recusar o valor. */
   saveSettings: (patch: Partial<AppSettings>) => Promise<void>
   openPool: () => void
-  closePool: () => void
   openSettings: () => void
   closeSettings: () => void
   setPickMode: (mode: RecommendMode) => Promise<void>
@@ -144,7 +149,8 @@ export const useApp = create<AppState>()((set, get) => ({
   friendRoles: {},
   roleOverride: null,
   previewChampionId: null,
-  poolOpen: false,
+  poolDirty: false,
+  tourOpen: false,
   settingsOpen: false,
   update: null,
   updateDismissed: null,
@@ -156,7 +162,21 @@ export const useApp = create<AppState>()((set, get) => ({
   postBusy: false,
   postMessage: null,
 
-  setView: (view) => set({ view }),
+  setView: (view) => {
+    const s = get()
+    if (s.view === 'pools' && view !== 'pools' && s.poolDirty && !window.confirm('Descartar as alterações não salvas deste perfil?')) return
+    set({ view, ...(view !== 'pools' ? { poolDirty: false } : {}) })
+  },
+  setPoolDirty: (poolDirty) => set({ poolDirty }),
+  openTour: () => set({ tourOpen: true, settingsOpen: false }),
+  finishTour: async () => {
+    set({ tourOpen: false })
+    try {
+      await get().saveSettings({ tourDone: true })
+    } catch {
+      /* só um lembrete: se não gravar, o tutorial aparece de novo na próxima vez */
+    }
+  },
 
   loadPostGames: async (selectLatest = false) => {
     const postList = await window.api.listPostGames()
@@ -201,7 +221,7 @@ export const useApp = create<AppState>()((set, get) => ({
       api.getMetaInfo(),
       api.getIdentity()
     ])
-    set({ lcuStatus, draft, profiles, settings, metaInfo, identity, ready: true })
+    set({ lcuStatus, draft, profiles, settings, metaInfo, identity, ready: true, tourOpen: settings?.tourDone === false })
     void get().loadCatalog()
     void get().refreshRecommendation()
 
@@ -212,7 +232,7 @@ export const useApp = create<AppState>()((set, get) => ({
         if (status === 'connected') void get().loadCatalog()
       }),
       api.onDraftUpdate((next) => {
-        if (!get().draft) set({ view: 'draft' }) // começou uma seleção: volta para ela
+        if (!get().draft && !(get().view === 'pools' && get().poolDirty)) set({ view: 'draft' }) // começou uma seleção: volta para ela (sem perder um perfil em edição)
         const pickChanged = localChampion(get().draft) !== localChampion(next)
         set({ draft: next, ...(pickChanged ? { previewChampionId: null } : {}) })
         scheduleRefresh(() => void get().refreshRecommendation())
@@ -382,8 +402,7 @@ export const useApp = create<AppState>()((set, get) => ({
   },
   dismissUpdate: () => set((s) => ({ updateDismissed: s.update?.latest ?? null })),
 
-  openPool: () => set({ poolOpen: true }),
-  closePool: () => set({ poolOpen: false }),
+  openPool: () => get().setView('pools'),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false })
 }))

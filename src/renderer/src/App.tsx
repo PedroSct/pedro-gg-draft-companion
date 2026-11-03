@@ -12,7 +12,8 @@ import { Splash } from './components/Splash'
 import { btn } from './lib/ui'
 
 // Telas pesadas só são carregadas quando abrem: o app inicia mais rápido e gasta menos memória.
-const PoolEditor = lazy(() => import('./components/PoolEditor').then((m) => ({ default: m.PoolEditor })))
+const Tour = lazy(() => import('./components/Tour').then((m) => ({ default: m.Tour })))
+const PoolScreen = lazy(() => import('./components/PoolScreen').then((m) => ({ default: m.PoolScreen })))
 const SettingsDialog = lazy(() => import('./components/SettingsDialog').then((m) => ({ default: m.SettingsDialog })))
 const MetaScreen = lazy(() => import('./components/MetaScreen').then((m) => ({ default: m.MetaScreen })))
 const PostGameScreen = lazy(() => import('./components/PostGame').then((m) => ({ default: m.PostGameScreen })))
@@ -124,8 +125,8 @@ export default function App() {
   const draft = useApp((s) => s.draft)
   const settings = useApp((s) => s.settings)
   const view = useApp((s) => s.view)
-  const poolOpen = useApp((s) => s.poolOpen)
   const settingsOpen = useApp((s) => s.settingsOpen)
+  const tourOpen = useApp((s) => s.tourOpen)
   const reduceMotion = useApp((s) => s.settings?.reduceMotion ?? false)
   const [fatal, setFatal] = useState<string | null>(null)
 
@@ -164,11 +165,11 @@ export default function App() {
         <UpdateBanner />
         <Banners />
         <main className="min-h-0 flex-1 p-5 max-[900px]:p-3">
-          <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : view === 'meta' ? <MetaScreen /> : draft ? <DraftScreen /> : <IdleScreen />}</Suspense>
+          <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : view === 'meta' ? <MetaScreen /> : view === 'pools' ? <PoolScreen /> : draft ? <DraftScreen /> : <IdleScreen />}</Suspense>
         </main>
         <Suspense fallback={null}>
-          {poolOpen && <PoolEditor />}
           {settingsOpen && <SettingsDialog />}
+          {tourOpen && <Tour />}
         </Suspense>
       {import.meta.env.MODE !== 'test' && settings?.introAnimation !== false && !reduceMotion && <Splash ready={ready} />}
       </div>

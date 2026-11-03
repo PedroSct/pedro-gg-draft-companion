@@ -90,7 +90,7 @@ function postGameFixture(): { summary: PgSummary; detail: PgDetail } {
   return { summary: summarize(report, analysis, 1_761_700_000_000), detail: { report, analysis } }
 }
 
-function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: PgSummary; detail: PgDetail }[]; metaPatch?: string } = {}): Fake {
+function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: PgSummary; detail: PgDetail }[]; metaPatch?: string; tourDone?: boolean } = {}): Fake {
   let profiles = opts.profiles ?? [makeProfile()]
   let draft: DraftState | null = null
   let status: LcuStatus = 'connected'
@@ -102,6 +102,7 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     metaUrl: null,
     metaAutoUpdate: true,
     metaRegion: 'global',
+    tourDone: opts.tourDone ?? true,
     pickMode: 'balanced',
     autoAccept: false,
     autoAcceptDelay: 1,
@@ -245,7 +246,8 @@ beforeEach(() => {
     friendRoles: {},
     roleOverride: null,
     previewChampionId: null,
-    poolOpen: false,
+    poolDirty: false,
+    tourOpen: false,
     settingsOpen: false,
     update: null,
     updateDismissed: null,
@@ -516,8 +518,8 @@ describe('Companion App', () => {
     render(<App />)
     await screen.findByText('Conectado. Entre em uma fila.')
 
-    await user.click(screen.getByRole('button', { name: 'Pools' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Perfis e Pools' })
+    await user.click(screen.getByRole('tab', { name: 'Pools' }))
+    const dialog = await screen.findByRole('region', { name: 'Perfis e Pools' })
     const save = within(dialog).getByRole('button', { name: 'Salvar perfil' })
     expect(save).toBeDisabled() // nada mudou ainda
 
@@ -543,7 +545,7 @@ describe('Companion App', () => {
     const fake = installApi({ profiles: [] })
     render(<App />)
     await user.click(await screen.findByRole('button', { name: 'Criar o primeiro perfil' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Perfis e Pools' })
+    const dialog = await screen.findByRole('region', { name: 'Perfis e Pools' })
 
     await user.type(within(dialog).getByLabelText(/Notas do perfil/), 'teste') // sujo, mas sem apelido
     await user.click(within(dialog).getByRole('button', { name: 'Salvar perfil' }))
@@ -553,14 +555,90 @@ describe('Companion App', () => {
   })
 })
 
+describe('tutorial de primeira vez', () => {
+  it('abre só quando ainda não foi visto, passa os passos e não volta depois de pular', async () => {
+    const user = userEvent.setup()
+    const fake = installApi({ tourDone: false })
+    const setSettings = vi.spyOn(fake.api, 'setSettings')
+    render(<App />)
+    const tour = await screen.findByRole('dialog', { name: 'Tutorial' })
+    expect(within(tour).getByText('Bem-vindo ao Pedro.gg')).toBeInTheDocument()
+    await user.click(within(tour).getByRole('button', { name: 'Próximo' }))
+    expect(within(tour).getByText('1. Monte as Pools')).toBeInTheDocument()
+    await user.click(within(tour).getByRole('button', { name: 'Voltar' }))
+    expect(within(tour).getByText('Bem-vindo ao Pedro.gg')).toBeInTheDocument()
+    await user.click(within(tour).getByRole('button', { name: 'Pular' }))
+    expect(screen.queryByRole('dialog', { name: 'Tutorial' })).not.toBeInTheDocument()
+    await waitFor(() => expect(setSettings).toHaveBeenCalledWith({ tourDone: true }))
+  })
+
+  it('não abre para quem já viu e dá para rever nas Configurações', async () => {
+    const user = userEvent.setup()
+    installApi({ tourDone: true })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    expect(screen.queryByRole('dialog', { name: 'Tutorial' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Configurações' }))
+    await user.click(await screen.findByRole('button', { name: 'Rever tutorial' }))
+    expect(await screen.findByRole('dialog', { name: 'Tutorial' })).toBeInTheDocument()
+  })
+
+  it('no último passo, sem perfil, oferece criar o perfil e abre a tela de Pools', async () => {
+    const user = userEvent.setup()
+    installApi({ tourDone: false, profiles: [] })
+    render(<App />)
+    const tour = await screen.findByRole('dialog', { name: 'Tutorial' })
+    for (let i = 0; i < 6; i++) await user.click(within(tour).getByRole('button', { name: 'Próximo' }))
+    await user.click(within(tour).getByRole('button', { name: 'Criar meu perfil' }))
+    expect(await screen.findByRole('region', { name: 'Perfis e Pools' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Pools' })).toHaveAttribute('aria-selected', 'true')
+  })
+})
+
+describe('Pools como tela do menu', () => {
+  it('avisa antes de sair da tela com alterações não salvas', async () => {
+    const user = userEvent.setup()
+    installApi()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Pools' }))
+    const screenPools = await screen.findByRole('region', { name: 'Perfis e Pools' })
+    await user.type(within(screenPools).getByLabelText('Buscar campeão'), 'zed')
+    await user.click(await within(screenPools).findByRole('button', { name: 'Zed' }))
+
+    await user.click(screen.getByRole('tab', { name: 'Meta' }))
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('tab', { name: 'Pools' })).toHaveAttribute('aria-selected', 'true') // recusou: continua nela
+
+    confirm.mockReturnValue(true)
+    await user.click(screen.getByRole('tab', { name: 'Meta' }))
+    expect(await screen.findByRole('list', { name: 'Ranking de Meio' })).toBeInTheDocument()
+    confirm.mockRestore()
+  })
+
+  it('sem alterações, sai sem perguntar', async () => {
+    const user = userEvent.setup()
+    installApi()
+    const confirm = vi.spyOn(window, 'confirm')
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Pools' }))
+    await screen.findByRole('region', { name: 'Perfis e Pools' })
+    await user.click(screen.getByRole('tab', { name: 'Draft' }))
+    expect(confirm).not.toHaveBeenCalled()
+    confirm.mockRestore()
+  })
+})
+
 describe('Pools: filtros, importação e compartilhamento', () => {
   async function openPool() {
     const user = userEvent.setup()
     const fake = installApi()
     render(<App />)
     await screen.findByText('Conectado. Entre em uma fila.')
-    await user.click(screen.getByRole('button', { name: 'Pools' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Perfis e Pools' })
+    await user.click(screen.getByRole('tab', { name: 'Pools' }))
+    const dialog = await screen.findByRole('region', { name: 'Perfis e Pools' })
     return { user, fake, dialog }
   }
   const grid = (dialog: HTMLElement) => within(within(dialog).getByRole('list', { name: 'Campeões' })).queryAllByRole('button').map((b) => b.getAttribute('aria-label'))

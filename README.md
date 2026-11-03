@@ -82,6 +82,11 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   de itens "Pedro.gg" e troca os feitiços (estes só durante a seleção). Só age quando você clica.
 - **Aceite automático (0.5.3)**: depois de uma partida em que outro jogador não aceitou, o app passa a reconhecer a
   janela seguinte e aceita de novo.
+- **Pools como tela (0.5.4)**: "Pools" agora é uma aba do menu, igual a Meta e Pós-jogo (não abre mais por cima de tudo).
+  Perfis viram abas, os dados do perfil ficam recolhidos até você querer editar, e o app avisa se você tentar sair com
+  alterações não salvas.
+- **Tutorial de primeira vez (0.5.4)**: um passo a passo destacando os botões do app, mostrado só na primeira abertura.
+  Para ver de novo: Configurações > Geral > Rever tutorial.
 - **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
   da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
@@ -110,10 +115,10 @@ mostra "O Windows protegeu seu PC": clique em *Mais informações* e *Executar a
 
 O app procura versões novas nos *Releases* do GitHub do projeto (ao abrir e a cada 4 horas). Para lançar uma:
 
-1. Mude `"version"` no `package.json` (ex.: `0.5.3`) e faça commit/push.
-2. Crie a tag com o mesmo número e envie: `git tag v0.5.3` e `git push origin v0.5.3`.
+1. Mude `"version"` no `package.json` (ex.: `0.5.4`) e faça commit/push.
+2. Crie a tag com o mesmo número e envie: `git tag v0.5.4` e `git push origin v0.5.4`.
 3. O GitHub Actions gera o instalador e cria o Release (`.exe`, `latest.yml` e `.blockmap`).
-4. Quem já tem o app instalado vê o aviso "A versão 0.5.3 está disponível" e decide quando atualizar.
+4. Quem já tem o app instalado vê o aviso "A versão 0.5.4 está disponível" e decide quando atualizar.
 
 Detalhes: o repositório de atualizações entra no instalador sozinho quando ele é gerado pelo Actions
 (`GITHUB_REPOSITORY`). Num `pnpm build:win` local, preencha `DEFAULT_UPDATE_REPO` em `src/shared/config.ts`

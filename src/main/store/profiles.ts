@@ -27,6 +27,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   pickMode: 'balanced',
   autoAccept: false,
   autoAcceptDelay: 1,
+  tourDone: false,
   introAnimation: true,
   reduceMotion: false
 }
@@ -173,7 +174,7 @@ export function sanitizeSettingsPatch(raw: unknown): Partial<AppSettings> {
     if (typeof v === 'number' && Number.isFinite(v)) out.autoAcceptDelay = Math.min(8, Math.max(0, Math.round(v)))
     else throw new Error('Configuração inválida: autoAcceptDelay')
   }
-  for (const key of ['introAnimation', 'reduceMotion'] as const) {
+  for (const key of ['introAnimation', 'reduceMotion', 'tourDone'] as const) {
     if (key in raw) {
       if (typeof raw[key] === 'boolean') out[key] = raw[key] as boolean
       else throw new Error(`Configuração inválida: ${key}`)

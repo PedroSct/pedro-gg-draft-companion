@@ -30,6 +30,7 @@ function AutoAcceptToggle() {
       role="switch"
       aria-checked={on}
       onClick={() => void saveSettings({ autoAccept: !on })}
+      data-tour="autoaccept"
       title="Quando a partida for encontrada, o Pedro.gg clica em Aceitar por você (pelo cliente do LoL, sem usar o mouse)."
       className={`app-no-drag flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-full border py-1 pl-3 pr-1.5 text-sm transition-colors max-[1100px]:gap-1.5 max-[1100px]:pl-2 ${
         flash ? 'border-ally/60 bg-ally/10 text-ally' : on ? 'border-gold/50 bg-gold/10 text-gold' : 'border-line bg-panel/80 text-mist hover:border-mist/50 hover:text-snow'
@@ -43,10 +44,11 @@ function AutoAcceptToggle() {
   )
 }
 
-const NAV: { id: 'draft' | 'postgame' | 'meta'; label: string }[] = [
+const NAV: { id: 'draft' | 'postgame' | 'meta' | 'pools'; label: string }[] = [
   { id: 'draft', label: 'Draft' },
   { id: 'meta', label: 'Meta' },
-  { id: 'postgame', label: 'Pós-jogo' }
+  { id: 'postgame', label: 'Pós-jogo' },
+  { id: 'pools', label: 'Pools' }
 ]
 
 export function Header() {
@@ -77,6 +79,7 @@ export function Header() {
         {NAV.map((n) => (
           <button
             key={n.id}
+            data-tour={`nav-${n.id}`}
             type="button"
             role="tab"
             aria-selected={view === n.id}
@@ -91,9 +94,6 @@ export function Header() {
             )}
           </button>
         ))}
-        <button type="button" onClick={openPool} className="rounded-lg px-3.5 py-1 max-[1000px]:px-2.5 font-display text-base font-semibold tracking-wide text-mist transition-colors hover:text-snow">
-          Pools
-        </button>
       </nav>
 
       <div className="flex-1" />
@@ -131,6 +131,7 @@ export function Header() {
           type="button"
           onClick={openSettings}
           aria-label="Configurações"
+          data-tour="settings"
           className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-panel/80 text-mist transition-colors hover:border-mist/50 hover:text-snow"
         >
           <svg viewBox="0 0 20 20" className="h-4 w-4 fill-current" aria-hidden="true">

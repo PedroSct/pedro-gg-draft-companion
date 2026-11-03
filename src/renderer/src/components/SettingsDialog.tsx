@@ -87,6 +87,7 @@ export function SettingsDialog() {
   const saveSettings = useApp((s) => s.saveSettings)
   const update = useApp((s) => s.update)
   const checkForUpdates = useApp((s) => s.checkForUpdates)
+  const openTour = useApp((s) => s.openTour)
 
   const [dirMessage, setDirMessage] = useState<Message>(null)
   const [metaMessage, setMetaMessage] = useState<Message>(null)
@@ -265,6 +266,13 @@ export function SettingsDialog() {
                     {dirMessage.text}
                   </p>
                 )}
+              </Card>
+              <Card title="Tutorial">
+                <Row title="Conhecer o app" hint="Um passo a passo rápido pelas telas e botões.">
+                  <button type="button" className={btn} onClick={openTour}>
+                    Rever tutorial
+                  </button>
+                </Row>
               </Card>
               <Card title="Aparência">
                 <Row title="Animação de abertura" hint="A vinheta que aparece quando o app inicia.">
