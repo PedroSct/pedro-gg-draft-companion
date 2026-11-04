@@ -328,8 +328,41 @@ export interface BanSuggestion {
   reasons: BanReason[]
 }
 
+/** O que mudou para um campeão da sua Pool entre dois patches. */
+export interface PatchChange {
+  championId: number
+  role: Role
+  fromTier: Tier
+  toTier: Tier
+  winrateFrom: number
+  winrateTo: number
+  /** primeiro item do núcleo da build mudou (ids de item) */
+  coreFrom?: number
+  coreTo?: number
+}
+
+export interface PatchChanges {
+  fromPatch: string
+  toPatch: string
+  changes: PatchChange[]
+}
+
+/** Pick do meta (fora da sua Pool) que vence bem o inimigo da sua rota. */
+export interface MetaCounter {
+  championId: number
+  enemyId: number
+  role: Role
+  /** winrate do campeão sugerido contra o inimigo (0..1) */
+  winrate: number
+  games: number
+  /** winrate suavizado, usado só para ordenar */
+  score: number
+}
+
 export interface Recommendation {
   role: Role | null
+  /** a rota veio de um palpite (Pool + rotas dos aliados), não da fila nem de uma escolha sua */
+  roleGuessed?: boolean
   confidence: Confidence | 'none'
   ranking: PickScore[]
   excluded: { championId: number; reason: ExclusionReason }[]

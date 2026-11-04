@@ -24,15 +24,20 @@ export const IPC = {
 
   PROFILES_LIST: 'profiles:list',
   PROFILES_SAVE: 'profiles:save',
+  BACKUP_EXPORT: 'backup:export',
+  BACKUP_IMPORT: 'backup:import',
   PROFILES_DELETE: 'profiles:delete',
 
   DDRAGON_GET_CATALOG: 'ddragon:getCatalog',
   DDRAGON_GET_SPELLS: 'ddragon:getSpells',
 
   META_INFO: 'meta:info',
+  META_PATCH_CHANGES: 'meta:patch-changes',
+  META_PATCH_ACK: 'meta:patch-ack',
   META_GET_BUILD: 'meta:getBuild',
   META_BUILD_SITUATION: 'meta:buildSituation',
   DRAFT_BANS: 'draft:bans',
+  DRAFT_COUNTERS: 'draft:counters',
   META_TIERS: 'meta:tiers',
   META_DETAIL: 'meta:detail',
   META_IMPORT: 'meta:import',
@@ -52,6 +57,8 @@ export const IPC = {
 
   DIAG_REPORT: 'diag:report',
   DIAG_ACCEPT: 'diag:accept',
+  DIAG_SAVE: 'diag:save',
+  DIAG_PROBE: 'diag:probe',
   POSTGAME_LIST: 'postgame:list',
   POSTGAME_GET: 'postgame:get',
   POSTGAME_DELETE: 'postgame:delete',

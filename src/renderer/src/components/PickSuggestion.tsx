@@ -429,19 +429,28 @@ export function PickSuggestion() {
       {needsRole && (
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Rota que você vai jogar">
           <span className="text-sm text-mist">{isLocal ? 'Sua rota' : 'Rota do amigo'}</span>
-          {ROLES.map((r) => (
-            <button
-              key={r}
-              type="button"
-              aria-pressed={roleOverride === r}
-              onClick={() => setRole(roleOverride === r ? null : r)}
-              className={`rounded-sm border px-2.5 py-1 text-sm transition-colors ${
-                roleOverride === r ? 'border-gold/70 bg-gold/10 text-gold' : 'border-line bg-panel text-mist hover:text-snow'
-              }`}
-            >
-              {ROLE_SHORT[r]}
-            </button>
-          ))}
+          {ROLES.map((r) => {
+            const guess = !roleOverride && rec?.roleGuessed === true && rec.role === r
+            return (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={roleOverride === r}
+                title={guess ? 'Palpite pela sua Pool e pelas rotas dos aliados. Clique para confirmar ou escolha outra.' : undefined}
+                onClick={() => setRole(roleOverride === r ? null : r)}
+                className={`rounded-sm border px-2.5 py-1 text-sm transition-colors ${
+                  roleOverride === r
+                    ? 'border-gold/70 bg-gold/10 text-gold'
+                    : guess
+                      ? 'border-dashed border-gold/60 text-gold'
+                      : 'border-line bg-panel text-mist hover:text-snow'
+                }`}
+              >
+                {ROLE_SHORT[r]}
+                {guess && <span className="ml-1 text-xs text-mist">palpite</span>}
+              </button>
+            )
+          })}
         </div>
       )}
 

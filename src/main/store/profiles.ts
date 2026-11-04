@@ -304,6 +304,37 @@ export class ProfileStore {
     return true
   }
 
+  /** Restaura perfis de um backup: o mesmo id é substituído, os novos são adicionados. Nada é apagado. */
+  async restore(items: readonly unknown[], settings: Partial<AppSettings> = {}): Promise<{ added: number; updated: number; skipped: number }> {
+    let added = 0
+    let updated = 0
+    let skipped = 0
+    for (const item of items) {
+      try {
+        const meta =
+          isRecord(item) && typeof item.id === 'string' && item.id && typeof item.createdAt === 'string'
+            ? { id: item.id.slice(0, 64), createdAt: item.createdAt }
+            : undefined
+        const p = sanitizeProfile(item, meta)
+        if (isRecord(item) && typeof item.updatedAt === 'string') p.updatedAt = item.updatedAt
+        const idx = this.data.profiles.findIndex((x) => x.id === p.id)
+        if (idx >= 0) {
+          this.data.profiles[idx] = p
+          updated++
+        } else {
+          this.data.profiles.push(p)
+          added++
+        }
+      } catch {
+        skipped++
+      }
+    }
+    Object.assign(this.data.settings, settings)
+    if (!this.data.settings.lastActiveProfileId && this.data.profiles[0]) this.data.settings.lastActiveProfileId = this.data.profiles[0].id
+    await this.persist()
+    return { added, updated, skipped }
+  }
+
   /** Serializa as gravações para dois saves seguidos nunca se atropelarem. */
   private persist(): Promise<void> {
     this.queue = this.queue.catch(() => undefined).then(() => writeJsonAtomic(this.file, this.data, true))

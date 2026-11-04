@@ -1,7 +1,7 @@
 // src/main/ipc/handlers.ts  (substitui a versão do Módulo 2)
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app, clipboard, dialog, ipcMain, type BrowserWindow } from 'electron'
+import { app, dialog, type BrowserWindow } from 'electron'
 import { LcuConnector } from '../lcu/connector'
 import { resolveInstallDir } from '../lcu/installDir'
 import { ProfileStore } from '../store/profiles'
@@ -14,18 +14,20 @@ import { applyBuildSelection, sanitizeSelection } from '../../shared/buildSelect
 import { championDetail, tierRows } from '../data/metaStats'
 import { ROLES, type ChampionInfo, type ItemInfo } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO, regionUrl } from '../../shared/config'
-import { decodeShare, encodeShare, toFileJson } from '../store/share'
 import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
 import { AutoAccept } from '../autoAccept'
-import { Diagnostics } from '../diagnostics'
+import { patchNotice, snapshotOf, type MetaSnapshot } from '../data/patchChanges'
+import { suggestMetaCounters } from '../data/counters'
+import { Diagnostics, formatProbe, probeClient } from '../diagnostics'
 import { applyLoadout } from '../lcu/loadout'
 import { PostGameStore } from '../postgame/store'
 import { PostGameCollector } from '../postgame/collector'
-import type { ShareOptions } from '../../shared/poolShare'
 import type { IdentityState, UpdateMetaResult } from '../../shared/api'
 import { annotateDraft, findProfileFor, riotIdOf } from '../../shared/identity'
 import type { DraftState, Role } from '../../shared/types'
 import { IPC } from './channels'
+import { handle, isRecord } from './handle'
+import { registerFileIpc } from './fileHandlers'
 
 export interface AppServices {
   lcu: LcuConnector
@@ -33,14 +35,6 @@ export interface AppServices {
   ddragon: DataDragon
   meta: MetaStore
   updates: UpdateService
-}
-
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-
-function handle(channel: string, fn: (...args: unknown[]) => unknown): void {
-  ipcMain.removeHandler(channel) // evita "handler já registrado" se a janela for recriada (macOS)
-  ipcMain.handle(channel, (_event: unknown, ...args: unknown[]) => fn(...args))
 }
 
 /**
@@ -182,13 +176,41 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     return collector.collectLatest()
   })
 
-  handle(IPC.DIAG_REPORT, () =>
-    diag.report([
-      `Pedro.gg ${app.getVersion()} (${process.platform} ${process.arch})`,
-      `Cliente: ${lcu.getStatus()}`,
-      `Aceite automático: ${profiles.getSettings().autoAccept ? 'ligado' : 'desligado'}, espera ${profiles.getSettings().autoAcceptDelay}s`
+  const diagReport = (): string => {
+    const st = profiles.getSettings()
+    const info = meta.info()
+    return diag.report([
+      `Pedro.gg ${app.getVersion()} (${process.platform} ${process.arch}, Electron ${process.versions.electron})`,
+      `Cliente do LoL: ${lcu.getStatus()}`,
+      `Dados de meta: ${info ? `patch ${info.patch}, ${info.champions} campeões, gerado em ${info.generatedAt}${info.isSample ? ' (AMOSTRA)' : ''}${info.regions ? `, servidores ${info.regions.join('/')}` : ''}` : 'nenhum'}`,
+      `Região do meta: ${st.metaRegion ?? 'global'}`,
+      `Aceite automático: ${st.autoAccept ? 'ligado' : 'desligado'}, espera ${st.autoAcceptDelay}s`,
+      `Última tentativa de aceite: ${diag.getAccept() ? `${diag.getAccept()?.ok ? 'ok' : 'falhou'} (HTTP ${diag.getAccept()?.status})` : 'nenhuma'}`,
+      `Perfis: ${profiles.list().length}`
     ])
-  )
+  }
+  handle(IPC.DIAG_REPORT, () => diagReport())
+  handle(IPC.DIAG_SAVE, async () => {
+    try {
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')
+      const res = await dialog.showSaveDialog(win, {
+        title: 'Salvar relatório de diagnóstico',
+        defaultPath: path.join(app.getPath('documents'), `Pedro.gg-diagnostico-${stamp}.txt`),
+        filters: [{ name: 'Texto', extensions: ['txt'] }]
+      })
+      if (res.canceled || !res.filePath) return { ok: false }
+      await fs.writeFile(res.filePath, diagReport(), 'utf8')
+      return { ok: true, path: res.filePath }
+    } catch {
+      return { ok: false }
+    }
+  })
+  handle(IPC.DIAG_PROBE, async () => {
+    if (lcu.getStatus() !== 'connected') return ['O cliente do LoL não está conectado.']
+    const lines = formatProbe(await probeClient({ get: (p) => lcu.get(p) }))
+    diag.log('teste', lines.join(' | '))
+    return lines
+  })
   handle(IPC.DIAG_ACCEPT, () => diag.getAccept())
   handle(IPC.LCU_GET_STATUS, () => lcu.getStatus())
   handle(IPC.DRAFT_GET_CURRENT, () => annotatedDraft())
@@ -285,6 +307,42 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
       fallbackProfileId: typeof req.profileId === 'string' ? req.profileId : undefined
     })
   })
+  // ---- Aviso de mudança de patch (só para campeões das suas Pools)
+  const seenFile = path.join(userData, 'meta-seen.json')
+  const readSeen = async (): Promise<MetaSnapshot | null> => {
+    try {
+      const j = JSON.parse(await fs.readFile(seenFile, 'utf8')) as MetaSnapshot
+      return j && typeof j.patch === 'string' && j.rows && typeof j.rows === 'object' ? j : null
+    } catch {
+      return null
+    }
+  }
+  const writeSeen = async (): Promise<void> => {
+    const ds = meta.get()
+    if (!ds || ds.isSample) return
+    try {
+      await fs.mkdir(path.dirname(seenFile), { recursive: true })
+      await fs.writeFile(seenFile, JSON.stringify(snapshotOf(ds)), 'utf8')
+    } catch {
+      /* sem permissão de escrita: o aviso só repete na próxima abertura */
+    }
+  }
+  handle(IPC.META_PATCH_CHANGES, async () => {
+    const { notice, ack } = patchNotice(await readSeen(), meta.get(), profiles.list())
+    if (ack) await writeSeen()
+    return notice
+  })
+  handle(IPC.META_PATCH_ACK, () => writeSeen())
+  // ---- Melhor pick do meta contra o inimigo da rota, fora da Pool
+  handle(IPC.DRAFT_COUNTERS, (raw) => {
+    const req = isRecord(raw) ? raw : {}
+    const draft = annotatedDraft()
+    if (!draft || draft.phase === 'FINALIZATION') return []
+    const me = draft.allies.find((a) => a.cellId === draft.localPlayerCellId)
+    if (me && me.status === 'locked' && me.championId > 0) return []
+    const profile = (me?.profileId ? profiles.get(me.profileId) : undefined) ?? (typeof req.profileId === 'string' ? profiles.get(req.profileId) : undefined)
+    return suggestMetaCounters({ draft, dataset: meta.get(), profile, role: draft.localRole })
+  })
   // ---- Build ajustada à partida (time inimigo atual)
   handle(IPC.META_BUILD_SITUATION, async (raw) => {
     const req = isRecord(raw) ? raw : {}
@@ -323,6 +381,7 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
         parts: { runes: parts.runes === true, spells: parts.spells === true, items: parts.items === true }
       }
     )
+    diag.log('build', `importação ${req.championId}/${role}: ${JSON.stringify(result).slice(0, 200)}`)
     return { ok: true, parts: result }
   })
   handle(IPC.META_IMPORT, async () => {
@@ -383,48 +442,7 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     return recommend({ draft, profile, dataset: meta.get(), role, mode: profiles.getSettings().pickMode, champions: champInfos })
   })
 
-  // ---- Compartilhar Pool (código ou arquivo)
-  const shareOpts = (raw: unknown): ShareOptions => ({ includeNotes: isRecord(raw) && raw.includeNotes === true })
-  const MAX_SHARE_FILE = 2 * 1024 * 1024
-
-  handle(IPC.SHARE_ENCODE, (profile, opts) => encodeShare(profile, shareOpts(opts)))
-  handle(IPC.SHARE_DECODE, (text) => decodeShare(text))
-  handle(IPC.SHARE_EXPORT_FILE, async (profile, opts) => {
-    try {
-      const json = toFileJson(profile, shareOpts(opts))
-      const nick = String(isRecord(profile) ? profile.nickname : 'pool').replace(/[^\w.-]+/g, '_').slice(0, 30) || 'pool'
-      const res = await dialog.showSaveDialog(win, {
-        title: 'Salvar Pool para enviar a um amigo',
-        defaultPath: path.join(app.getPath('documents'), `Pool-${nick}.pedrogg.json`),
-        filters: [{ name: 'Pool do Pedro.gg', extensions: ['json'] }]
-      })
-      if (res.canceled || !res.filePath) return { ok: false, reason: 'canceled' }
-      await fs.writeFile(res.filePath, json, 'utf8')
-      return { ok: true, path: res.filePath }
-    } catch {
-      return { ok: false, reason: 'error' }
-    }
-  })
-  handle(IPC.SHARE_IMPORT_FILE, async () => {
-    const res = await dialog.showOpenDialog(win, {
-      title: 'Abrir a Pool de um amigo',
-      properties: ['openFile'],
-      filters: [{ name: 'Pool do Pedro.gg', extensions: ['json', 'txt'] }]
-    })
-    if (res.canceled || !res.filePaths[0]) return { ok: false, reason: 'canceled' }
-    try {
-      const stat = await fs.stat(res.filePaths[0])
-      if (stat.size > MAX_SHARE_FILE) return { ok: false, reason: 'invalid', message: 'O arquivo é grande demais para ser uma Pool.' }
-      const decoded = decodeShare(await fs.readFile(res.filePaths[0], 'utf8'))
-      return decoded.ok ? decoded : { ok: false, reason: 'invalid', message: decoded.message }
-    } catch {
-      return { ok: false, reason: 'invalid', message: 'Não consegui ler esse arquivo.' }
-    }
-  })
-  handle(IPC.CLIPBOARD_WRITE, async (text) => {
-    if (typeof text === 'string' && text.length <= 400_000) await clipboard.writeText(text)
-  })
-  handle(IPC.CLIPBOARD_READ, async () => (await clipboard.readText()).slice(0, 400_000))
+  registerFileIpc(win, profiles)
 
   // ---- Atualização do app (Releases do GitHub)
   let updaterImpl: UpdaterLike | null = null

@@ -32,6 +32,7 @@ export default defineConfig({
   preload: {},
   renderer: {
     plugins: [react(), tailwindcss(), cspMeta()],
-    resolve: { alias: { '@': resolve('src/renderer/src') } }
+    resolve: { alias: { '@': resolve('src/renderer/src') } },
+    build: { minify: true }
   }
 })

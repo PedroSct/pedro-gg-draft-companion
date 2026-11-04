@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { ROLE_PT, type Analysis, type Insight, type InsightLevel, type MatchReport, type PgParticipant, type PgSummary } from '../../../shared/postgame'
 import { useApp } from '../store/useApp'
 import { btn, btnGold, btnDanger } from '../lib/ui'
 import { ChampionIcon, useChampionName } from './Icons'
+import { ProgressView } from './Progress'
 import { CountUp, GrowBar, LineChart, Radar, ScoreRing, gradeColor } from './charts'
 
 const QUEUE: Record<number, string> = {
@@ -459,11 +460,36 @@ function Empty() {
 export function PostGameScreen() {
   const list = useApp((s) => s.postList)
   const detail = useApp((s) => s.postDetail)
+  const [tab, setTab] = useState<'match' | 'progress'>('match')
   if (list.length === 0) return <Empty />
+  const tabBtn = (id: 'match' | 'progress', label: string) => (
+    <button
+      type="button"
+      role="tab"
+      id={`pg-tab-${id}`}
+      aria-selected={tab === id}
+      onClick={() => setTab(id)}
+      className={`border-b-2 px-3 py-1.5 text-sm transition-colors ${tab === id ? 'border-gold text-gold' : 'border-transparent text-mist hover:text-snow'}`}
+    >
+      {label}
+    </button>
+  )
   return (
-    <div className="grid h-full grid-cols-[minmax(240px,300px)_1fr] gap-5">
-      <Sidebar />
-      {detail ? <Detail /> : <div className="grid place-items-center text-mist">Carregando a partida…</div>}
+    <div className="flex h-full flex-col gap-3">
+      <div role="tablist" aria-label="Pós-jogo" className="flex gap-1 border-b border-line">
+        {tabBtn('match', 'Partida')}
+        {tabBtn('progress', 'Evolução')}
+      </div>
+      {tab === 'progress' ? (
+        <div role="tabpanel" aria-labelledby="pg-tab-progress" className="flex min-h-0 flex-1 flex-col">
+          <ProgressView list={list} />
+        </div>
+      ) : (
+        <div role="tabpanel" aria-labelledby="pg-tab-match" className="grid min-h-0 flex-1 grid-cols-[minmax(240px,300px)_1fr] gap-5">
+          <Sidebar />
+          {detail ? <Detail /> : <div className="grid place-items-center text-mist">Carregando a partida…</div>}
+        </div>
+      )}
     </div>
   )
 }

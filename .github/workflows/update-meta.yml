@@ -14,7 +14,7 @@
 #
 # A chave de desenvolvimento expira em 24 h: se vencer no meio, o que já foi coletado é aproveitado (desde que seja
 # suficiente) e a próxima execução continua de onde parou. Para rodar toda semana sem trocar a chave, peça uma
-# "Personal API Key" no mesmo portal e coloque no mesmo secret.
+# "Personal API Key" no mesmo portal e coloque no mesmo secret (a velocidade continua a mesma: 100 requisições a cada 2 min).
 name: Atualizar dados de meta
 
 on:
@@ -29,6 +29,12 @@ on:
       timeline_matches:
         description: Destas, quantas também baixam a timeline (builds, itens, habilidades). 0 = todas.
         default: '3000'
+      rps:
+        description: Requisições por segundo. Mantenha 0.8 - o limite longo da Riot (100 a cada 2 min) vale também para chave aprovada; acima disso dá erro 429.
+        default: '0.8'
+      days:
+        description: Só partidas dos últimos N dias (mais dias = mais partidas disponíveis no começo do patch).
+        default: '14'
   schedule:
     - cron: '0 7 * * 3' # quartas, 07:00 UTC (só funciona se a chave ainda estiver válida)
 
@@ -96,12 +102,14 @@ jobs:
           PLATFORMS: ${{ matrix.platforms }}
           MAX_MATCHES: ${{ inputs.max_matches || '6000' }}
           TIMELINE_MATCHES: ${{ inputs.timeline_matches || '3000' }}
+          RPS: ${{ inputs.rps || '0.8' }}
+          DAYS: ${{ inputs.days || '14' }}
         run: |
           # Um servidor que falha (chave vencida, limite) não impede os outros do cluster; o progresso fica salvo.
           failed=0
           for p in $PLATFORMS; do
             echo "::group::Servidor $p"
-            pnpm meta:build --platform "$p" --max-matches "$MAX_MATCHES" --timeline-matches "$TIMELINE_MATCHES" --out "meta-$p.json" --work meta-work || failed=$((failed+1))
+            pnpm meta:build --platform "$p" --max-matches "$MAX_MATCHES" --timeline-matches "$TIMELINE_MATCHES" --rps "$RPS" --days "$DAYS" --out "meta-$p.json" --work meta-work || failed=$((failed+1))
             echo "::endgroup::"
           done
           if [ "$failed" -gt 0 ]; then

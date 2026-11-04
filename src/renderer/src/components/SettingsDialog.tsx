@@ -96,6 +96,10 @@ export function SettingsDialog() {
   const [checkingApp, setCheckingApp] = useState(false)
   const [tab, setTab] = useState<TabId>('general')
   const [diagMsg, setDiagMsg] = useState<Message>(null)
+  const [probe, setProbe] = useState<string[] | null>(null)
+  const [backupMsg, setBackupMsg] = useState<Message>(null)
+  const reloadProfiles = useApp((s) => s.reloadProfiles)
+  const poolDirty = useApp((s) => s.poolDirty)
   const [lastAccept, setLastAccept] = useState<{ ok: boolean; status: number; at: number } | null>(null)
   const account = useApp((s) => s.identity?.account)
   const pickMode = useApp((s) => s.settings?.pickMode ?? 'balanced')
@@ -207,6 +211,47 @@ export function SettingsDialog() {
       setDiagMsg({ ok: true, text: 'Relatório copiado. Cole na conversa com o Pedro.' })
     } catch {
       setDiagMsg({ ok: false, text: 'Não consegui copiar o relatório.' })
+    }
+  }
+
+  async function exportBackup(): Promise<void> {
+    try {
+      const r = await window.api.exportBackup()
+      if (r.ok) setBackupMsg({ ok: true, text: `Backup salvo com ${r.profiles} ${r.profiles === 1 ? 'perfil' : 'perfis'}.` })
+      else if (r.reason === 'error') setBackupMsg({ ok: false, text: 'Não consegui salvar o backup.' })
+    } catch {
+      setBackupMsg({ ok: false, text: 'Não consegui salvar o backup.' })
+    }
+  }
+
+  async function importBackup(): Promise<void> {
+    if (poolDirty && !window.confirm('Há alterações não salvas na Pool. Restaurar o backup agora pode sobrescrevê-las. Continuar?')) return
+    try {
+      const r = await window.api.importBackup()
+      if (r.ok) {
+        await reloadProfiles()
+        setBackupMsg({ ok: true, text: `Backup restaurado: ${r.added} novos, ${r.updated} atualizados${r.skipped ? `, ${r.skipped} ignorados` : ''}.` })
+      } else if (r.reason === 'invalid') setBackupMsg({ ok: false, text: r.message ?? 'Arquivo inválido.' })
+    } catch {
+      setBackupMsg({ ok: false, text: 'Não consegui restaurar o backup.' })
+    }
+  }
+
+  async function saveDiagnostics(): Promise<void> {
+    try {
+      const r = await window.api.saveDiagnostics()
+      if (r.ok) setDiagMsg({ ok: true, text: 'Relatório salvo. Envie o arquivo para o Pedro.' })
+    } catch {
+      setDiagMsg({ ok: false, text: 'Não consegui salvar o relatório.' })
+    }
+  }
+
+  async function probeClient(): Promise<void> {
+    setProbe(['Testando…'])
+    try {
+      setProbe(await window.api.probeClient())
+    } catch {
+      setProbe(['Não consegui testar o cliente.'])
     }
   }
 
@@ -426,15 +471,46 @@ export function SettingsDialog() {
                   </p>
                 )}
               </Card>
+              <Card title="Backup dos perfis">
+                <p className="text-sm text-mist">
+                  Salve todos os perfis e Pools em um arquivo para guardar ou levar a outro PC. Ao restaurar, perfis com o mesmo código são atualizados e os novos são adicionados; nada é apagado.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" className={btn} onClick={() => void exportBackup()}>
+                    Salvar backup
+                  </button>
+                  <button type="button" className={btn} onClick={() => void importBackup()}>
+                    Restaurar backup
+                  </button>
+                </div>
+                {backupMsg && (
+                  <p role="status" className={`mt-2 text-sm ${backupMsg.ok ? 'text-ally' : 'text-enemy'}`}>
+                    {backupMsg.text}
+                  </p>
+                )}
+              </Card>
               <Card title="Diagnóstico">
                 <p className="text-sm text-mist">
                   Se algo não funcionar (o aceite automático, por exemplo), copie o relatório e mande para o Pedro. Ele não tem senha, nome de conta nem dados pessoais.
                 </p>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button type="button" className={btn} onClick={() => void copyDiagnostics()}>
                     Copiar relatório de diagnóstico
                   </button>
+                  <button type="button" className={btn} onClick={() => void saveDiagnostics()}>
+                    Salvar em arquivo
+                  </button>
+                  <button type="button" className={btn} onClick={() => void probeClient()}>
+                    Testar conexão com o cliente
+                  </button>
                 </div>
+                {probe && (
+                  <ul aria-label="Resultado do teste" className="mt-2 space-y-0.5 font-mono text-xs text-mist">
+                    {probe.map((l) => (
+                      <li key={l}>{l}</li>
+                    ))}
+                  </ul>
+                )}
                 {diagMsg && (
                   <p role="status" className={`mt-2 text-sm ${diagMsg.ok ? 'text-ally' : 'text-enemy'}`}>
                     {diagMsg.text}

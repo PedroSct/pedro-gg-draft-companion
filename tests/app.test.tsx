@@ -138,6 +138,13 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     onAutoAccepted: () => () => {},
     getDiagnostics: async () => 'diagnóstico de teste',
     getLastAccept: async () => null,
+    getMetaCounters: async () => [],
+    exportBackup: async () => ({ ok: false, reason: 'canceled' }),
+    importBackup: async () => ({ ok: false, reason: 'canceled' }),
+    getPatchChanges: async () => null,
+    ackPatchChanges: async () => undefined,
+    saveDiagnostics: async () => ({ ok: false }),
+    probeClient: async () => [],
     onPostGameReady: () => () => {},
     listPostGames: async () => (opts.postGames ?? []).map((g) => g.summary),
     getPostGame: async (id) => opts.postGames?.find((g) => g.summary.gameId === id)?.detail ?? null,
@@ -870,5 +877,74 @@ describe('pós-jogo e aviso de patch', () => {
     render(<App />)
     await screen.findByText('Conectado. Entre em uma fila.')
     expect(screen.queryByText(/e o jogo está no/)).not.toBeInTheDocument()
+  })
+})
+
+describe('0.6: counters do meta, evolução e aviso de patch', () => {
+  it('sugere counters fora da Pool e adiciona o campeão à Pool com um clique', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    ;(fake.api as { getMetaCounters: LolApi['getMetaCounters'] }).getMetaCounters = async () => [
+      { championId: 238, enemyId: 157, role: 'MIDDLE', winrate: 0.61, games: 120, score: 0.58 }
+    ]
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+
+    const card = await screen.findByRole('region', { name: 'Counters do meta' })
+    expect(within(card).getByText(/Vence 61(,0)?% contra Yasuo \(120 jogos\)/)).toBeInTheDocument()
+    await user.click(within(card).getByRole('button', { name: 'Adicionar Zed à Pool' }))
+    expect(fake.saveProfile).toHaveBeenCalledTimes(1)
+    const sent = fake.saveProfile.mock.calls[0][0] as ProfileInput
+    expect(sent.pool?.MIDDLE.some((e) => e.championId === 238 && e.comfort === 1)).toBe(true)
+    expect(sent.pool?.MIDDLE).toHaveLength(5)
+    expect(await within(card).findByRole('button', { name: 'Adicionar Zed à Pool' })).toBeDisabled()
+  })
+
+  it('sem counters, o cartão não aparece', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+    await screen.findByRole('region', { name: 'Sugestões de banimento' }).catch(() => undefined)
+    expect(screen.queryByRole('region', { name: 'Counters do meta' })).not.toBeInTheDocument()
+  })
+
+  it('o Pós-jogo tem a aba Evolução com resumo e gráfico', async () => {
+    const user = userEvent.setup()
+    const base = postGameFixture()
+    const more = Array.from({ length: 4 }, (_, i) => ({
+      ...base,
+      summary: { ...base.summary, gameId: base.summary.gameId + i + 1, score: 50 + i * 5, win: i % 2 === 0 }
+    }))
+    installApi({ postGames: [base, ...more] })
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: /Pós-jogo/ }))
+    await user.click(await screen.findByRole('tab', { name: 'Evolução' }))
+    const panel = await screen.findByRole('tabpanel', { name: 'Evolução' })
+    expect(within(panel).getByText('Partidas analisadas')).toBeInTheDocument()
+    expect(within(panel).getByRole('img', { name: /Nota de cada partida/ })).toBeInTheDocument()
+    expect(within(panel).getByRole('region', { name: 'Desempenho por campeão' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Partida' }))
+    expect(await screen.findByRole('complementary', { name: 'Partidas analisadas' })).toBeInTheDocument()
+  })
+
+  it('avisa o que mudou no patch para a Pool e some ao confirmar', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    const ack = vi.fn(async () => undefined)
+    ;(fake.api as { getPatchChanges: LolApi['getPatchChanges'] }).getPatchChanges = async () => ({
+      fromPatch: '16.19',
+      toPatch: '16.20',
+      changes: [{ championId: 103, role: 'MIDDLE', fromTier: 'B', toTier: 'A', winrateFrom: 0.5, winrateTo: 0.53 }]
+    })
+    ;(fake.api as { ackPatchChanges: LolApi['ackPatchChanges'] }).ackPatchChanges = ack
+    render(<App />)
+    const note = await screen.findByRole('status', { name: 'Mudanças do patch' })
+    expect(within(note).getByText(/Patch 16\.20: mudou 1 campeão das suas Pools desde o 16\.19/)).toBeInTheDocument()
+    expect(within(note).getByText('Ahri')).toBeInTheDocument()
+    await user.click(within(note).getByRole('button', { name: 'Entendi' }))
+    expect(ack).toHaveBeenCalled()
+    expect(screen.queryByRole('status', { name: 'Mudanças do patch' })).not.toBeInTheDocument()
   })
 })

@@ -54,3 +54,42 @@ export class Diagnostics {
     return [...header, '', ...this.lines.slice(-120)].join('\n')
   }
 }
+
+/** Endpoints de leitura que o app usa; o teste mostra quais respondem neste cliente. */
+export const PROBE_PATHS: Array<{ label: string; path: string }> = [
+  { label: 'Fase da partida', path: '/lol-gameflow/v1/gameflow-phase' },
+  { label: 'Invocador', path: '/lol-summoner/v1/current-summoner' },
+  { label: 'Seleção de campeões', path: '/lol-champ-select/v1/session' },
+  { label: 'Páginas de runas', path: '/lol-perks/v1/pages' },
+  { label: 'Fim de jogo', path: '/lol-end-of-game/v1/eog-stats-block' }
+]
+
+export interface ProbeIo {
+  get(path: string): Promise<{ status: number; data: unknown }>
+}
+
+export interface ProbeLine {
+  label: string
+  path: string
+  /** HTTP; 0 = o cliente nem respondeu */
+  status: number
+  ok: boolean
+}
+
+/** Consulta cada endpoint e devolve o código HTTP (404 em champ-select/fim de jogo é normal fora dessas fases). */
+export async function probeClient(io: ProbeIo): Promise<ProbeLine[]> {
+  const out: ProbeLine[] = []
+  for (const p of PROBE_PATHS) {
+    try {
+      const r = await io.get(p.path)
+      out.push({ ...p, status: r.status, ok: r.status >= 200 && r.status < 300 })
+    } catch {
+      out.push({ ...p, status: 0, ok: false })
+    }
+  }
+  return out
+}
+
+export function formatProbe(lines: ProbeLine[]): string[] {
+  return lines.map((l) => `${l.ok ? 'OK ' : l.status === 404 ? '-- ' : 'ERR'} ${l.label}: ${l.status === 0 ? 'sem resposta' : `HTTP ${l.status}`}`)
+}

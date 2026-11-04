@@ -5,6 +5,8 @@ import type { AccountStats, DraftState, LcuIdentity, LcuStatus, Role } from './t
 import type {
   AppSettings,
   BanSuggestion,
+  MetaCounter,
+  PatchChanges,
   BuildSituation,
   Catalog,
   ChampionBuild,
@@ -34,6 +36,11 @@ export type ImportMetaResult =
 export type UpdateMetaResult =
   | { ok: true; changed: boolean; info: MetaInfo }
   | { ok: false; reason: 'no-url' | 'network' | 'invalid'; message?: string }
+
+export type BackupExportResult = { ok: true; path: string; profiles: number } | { ok: false; reason: 'canceled' | 'error' }
+export type BackupImportResult =
+  | { ok: true; added: number; updated: number; skipped: number }
+  | { ok: false; reason: 'canceled' | 'invalid'; message?: string }
 
 export type ExportShareFileResult = { ok: true; path: string } | { ok: false; reason: 'canceled' | 'error' }
 
@@ -71,6 +78,10 @@ export interface LolApi {
   getDiagnostics(): Promise<string>
   /** Última tentativa de aceitar a partida (null = nenhuma ainda). */
   getLastAccept(): Promise<{ ok: boolean; status: number; at: number } | null>
+  /** Salva o relatório de diagnóstico em um arquivo escolhido pelo usuário. */
+  saveDiagnostics(): Promise<{ ok: boolean; path?: string }>
+  /** Testa os endpoints do cliente do LoL e devolve linhas prontas para mostrar. */
+  probeClient(): Promise<string[]>
   listPostGames(): Promise<PgSummary[]>
   getPostGame(gameId: number): Promise<PgDetail | null>
   deletePostGame(gameId: number): Promise<boolean>
@@ -100,10 +111,16 @@ export interface LolApi {
   getSpells(championKey: string): Promise<SpellInfo[]>
 
   getMetaInfo(): Promise<MetaInfo | null>
+  /** Mudanças de patch nos campeões das suas Pools desde a última vez que você viu (null = nada a avisar). */
+  getPatchChanges(): Promise<PatchChanges | null>
+  /** Marca o patch atual como visto. */
+  ackPatchChanges(): Promise<void>
   /** Ranking de campeões da rota (tela Meta). */
   getMetaTiers(role: Role): Promise<MetaTierRow[]>
   /** Sugestões de banimento para o draft atual ([] fora da fase de bans ou sem dados reais). */
   getBanSuggestions(req: { profileId?: string }): Promise<BanSuggestion[]>
+  /** Melhores picks do meta contra o inimigo da sua rota, fora da sua Pool. */
+  getMetaCounters(req: { profileId?: string }): Promise<MetaCounter[]>
   getMetaDetail(req: { championId: number; role: Role }): Promise<MetaChampionDetail | null>
   getBuild(req: { championId: number; role: Role }): Promise<ChampionBuild | null>
   /** Ajustes da build para o time inimigo atual; null fora do draft. */
@@ -115,6 +132,10 @@ export interface LolApi {
   /** Compartilhar Pool: código de texto ("PGG1:...") ou arquivo. Aceita um perfil ainda não salvo. */
   encodeShare(profile: ProfileInput, opts: ShareOptions): Promise<string>
   decodeShare(text: string): Promise<DecodeResult>
+  /** Salva todos os perfis em um arquivo de backup. */
+  exportBackup(): Promise<BackupExportResult>
+  /** Restaura perfis de um arquivo de backup (mesmo id substitui, novos são adicionados). */
+  importBackup(): Promise<BackupImportResult>
   exportShareFile(profile: ProfileInput, opts: ShareOptions): Promise<ExportShareFileResult>
   importShareFile(): Promise<ImportShareFileResult>
   copyText(text: string): Promise<void>

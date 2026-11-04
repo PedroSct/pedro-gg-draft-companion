@@ -68,6 +68,8 @@ interface AppState {
 
   init: () => Promise<() => void>
   loadCatalog: () => Promise<void>
+  /** Recarrega perfis e preferências do main (depois de restaurar um backup). */
+  reloadProfiles: () => Promise<void>
   refreshRecommendation: () => Promise<void>
   setActiveProfile: (id: string) => Promise<void>
   setRoleOverride: (role: Role | null) => void
@@ -267,6 +269,12 @@ export const useApp = create<AppState>()((set, get) => ({
     // Fecha a janela em que a atualização terminou entre a leitura inicial e o registro do listener.
     void api.getMetaInfo().then((info) => set({ metaInfo: info }))
     return () => offs.forEach((off) => off())
+  },
+
+  reloadProfiles: async () => {
+    const [profiles, settings] = await Promise.all([window.api.listProfiles(), window.api.getSettings()])
+    set({ profiles, settings })
+    await get().refreshRecommendation()
   },
 
   loadCatalog: async () => {

@@ -87,6 +87,21 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   alterações não salvas.
 - **Tutorial de primeira vez (0.5.4)**: um passo a passo destacando os botões do app, mostrado só na primeira abertura.
   Para ver de novo: Configurações > Geral > Rever tutorial.
+- **Counters do meta (0.6.0)**: no draft, um cartão lista os melhores picks do meta **fora da sua Pool** contra o inimigo
+  da sua rota (com o winrate do confronto e o número de jogos) e um botão **Adicionar à Pool** (entra com conforto 1).
+- **Palpite de rota (0.6.0)**: quando a fila não informa a sua rota, o app tira as rotas que os aliados já ocupam e usa a
+  Pool e as rotas principais do perfil. O botão da rota aparece tracejado como "palpite"; clique para confirmar ou troque.
+- **Evolução no Pós-jogo (0.6.0)**: nova aba com nota ao longo do tempo, vitórias, desempenho por campeão e por rota e
+  padrões de erro (mais mortes nas derrotas, jogos curtos ou longos perdidos), sempre com o número que gerou a dica.
+- **Mudanças de patch (0.6.0)**: quando o patch dos dados muda, uma faixa mostra o que mexeu nos campeões das suas Pools
+  (tier, winrate e primeiro item da build). Aparece uma vez por patch; **Entendi** dispensa.
+- **Backup dos perfis (0.6.0)**: Configurações > Aplicativo > Backup dos perfis salva todos os perfis e Pools em um
+  arquivo e restaura em outro PC (mesmo código atualiza, novos são adicionados, nada é apagado).
+- **Diagnóstico melhor (0.6.0)**: o relatório traz versão, dados de meta, região e último aceite; dá para **salvar em
+  arquivo** e **testar a conexão com o cliente** (mostra quais endpoints respondem).
+- **Draft com rolagem (0.6.0)**: a coluna do meio agora rola, então runas, itens e feitiços que serão enviados ao LoL
+  ficam sempre visíveis depois de travar o campeão.
+- **Menor e mais rápido (0.6.0)**: o código da tela passou a ser minificado (de 666 kB para 280 kB no pacote principal).
 - **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
   da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
@@ -167,14 +182,42 @@ vem apontando para ela (`DEFAULT_META_URL` em `src/shared/config.ts`). Configura
    3 horas) e servidores do mesmo cluster (ex.: `br1,na1`) rodam em sequência no mesmo job (cabem uns dois). No fim, as
    contagens de todos os servidores são **somadas num `meta.json` global** (só entram partidas do mesmo patch) e cada servidor
    também gera o seu `meta-<servidor>.json`. Se a chave
-   vencer no meio, rode de novo: o progresso fica em cache.
+   vencer no meio, rode de novo: o progresso fica em cache. Os campos **rps** e **days** (partidas dos últimos N dias)
+   também ficam no formulário; mantenha o `rps` em 0,8 (veja "Chave pessoal" abaixo).
 3. Depois disso roda sozinho toda semana. Se a validação falhar (poucos campeões/partidas), nada é publicado.
+
+#### Chave pessoal e mais partidas
+
+A chave de desenvolvimento vale 24 h. Um projeto aprovado em developer.riotgames.com ganha uma chave que **não expira**,
+então o agendamento de quarta-feira funciona sem ninguém renovar nada: troque o valor do secret `RIOT_API_KEY` (o nome
+continua o mesmo). **Ela não aumenta a velocidade**: o limite padrão (20 requisições por segundo e **100 a cada 2
+minutos**) é o mesmo da chave de desenvolvimento, e o que manda é o limite longo, cerca de 0,83 requisição por segundo.
+Por isso o padrão do gerador é 0,8 e não adianta subir o campo **rps** (só geraria erros 429). Os limites por método
+(league-v4, etc.) são maiores, mas o limite do app vale para todas as chamadas somadas.
+
+O que realmente aumenta a quantidade de dados:
+- **Mais servidores**: cada cluster da Riot tem o próprio limite, então `br1,euw1,kr` coletam em paralelo e somam. Adicionar
+  `na1`, `la1` etc. multiplica as partidas sem aumentar o tempo (só o do mesmo cluster, ex. `br1` e `na1`, soma tempo).
+- **Menos timelines**: cada partida custa 1 requisição e a timeline (builds) custa outra. Baixar `timeline_matches`
+  libera requisições para mais partidas de winrate e confrontos.
+- **Tempo do job**: ele tem 350 min, cerca de 16 mil requisições por servidor. Algo como 7000 partidas com 5000 timelines
+  por servidor cabe; acima disso a coleta para no limite de tempo e continua na próxima execução (o progresso fica em cache).
+- **Chave de produção**: só a Riot libera limites maiores, pedindo uma revisão do produto no portal.
+
+Nunca cole a chave em arquivos do projeto: ela só vive no secret do GitHub.
 
 Para chegar aos amigos sem o workflow: suba o `meta.json` para um repositório público, coloque o endereço em
 `DEFAULT_META_URL` **antes** de gerar o instalador (quem já instalou cola em Configurações). O app baixa a versão nova ao
 abrir, se a opção estiver ligada.
 
 Também dá para importar um `meta.json` manualmente em Configurações > Importar dados de meta.
+
+## Aviso do Windows (SmartScreen)
+
+O instalador **não é assinado** (certificado de assinatura de código é pago), então o Windows pode mostrar "O Windows
+protegeu o seu computador". Clique em **Mais informações > Executar assim mesmo**. O aviso diminui com o número de
+downloads. Quando houver um certificado, basta configurar `CSC_LINK` e `CSC_KEY_PASSWORD` como secrets do GitHub: o
+electron-builder passa a assinar sozinho no workflow de build.
 
 ## Limitações conhecidas
 - O Pós-jogo e o aceite automático usam endpoints do cliente do LoL (LCU) que a Riot **não** suporta oficialmente para
@@ -184,7 +227,7 @@ Também dá para importar um `meta.json` manualmente em Configurações > Import
   guarda a resposta bruta das últimas 5 partidas em `postgame/raw` (pasta de dados do app) para ajustar o leitor se o
   formato vier diferente.
 - O **importar runas/itens** e a **leitura da conta/amigos** também usam endpoints não oficiais do cliente e foram testados só contra um cliente simulado.
-- Não há nada durante a partida (sem overlay), de propósito: a análise vem depois do jogo.
+- Não há nada durante a partida (sem overlay), de propósito: a análise vem depois do jogo (um overlay dentro do jogo pode violar regras de anti-cheat e fica fora do app).
 - Os dados de meta reais dependem de você rodar o gerador uma vez por patch (e de uma chave da Riot).
 - A atualização automática foi testada com um atualizador simulado e com o app empacotado, mas ainda não contra um
   Release real do GitHub: o primeiro teste de verdade é publicar uma versão nova e ver o aviso na anterior.

@@ -11,6 +11,7 @@
 //  - comp    : encaixe na composição: equilíbrio de dano físico/mágico, frontline e controle de grupo
 // Além do score, cada pick traz um "risco" (como no Draftforge): counters que o inimigo ainda pode escolher.
 // Winrates passam por suavização bayesiana (puxa para 50% quando há poucos jogos).
+import { guessRole } from '../../shared/roleGuess'
 import type { DraftState, Role } from '../../shared/types'
 import { traitsOf, type Traits } from '../../shared/traits'
 import {
@@ -295,7 +296,9 @@ function unavailableChampions(draft: DraftState, allowMirror: boolean): Map<numb
 export function recommend(input: RecommendInput): Recommendation {
   const { draft, profile, dataset } = input
   const w = { ...MODE_WEIGHTS[input.mode ?? 'balanced'], ...input.weights }
-  const role = input.role ?? draft.localRole
+  const given = input.role ?? draft.localRole
+  const guessed = given ? null : guessRole(draft, profile)
+  const role = given ?? guessed
   const unavailable = unavailableChampions(draft, input.allowMirror ?? false)
 
   const entries = (role ? [role] : [...ROLES]).flatMap((r) => profile.pool[r].map((entry) => ({ entry, role: r })))
@@ -395,5 +398,5 @@ export function recommend(input: RecommendInput): Recommendation {
   else if (!candidates.length) note = 'all-unavailable'
   else if (!dataset) note = 'no-meta-data'
 
-  return { role: role ?? null, confidence: ranking[0]?.confidence ?? 'none', ranking, excluded, note }
+  return { role: role ?? null, ...(guessed ? { roleGuessed: true } : {}), confidence: ranking[0]?.confidence ?? 'none', ranking, excluded, note }
 }

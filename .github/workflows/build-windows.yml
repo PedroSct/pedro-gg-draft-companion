@@ -48,9 +48,17 @@ jobs:
 
       # O repositório de atualizações entra no app sozinho (GITHUB_REPOSITORY) e o latest.yml sai junto do .exe.
       # shell: bash de propósito: o PowerShell (padrão do Windows) quebra argumentos como -c.publish.owner=...
+      # Assinatura de código (opcional, certificado pago): com os secrets CSC_LINK e CSC_KEY_PASSWORD o instalador sai assinado.
       - name: Gerar o instalador
         shell: bash
+        env:
+          SIGN_LINK: ${{ secrets.CSC_LINK }}
+          SIGN_PASS: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
+          if [ -n "$SIGN_LINK" ]; then
+            export CSC_LINK="$SIGN_LINK" CSC_KEY_PASSWORD="$SIGN_PASS"
+            echo "Certificado de assinatura encontrado: o instalador será assinado."
+          fi
           pnpm exec electron-vite build
           pnpm exec electron-builder --win --publish never \
             --config.publish.provider=github \

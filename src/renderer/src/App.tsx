@@ -4,6 +4,8 @@ import { Header } from './components/Header'
 import { TeamColumn } from './components/TeamColumn'
 import { BansBar } from './components/BansBar'
 import { BanSuggestions } from './components/BanSuggestions'
+import { MetaCounters } from './components/MetaCounters'
+import { PatchNotice } from './components/PatchNotice'
 import { PickSuggestion } from './components/PickSuggestion'
 import { BuildPanel } from './components/BuildPanel'
 import { IdleScreen } from './components/IdleScreen'
@@ -108,9 +110,10 @@ function DraftScreen() {
   return (
     <div className="grid h-full grid-cols-[minmax(210px,1fr)_minmax(0,1.7fr)_minmax(210px,1fr)] gap-5 max-[1000px]:grid-cols-2 max-[1000px]:content-start max-[1000px]:gap-3 max-[1000px]:overflow-y-auto">
       <TeamColumn side="ally" players={draft.allies} localCellId={draft.localPlayerCellId} />
-      <div ref={centerRef} className="flex min-w-0 flex-col gap-3 pr-1 min-[1001px]:min-h-0 min-[1001px]:overflow-y-auto max-[1000px]:order-last max-[1000px]:col-span-2 max-[1000px]:pr-0">
+      <div ref={centerRef} className="flex min-w-0 flex-col gap-3 pr-1 [&>*]:shrink-0 min-[1001px]:min-h-0 min-[1001px]:overflow-y-auto max-[1000px]:order-last max-[1000px]:col-span-2 max-[1000px]:pr-0">
         <BansBar allies={draft.bans.allies} enemies={draft.bans.enemies} />
         <BanSuggestions />
+        <MetaCounters />
         <PickSuggestion />
         <BuildPanel />
       </div>
@@ -164,6 +167,7 @@ export default function App() {
         <Header />
         <UpdateBanner />
         <Banners />
+        <PatchNotice />
         <main className="min-h-0 flex-1 p-5 max-[900px]:p-3">
           <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : view === 'meta' ? <MetaScreen /> : view === 'pools' ? <PoolScreen /> : draft ? <DraftScreen /> : <IdleScreen />}</Suspense>
         </main>
