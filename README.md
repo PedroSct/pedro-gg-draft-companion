@@ -121,6 +121,9 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
 - **Coleta pós-patch mais rápida (0.7.0)**: logo após um patch novo, as partidas do patch antigo eram baixadas e jogadas
   fora (cerca de 14 requisições por partida válida). Agora o coletor descobre a data em que o patch começou e para de
   pedir partidas mais antigas daquele jogador.
+- **Overlay mais fácil de diagnosticar e coleta com tempo limite (0.7.1)**: o relatório de diagnóstico ganhou a linha "Overlay:" com o
+  motivo de ele não aparecer, o overlay também funciona na Ferramenta de Treino, e o coletor de dados para sozinho antes
+  do limite de 350 min do GitHub (`--max-minutes`), gerando o arquivo com o que já coletou.
 - **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
   da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
