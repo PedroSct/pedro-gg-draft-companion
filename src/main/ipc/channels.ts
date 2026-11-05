@@ -57,6 +57,8 @@ export const IPC = {
 
   OVERLAY_GET: 'overlay:get',
   OVERLAY_PREVIEW: 'overlay:preview',
+  OVERLAY_MOVE_START: 'overlay:move-start',
+  OVERLAY_MOVE_DONE: 'overlay:move-done',
   DIAG_REPORT: 'diag:report',
   DIAG_ACCEPT: 'diag:accept',
   DIAG_SAVE: 'diag:save',

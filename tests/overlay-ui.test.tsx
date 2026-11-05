@@ -4,8 +4,8 @@ import Overlay from '../src/renderer/src/components/Overlay'
 import type { OverlayState } from '../src/shared/overlay'
 
 const state = (over: Partial<OverlayState> = {}): OverlayState => ({
-  demo: false, championId: 103, championName: 'Ahri', role: 'MIDDLE', level: 7, gameTime: 612, lowData: false,
-  skill: { next: 'R', ready: true, upcoming: ['Q', 'E', 'Q'], levels: { Q: 3, W: 1, E: 1, R: 0 }, priority: ['R', 'Q', 'E', 'W'] },
+  demo: false, gold: 1850, championId: 103, championName: 'Ahri', role: 'MIDDLE', level: 7, gameTime: 612, lowData: false,
+  skill: { next: 'R', ready: true, upcoming: ['Q', 'E', 'Q', 'E', 'W'], levels: { Q: 3, W: 1, E: 1, R: 0 }, priority: ['R', 'Q', 'E', 'W'] },
   nextItemId: 4645,
   items: [
     { itemId: 6655, label: 'Item 1', owned: true },
@@ -22,7 +22,7 @@ function mount(initial: OverlayState | null) {
     onOverlayState: vi.fn((cb: (s: OverlayState | null) => void) => { push = cb; return () => undefined }),
     getCatalog: vi.fn(async () => ({
       version: '16.22.1', locale: 'pt_BR', champions: [{ id: 103, key: 'Ahri', name: 'Ahri', iconUrl: '', tags: [], info: { attack: 1, defense: 1, magic: 1, difficulty: 1 } }],
-      items: { '4645': { id: 4645, name: 'Chama Sombria', iconUrl: '', gold: 0 }, '6655': { id: 6655, name: 'Ruína de Luden', iconUrl: '', gold: 0 } }
+      items: { '4645': { id: 4645, name: 'Chama Sombria', iconUrl: '', goldTotal: 3000 }, '6655': { id: 6655, name: 'Ruína de Luden', iconUrl: '', goldTotal: 3000 } }
     }))
   } as never
   render(<Overlay />)
@@ -34,24 +34,43 @@ afterEach(() => document.documentElement.classList.remove('overlay-mode'))
 describe('Overlay (painel no jogo)', () => {
   it('mostra a habilidade a subir agora e o próximo item a comprar', async () => {
     mount(state())
-    expect(await screen.findByText('Suba agora: R')).toBeTruthy()
-    expect(await screen.findByText('Comprar: Chama Sombria')).toBeTruthy()
-    expect(screen.getByText('Depois: Q → E → Q')).toBeTruthy()
+    expect(await screen.findByRole('img', { name: 'Suba agora: R' })).toBeTruthy()
+    expect(screen.getByText('Suba agora')).toBeTruthy()
+    expect(await screen.findByText(/Comprar: Chama Sombria/)).toBeTruthy()
+    // sequência seguinte com o nível de cada ponto (5 pontos gastos: o próximo é no nível 6, depois 7...)
+    const seq = screen.getByRole('list', { name: 'Próximos pontos' })
+    expect(seq.textContent).toContain('nv 7')
+    expect(seq.textContent).toMatch(/Q.*E.*Q/)
+    expect(screen.getByLabelText('Ouro').textContent).toContain('1.850')
     expect(screen.getByText('Situ.')).toBeTruthy()
     expect(document.documentElement.classList.contains('overlay-mode')).toBe(true)
   })
   it('sem ponto para gastar mostra "Próxima"; poucos dados e demonstração são sinalizados', async () => {
     mount(state({ demo: true, lowData: true, skill: { ...state().skill, ready: false } }))
-    expect(await screen.findByText('Próxima: R')).toBeTruthy()
+    expect(await screen.findByRole('img', { name: 'Próxima: R' })).toBeTruthy()
+    expect(screen.getByText('Ponto no nível 6')).toBeTruthy()
     expect(screen.getByText(/demonstração/)).toBeTruthy()
     expect(screen.getByText(/Poucos dados/)).toBeTruthy()
+  })
+  it('no modo mover mostra a dica e salva a posição pelo botão', async () => {
+    const finish = vi.fn(async () => undefined)
+    mount(state({ editing: true }))
+    ;(window.api as unknown as { finishOverlayMove: typeof finish }).finishOverlayMove = finish
+    expect(await screen.findByText('Arraste o painel para onde quiser')).toBeTruthy()
+    screen.getByRole('button', { name: 'Salvar posição' }).click()
+    expect(finish).toHaveBeenCalledTimes(1)
+  })
+  it('fora do modo mover não há botão', async () => {
+    mount(state())
+    await screen.findByRole('img', { name: 'Suba agora: R' })
+    expect(screen.queryByRole('button', { name: 'Salvar posição' })).toBeNull()
   })
   it('não desenha nada sem partida e reage a novas atualizações', async () => {
     const push = mount(null)
     await act(async () => { await Promise.resolve() })
     expect(screen.queryByRole('region')).toBeNull()
     push(state())
-    expect(await screen.findByText('Suba agora: R')).toBeTruthy()
+    expect(await screen.findByRole('img', { name: 'Suba agora: R' })).toBeTruthy()
     push(state({ nextItemId: null, items: [] }))
     expect(screen.queryByText(/Comprar:/)).toBeNull()
   })

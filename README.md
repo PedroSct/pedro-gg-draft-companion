@@ -128,6 +128,15 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   quando o jogo retoma o foco. Para saber qual janela está na frente, o app mantém um PowerShell leve rodando (só
   Windows); se ele não puder rodar, o painel fica visível durante toda a partida, como antes. A leitura da partida
   também ficou menos frequente (a cada 2,5 s) para pesar menos.
+- **Overlay redesenhado (0.7.4)**: a habilidade a subir agora vira um destaque grande (com brilho quando há ponto para gastar),
+  os 4 níveis das habilidades ficam logo abaixo e a faixa "Depois" mostra as próximas 5 com o nível de cada uma. A build
+  aparece na ordem de compra (iniciais só no começo), o próximo item é destacado com o custo, os situacionais ficam
+  separados em "Se precisar" e o seu ouro atual aparece no topo.
+- **Mover o overlay (0.7.4)**: Configurações > Partida > "Mover o overlay" mostra o painel para você arrastar para onde quiser e
+  "Salvar posição". Durante uma partida, **Ctrl+Shift+O** liga e desliga o modo mover (assim dá para posicionar olhando
+  o jogo de verdade). "Voltar ao canto" desfaz. O atalho só mexe na janela do overlay; não envia nada ao jogo. O overlay
+  continua não aparecendo com o LoL em **tela cheia exclusiva**: o Windows não deixa nenhuma janela por cima dela, e a
+  única saída seria injetar no jogo, o que a Riot não permite. Use "Sem bordas".
 - **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
   da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,

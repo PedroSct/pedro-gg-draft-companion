@@ -2,7 +2,7 @@
 // Janela do overlay: transparente, sempre no topo e que deixa o mouse passar (clique atravessa para o jogo).
 // Não injeta nada no jogo: é uma janela comum do app, então só aparece com o LoL em janela ou borderless.
 import { join } from 'node:path'
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, globalShortcut, screen } from 'electron'
 import { applyBuildSelection, ZERO_SELECTION, type BuildSelection } from '../../shared/buildSelection'
 import type { AppSettings, ChampionBuild, MetaDataset } from '../../shared/dataTypes'
 import { computeOverlay, type LiveSnapshot, type OverlayCorner, type OverlayState } from '../../shared/overlay'
@@ -11,8 +11,8 @@ import { rolesOf } from '../data/metaStats'
 import { ForegroundWatcher, isGameProcess } from './foreground'
 import { fetchLive, parseLive } from './live'
 
-const WIDTH = 300
-const HEIGHT = 330
+const WIDTH = 320
+const HEIGHT = 470
 const MARGIN = 16
 const FAST_MS = 2500
 const IDLE_MS = 6000
@@ -20,6 +20,8 @@ const PREVIEW_MS = 12_000
 
 export interface OverlayDeps {
   getSettings: () => AppSettings
+  /** guarda a posição escolhida arrastando (null = volta ao canto) */
+  savePosition: (pos: { x: number; y: number } | null) => Promise<void>
   getDataset: () => MetaDataset | null
   getBuild: (championId: number, role: Role) => ChampionBuild | null
   /** "Ahri" (id do Data Dragon) → 103 */
@@ -43,6 +45,27 @@ export function cornerPosition(corner: OverlayCorner, area: { x: number; y: numb
     x: left ? area.x + MARGIN : area.x + area.width - WIDTH - MARGIN,
     y: top ? area.y + MARGIN + 80 : area.y + area.height - HEIGHT - MARGIN - 80
   }
+}
+
+type Area = { x: number; y: number; width: number; height: number }
+
+/** Posição final do painel: a escolhida arrastando (se ainda cai numa tela conectada) ou o canto. */
+export function resolvePosition(
+  pos: { x: number; y: number } | null,
+  corner: OverlayCorner,
+  areas: Area[]
+): { x: number; y: number } {
+  if (pos) {
+    const inside = areas.find((a) => pos.x + 40 >= a.x && pos.x + 40 <= a.x + a.width && pos.y + 40 >= a.y && pos.y + 40 <= a.y + a.height)
+    if (inside) {
+      // mantém o painel inteiro dentro da tela
+      return {
+        x: Math.min(Math.max(pos.x, inside.x), inside.x + inside.width - WIDTH),
+        y: Math.min(Math.max(pos.y, inside.y), inside.y + inside.height - HEIGHT)
+      }
+    }
+  }
+  return cornerPosition(corner, areas[0] ?? { x: 0, y: 0, width: 1920, height: 1080 })
 }
 
 /** Estado de demonstração a partir de um campeão que tenha build com os 18 níveis de habilidade. */
@@ -81,6 +104,8 @@ export class OverlayController {
   private status = 'desligado'
   /** o LoL está em primeiro plano? (true também quando não dá para saber: aí o painel aparece sempre) */
   private gameFocused = true
+  /** modo mover: o painel aceita o mouse para ser arrastado */
+  private editing = false
   private readonly watcher = new ForegroundWatcher((name) => this.onForeground(name))
 
   constructor(private readonly deps: OverlayDeps, parent: BrowserWindow, private readonly devUrl: string | undefined) {
@@ -110,6 +135,7 @@ export class OverlayController {
       if (!this.running) {
         this.setStatus('ligado, aguardando uma partida')
         this.watcher.start()
+        this.registerShortcut()
         this.running = true
         void this.tick()
       }
@@ -117,6 +143,8 @@ export class OverlayController {
     } else {
       this.setStatus('desligado nas configurações')
       this.watcher.stop()
+      this.unregisterShortcut()
+      if (this.editing) this.endEdit(false)
       this.gameFocused = true
       this.running = false
       if (this.timer) clearTimeout(this.timer)
@@ -132,15 +160,81 @@ export class OverlayController {
     this.previewUntil = Date.now() + PREVIEW_MS
     this.setState(demo)
     setTimeout(() => {
-      if (Date.now() >= this.previewUntil) this.setState(this.running ? this.live : null)
+      if (!this.editing && Date.now() >= this.previewUntil) this.setState(this.running ? this.live : null)
     }, PREVIEW_MS + 100)
     return true
+  }
+
+  /** Atalho global para mover o painel durante a partida (só mexe na janela do overlay). */
+  static readonly SHORTCUT = 'CommandOrControl+Shift+O'
+  private shortcutOn = false
+  private registerShortcut(): void {
+    if (this.shortcutOn) return
+    try {
+      this.shortcutOn = globalShortcut.register(OverlayController.SHORTCUT, () => {
+        if (this.editing) void this.finishMove()
+        else this.startMove()
+      })
+    } catch {
+      this.shortcutOn = false
+    }
+  }
+  private unregisterShortcut(): void {
+    if (!this.shortcutOn) return
+    try {
+      globalShortcut.unregister(OverlayController.SHORTCUT)
+    } catch {
+      /* ignora */
+    }
+    this.shortcutOn = false
+  }
+
+  /** Liga o modo mover: mostra o painel (da partida, ou de exemplo) e deixa arrastar com o mouse. */
+  startMove(): boolean {
+    if (this.editing) return true
+    const base = this.live ?? demoState(this.deps.getDataset(), this.deps.nameOf)
+    if (!base) return false
+    this.editing = true
+    const win = this.ensureWindow()
+    win.setFocusable(true)
+    win.setIgnoreMouseEvents(false)
+    win.setMovable(true)
+    this.lastJson = ''
+    this.setState(base)
+    this.deps.log('overlay: modo mover ligado')
+    return true
+  }
+
+  /** Salva onde o painel ficou e volta ao modo normal (clique passa direto para o jogo). */
+  async finishMove(): Promise<void> {
+    if (!this.editing) return
+    const win = this.win && !this.win.isDestroyed() ? this.win : null
+    const b = win?.getBounds()
+    this.endEdit(true)
+    if (b) await this.deps.savePosition({ x: b.x, y: b.y })
+    this.applyWindowSettings()
+    this.deps.log(`overlay: posição salva (${b?.x},${b?.y})`)
+  }
+
+  private endEdit(refresh: boolean): void {
+    this.editing = false
+    this.previewUntil = 0
+    const win = this.win && !this.win.isDestroyed() ? this.win : null
+    if (win) {
+      win.setMovable(false)
+      win.setIgnoreMouseEvents(true, { forward: false })
+      win.setFocusable(false)
+    }
+    this.lastJson = ''
+    if (refresh) this.setState(this.live)
   }
 
   destroy(): void {
     this.stopped = true
     this.running = false
+    this.editing = false
     this.watcher.stop()
+    this.unregisterShortcut()
     if (this.timer) clearTimeout(this.timer)
     if (this.win && !this.win.isDestroyed()) this.win.destroy()
     this.win = null
@@ -158,7 +252,9 @@ export class OverlayController {
       else if (!snap) this.setStatus('partida detectada, mas não é o Summoner\'s Rift clássico ou os dados vieram incompletos')
       this.live = snap ? await this.stateFor(snap) : null
       if (this.live) next = this.gameFocused ? FAST_MS : IDLE_MS
-      if (this.previewUntil <= Date.now()) this.setState(this.live)
+      if (this.editing) {
+        if (this.live) this.setState(this.live)
+      } else if (this.previewUntil <= Date.now()) this.setState(this.live)
     } catch (err) {
       this.deps.log(`overlay: ${err instanceof Error ? err.message : String(err)}`)
     }
@@ -189,7 +285,8 @@ export class OverlayController {
     return computeOverlay({ championId: id, role, build, live: { ...snap, championName: snap.championName || this.deps.nameOf(id) } })
   }
 
-  private setState(state: OverlayState | null): void {
+  private setState(raw: OverlayState | null): void {
+    const state = raw && this.editing ? { ...raw, editing: true } : raw
     this.state = state
     const json = JSON.stringify(state)
     if (json !== this.lastJson) {
@@ -209,17 +306,20 @@ export class OverlayController {
 
   /** O painel só fica na tela com a partida em andamento E o jogo na frente (a demonstração aparece sempre). */
   private applyVisibility(): void {
-    const previewing = this.previewUntil > Date.now()
+    const previewing = this.previewUntil > Date.now() || this.editing
     if (this.state && (this.gameFocused || previewing)) this.show()
     else this.hide()
   }
 
   private applyWindowSettings(): void {
     if (!this.win || this.win.isDestroyed()) return
-    const area = screen.getPrimaryDisplay().workArea
-    const pos = cornerPosition(this.deps.getSettings().overlayCorner, area)
-    this.win.setBounds({ x: pos.x, y: pos.y, width: WIDTH, height: HEIGHT })
-    this.win.setOpacity(this.deps.getSettings().overlayOpacity)
+    const st = this.deps.getSettings()
+    if (!this.editing) {
+      const areas = [screen.getPrimaryDisplay(), ...screen.getAllDisplays().filter((d) => d.id !== screen.getPrimaryDisplay().id)].map((d) => d.workArea)
+      const pos = resolvePosition(st.overlayPos, st.overlayCorner, areas)
+      this.win.setBounds({ x: pos.x, y: pos.y, width: WIDTH, height: HEIGHT })
+    }
+    this.win.setOpacity(this.editing ? 1 : st.overlayOpacity)
   }
 
   private ensureWindow(): BrowserWindow {

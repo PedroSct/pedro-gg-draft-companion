@@ -110,7 +110,8 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     reduceMotion: false,
     overlayEnabled: false,
     overlayCorner: 'tr',
-    overlayOpacity: 0.9
+    overlayOpacity: 0.9,
+    overlayPos: null
   }
   let identity: IdentityState = { account: null, profileId: null }
   let situation: BuildSituation | null = null
@@ -145,6 +146,8 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     getOverlayState: async () => null,
     onOverlayState: () => () => {},
     previewOverlay: async () => false,
+    startOverlayMove: async () => false,
+    finishOverlayMove: async () => undefined,
     exportBackup: async () => ({ ok: false, reason: 'canceled' }),
     importBackup: async () => ({ ok: false, reason: 'canceled' }),
     getPatchChanges: async () => null,

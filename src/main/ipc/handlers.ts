@@ -351,6 +351,9 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   const overlay = new OverlayController(
     {
       getSettings: () => profiles.getSettings(),
+      savePosition: async (pos) => {
+        await profiles.updateSettings({ overlayPos: pos })
+      },
       getDataset: () => meta.get(),
       getBuild: (id, role) => meta.getBuild(id, role),
       idOfKey: keyToId,
@@ -366,6 +369,11 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     devUrl
   )
   handle(IPC.OVERLAY_GET, () => overlay.getState())
+  handle(IPC.OVERLAY_MOVE_START, async () => {
+    await warmChampionKeys()
+    return overlay.startMove()
+  })
+  handle(IPC.OVERLAY_MOVE_DONE, () => overlay.finishMove())
   handle(IPC.OVERLAY_PREVIEW, async () => {
     await warmChampionKeys()
     return overlay.preview()

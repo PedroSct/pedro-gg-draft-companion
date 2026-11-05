@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { canLevel, computeOverlay, nextSkill, type LiveSnapshot } from '../src/shared/overlay'
 import { isSummonersRift, parseLive } from '../src/main/overlay/live'
-import { cornerPosition, demoState } from '../src/main/overlay/controller'
+import { cornerPosition, demoState, resolvePosition } from '../src/main/overlay/controller'
 import { sanitizeSettingsPatch } from '../src/main/store/profiles'
 import type { ChampionBuild, MetaDataset, SkillKey } from '../src/shared/dataTypes'
 
@@ -16,7 +16,7 @@ describe('próxima habilidade', () => {
     expect(nextSkill(skill, zero, 1)).toMatchObject({ next: 'Q', ready: true })
     expect(nextSkill(skill, { ...zero, Q: 1 }, 2)).toMatchObject({ next: 'W', ready: true })
     expect(nextSkill(skill, { Q: 3, W: 1, E: 1, R: 0 }, 6).next).toBe('R')
-    expect(nextSkill(skill, { Q: 1, W: 1, E: 1, R: 0 }, 3).upcoming).toEqual(['Q', 'R', 'Q']) // depois do próximo (nível 4): níveis 5, 6 e 7
+    expect(nextSkill(skill, { Q: 1, W: 1, E: 1, R: 0 }, 3).upcoming).toEqual(['Q', 'R', 'Q', 'E', 'Q']) // depois do próximo (nível 4): níveis 5 a 9
   })
   it('sem ponto para gastar, mostra a próxima mas não marca como pronto', () => {
     expect(nextSkill(skill, { Q: 1, W: 1, E: 1, R: 0 }, 3)).toMatchObject({ next: 'Q', ready: false })
@@ -106,9 +106,9 @@ describe('janela e configurações do overlay', () => {
     for (const c of ['tl', 'tr', 'bl', 'br'] as const) {
       const p = cornerPosition(c, area)
       expect(p.x).toBeGreaterThanOrEqual(0)
-      expect(p.x + 300).toBeLessThanOrEqual(1920)
+      expect(p.x + 320).toBeLessThanOrEqual(1920)
       expect(p.y).toBeGreaterThanOrEqual(0)
-      expect(p.y + 330).toBeLessThanOrEqual(1040)
+      expect(p.y + 470).toBeLessThanOrEqual(1040)
     }
     expect(cornerPosition('tl', area).x).toBeLessThan(cornerPosition('tr', area).x)
     expect(cornerPosition('tl', area).y).toBeLessThan(cornerPosition('bl', area).y)
@@ -189,5 +189,28 @@ describe('overlay só com o jogo na frente', () => {
     w3.stop() // parar de propósito não conta como falha
     f.c.emit('exit', 0)
     expect(seen3).toEqual([])
+  })
+})
+
+describe('mover o overlay', () => {
+  const tela = { x: 0, y: 0, width: 1920, height: 1040 }
+  const segunda = { x: 1920, y: 0, width: 1920, height: 1080 }
+  it('usa a posição escolhida; sem ela (ou fora de qualquer tela), usa o canto', () => {
+    expect(resolvePosition({ x: 500, y: 300 }, 'tr', [tela])).toEqual({ x: 500, y: 300 })
+    expect(resolvePosition(null, 'tl', [tela])).toEqual(cornerPosition('tl', tela))
+    expect(resolvePosition({ x: 9000, y: 9000 }, 'br', [tela])).toEqual(cornerPosition('br', tela)) // segunda tela sumiu
+    expect(resolvePosition({ x: 2500, y: 100 }, 'tr', [tela, segunda])).toEqual({ x: 2500, y: 100 })
+  })
+  it('mantém o painel inteiro dentro da tela', () => {
+    const p = resolvePosition({ x: 1900, y: 1030 }, 'tr', [tela])
+    expect(p.x + 320).toBeLessThanOrEqual(1920)
+    expect(p.y + 470).toBeLessThanOrEqual(1040)
+    expect(resolvePosition({ x: -20, y: -10 }, 'tr', [tela])).toEqual({ x: 0, y: 0 })
+  })
+  it('valida a posição salva', () => {
+    expect(sanitizeSettingsPatch({ overlayPos: { x: 10.4, y: 20.6 } }).overlayPos).toEqual({ x: 10, y: 21 })
+    expect(sanitizeSettingsPatch({ overlayPos: null }).overlayPos).toBeNull()
+    expect(() => sanitizeSettingsPatch({ overlayPos: { x: 'a', y: 1 } })).toThrow()
+    expect(() => sanitizeSettingsPatch({ overlayPos: { x: 1e9, y: 1 } })).toThrow()
   })
 })

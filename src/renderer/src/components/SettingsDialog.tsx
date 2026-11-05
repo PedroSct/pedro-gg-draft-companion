@@ -247,6 +247,19 @@ export function SettingsDialog() {
     }
   }
 
+  async function moveOverlay(): Promise<void> {
+    try {
+      const ok = await window.api.startOverlayMove()
+      setOverlayMsg(
+        ok
+          ? { ok: true, text: 'Arraste o painel e clique em "Salvar posição". Durante uma partida, use Ctrl+Shift+O para ligar e desligar o modo mover.' }
+          : { ok: false, text: 'Preciso dos dados de meta reais para mostrar o painel: atualize os dados em Configurações > Dados.' }
+      )
+    } catch {
+      setOverlayMsg({ ok: false, text: 'Não consegui ligar o modo mover.' })
+    }
+  }
+
   async function saveDiagnostics(): Promise<void> {
     try {
       const r = await window.api.saveDiagnostics()
@@ -382,7 +395,7 @@ export function SettingsDialog() {
                   <select
                     aria-label="Canto do overlay"
                     value={settings?.overlayCorner ?? 'tr'}
-                    onChange={(e) => void saveSettings({ overlayCorner: e.target.value as 'tl' | 'tr' | 'bl' | 'br' })}
+                    onChange={(e) => void saveSettings({ overlayCorner: e.target.value as 'tl' | 'tr' | 'bl' | 'br', overlayPos: null })}
                     className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
                   >
                     <option value="tr">Superior direito</option>
@@ -409,6 +422,14 @@ export function SettingsDialog() {
                   <button type="button" className={btn} onClick={() => void testOverlay()}>
                     Testar o overlay
                   </button>
+                  <button type="button" className={btn} onClick={() => void moveOverlay()}>
+                    Mover o overlay
+                  </button>
+                  {settings?.overlayPos && (
+                    <button type="button" className={btn} onClick={() => void saveSettings({ overlayPos: null })}>
+                      Voltar ao canto
+                    </button>
+                  )}
                 </div>
                 {overlayMsg && (
                   <p role="status" className={`mt-2 text-sm ${overlayMsg.ok ? 'text-ally' : 'text-mist'}`}>

@@ -80,6 +80,10 @@ export interface LolApi {
   onOverlayState(cb: (state: OverlayState | null) => void): () => void
   /** Mostra o painel com dados de exemplo por alguns segundos; false = sem dados de meta reais para mostrar. */
   previewOverlay(): Promise<boolean>
+  /** Liga o modo mover (arrastar o painel); false = sem dados para mostrar o painel. */
+  startOverlayMove(): Promise<boolean>
+  /** Salva a posição atual do painel e volta ao modo normal. */
+  finishOverlayMove(): Promise<void>
   /** Texto de diagnóstico (sem dados pessoais) para copiar e enviar. */
   getDiagnostics(): Promise<string>
   /** Última tentativa de aceitar a partida (null = nenhuma ainda). */

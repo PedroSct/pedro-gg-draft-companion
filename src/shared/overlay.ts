@@ -14,6 +14,8 @@ export interface LiveSnapshot {
   level: number
   /** nível atual de cada habilidade */
   abilities: Record<'Q' | 'W' | 'E' | 'R', number>
+  /** ouro atual do jogador (só o dele) */
+  gold?: number
   /** itens que o jogador carrega agora (ids) */
   items: number[]
   /** id interno do campeão no Data Dragon (ex.: "Ahri"); null se não deu para ler */
@@ -28,7 +30,7 @@ export interface OverlaySkill {
   next: SkillKey | null
   /** há ponto de habilidade para gastar neste momento */
   ready: boolean
-  /** as 3 seguintes depois da próxima (quando a build tem os 18 níveis) */
+  /** as 5 seguintes depois da próxima (quando a build tem os 18 níveis) */
   upcoming: SkillKey[]
   /** níveis atuais */
   levels: Record<'Q' | 'W' | 'E' | 'R', number>
@@ -53,8 +55,12 @@ export interface OverlayState {
   nextItemId: number | null
   /** poucas partidas por trás da build */
   lowData: boolean
+  /** ouro atual do jogador */
+  gold?: number
   /** é uma demonstração (botão de testar nas Configurações) */
   demo?: boolean
+  /** modo "mover": o painel aceita arrastar e mostra o botão de salvar a posição */
+  editing?: boolean
 }
 
 const ORDER: ('Q' | 'W' | 'E' | 'R')[] = ['Q', 'W', 'E', 'R']
@@ -93,7 +99,7 @@ export function nextSkill(
     const order = skill.priority.filter((k): k is 'Q' | 'W' | 'E' | 'R' => ORDER.includes(k as 'Q'))
     next = order.find((k) => canLevel(k, have[k], Math.max(level, spent + 1))) ?? null
   }
-  const upcoming = levels && levels.length === 18 ? levels.slice(spent + 1, spent + 4) : []
+  const upcoming = levels && levels.length === 18 ? levels.slice(spent + 1, spent + 6) : []
   return { next, upcoming: [...upcoming], ready }
 }
 
@@ -130,6 +136,7 @@ export function computeOverlay(input: OverlayInput): OverlayState {
     role: input.role,
     level: live.level,
     gameTime: live.gameTime,
+    gold: live.gold,
     skill: {
       next: skillInfo.next,
       ready: skillInfo.ready,

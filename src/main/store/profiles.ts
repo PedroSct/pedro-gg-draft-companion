@@ -32,7 +32,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   reduceMotion: false,
   overlayEnabled: false,
   overlayCorner: 'tr',
-  overlayOpacity: 0.9
+  overlayOpacity: 0.9,
+  overlayPos: null
 }
 
 function isHttpsUrl(v: string): boolean {
@@ -185,6 +186,12 @@ export function sanitizeSettingsPatch(raw: unknown): Partial<AppSettings> {
     const v = raw.overlayOpacity
     if (typeof v === 'number' && Number.isFinite(v)) out.overlayOpacity = Math.round(Math.min(1, Math.max(0.4, v)) * 20) / 20
     else throw new Error('Configuração inválida: overlayOpacity')
+  }
+  if ('overlayPos' in raw) {
+    const v = raw.overlayPos as { x?: unknown; y?: unknown } | null
+    if (v === null) out.overlayPos = null
+    else if (typeof v === 'object' && v !== undefined && typeof v.x === 'number' && typeof v.y === 'number' && Number.isFinite(v.x) && Number.isFinite(v.y) && Math.abs(v.x) < 30000 && Math.abs(v.y) < 30000) out.overlayPos = { x: Math.round(v.x), y: Math.round(v.y) }
+    else throw new Error('Configuração inválida: overlayPos')
   }
   for (const key of ['introAnimation', 'reduceMotion', 'tourDone', 'overlayEnabled'] as const) {
     if (key in raw) {

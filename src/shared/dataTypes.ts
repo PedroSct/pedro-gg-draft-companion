@@ -61,6 +61,8 @@ export interface AppSettings {
   overlayCorner: 'tl' | 'tr' | 'bl' | 'br'
   /** Opacidade do painel (0,4 a 1). */
   overlayOpacity: number
+  /** Posição escolhida arrastando o painel (canto superior esquerdo, em pixels da tela); null = usa o canto. */
+  overlayPos: { x: number; y: number } | null
 }
 
 export interface ProfilesFile {

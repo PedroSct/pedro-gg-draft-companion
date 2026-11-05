@@ -46,6 +46,7 @@ export function parseLive(raw: unknown): LiveSnapshot | null {
     gameTime: isRecord(raw.gameData) ? num(raw.gameData.gameTime) : 0,
     level: Math.max(1, num(active.level, 1)),
     abilities: { Q: lvl('Q'), W: lvl('W'), E: lvl('E'), R: lvl('R') },
+    gold: typeof active.currentGold === 'number' && Number.isFinite(active.currentGold) ? Math.floor(active.currentGold) : undefined,
     items,
     championKey: key && key !== rawName ? key : null,
     championName: typeof me.championName === 'string' ? me.championName : key,
