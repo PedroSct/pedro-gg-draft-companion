@@ -132,3 +132,62 @@ describe('janela e configurações do overlay', () => {
     expect(demoState(null, () => 'x')).toBeNull()
   })
 })
+
+import { ForegroundWatcher, isGameProcess, SCRIPT } from '../src/main/overlay/foreground'
+import { EventEmitter } from 'node:events'
+
+describe('overlay só com o jogo na frente', () => {
+  it('reconhece só o processo da partida (não o cliente nem outros programas)', () => {
+    expect(isGameProcess('League of Legends')).toBe(true)
+    expect(isGameProcess('league of legends ')).toBe(true)
+    expect(isGameProcess('LeagueClient')).toBe(false)
+    expect(isGameProcess('chrome')).toBe(false)
+    expect(isGameProcess('')).toBe(false)
+  })
+
+  function fakeChild() {
+    const c = new EventEmitter() as EventEmitter & Record<string, unknown>
+    const out = Object.assign(new EventEmitter(), { setEncoding: () => undefined })
+    c.stdout = out
+    c.stderr = new EventEmitter()
+    c.stdin = Object.assign(new EventEmitter(), { end: () => undefined })
+    c.killed = false
+    c.kill = () => { c.killed = true }
+    return { c, out }
+  }
+
+  it('avisa só quando a janela da frente muda, mesmo com linhas repetidas e pedaços quebrados', () => {
+    const seen: (string | null)[] = []
+    const { c, out } = fakeChild()
+    let args: string[] = []
+    const w = new ForegroundWatcher((n) => seen.push(n), 'win32', ((_cmd: string, a: string[]) => { args = a; return c }) as never)
+    w.start()
+    expect(args).toContain('-EncodedCommand')
+    expect(Buffer.from(args[args.indexOf('-EncodedCommand') + 1], 'base64').toString('utf16le')).toBe(SCRIPT)
+    out.emit('data', 'chrome\r\nchrome\r\nLeague of Le')
+    out.emit('data', 'gends\r\nLeague of Legends\r\nchrome\r\n')
+    expect(seen).toEqual(['chrome', 'League of Legends', 'chrome'])
+  })
+
+  it('se o PowerShell falhar ou não for Windows, avisa null (o painel volta a aparecer sempre)', () => {
+    const seen: (string | null)[] = []
+    new ForegroundWatcher((n) => seen.push(n), 'linux').start()
+    expect(seen).toEqual([null])
+
+    const seen2: (string | null)[] = []
+    const { c } = fakeChild()
+    const w = new ForegroundWatcher((n) => seen2.push(n), 'win32', (() => c) as never)
+    w.start()
+    c.emit('exit', 1)
+    expect(seen2).toEqual([null])
+    expect(w.running).toBe(false)
+
+    const seen3: (string | null)[] = []
+    const f = fakeChild()
+    const w3 = new ForegroundWatcher((n) => seen3.push(n), 'win32', (() => f.c) as never)
+    w3.start()
+    w3.stop() // parar de propósito não conta como falha
+    f.c.emit('exit', 0)
+    expect(seen3).toEqual([])
+  })
+})

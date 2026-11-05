@@ -8,12 +8,13 @@ import type { AppSettings, ChampionBuild, MetaDataset } from '../../shared/dataT
 import { computeOverlay, type LiveSnapshot, type OverlayCorner, type OverlayState } from '../../shared/overlay'
 import type { Role } from '../../shared/types'
 import { rolesOf } from '../data/metaStats'
+import { ForegroundWatcher, isGameProcess } from './foreground'
 import { fetchLive, parseLive } from './live'
 
 const WIDTH = 300
 const HEIGHT = 330
 const MARGIN = 16
-const FAST_MS = 1500
+const FAST_MS = 2500
 const IDLE_MS = 6000
 const PREVIEW_MS = 12_000
 
@@ -78,6 +79,9 @@ export class OverlayController {
   private running = false
   private stopped = false
   private status = 'desligado'
+  /** o LoL está em primeiro plano? (true também quando não dá para saber: aí o painel aparece sempre) */
+  private gameFocused = true
+  private readonly watcher = new ForegroundWatcher((name) => this.onForeground(name))
 
   constructor(private readonly deps: OverlayDeps, parent: BrowserWindow, private readonly devUrl: string | undefined) {
     parent.on('closed', () => this.destroy())
@@ -105,12 +109,15 @@ export class OverlayController {
     if (s.overlayEnabled) {
       if (!this.running) {
         this.setStatus('ligado, aguardando uma partida')
+        this.watcher.start()
         this.running = true
         void this.tick()
       }
       this.applyWindowSettings()
     } else {
       this.setStatus('desligado nas configurações')
+      this.watcher.stop()
+      this.gameFocused = true
       this.running = false
       if (this.timer) clearTimeout(this.timer)
       this.timer = null
@@ -133,6 +140,7 @@ export class OverlayController {
   destroy(): void {
     this.stopped = true
     this.running = false
+    this.watcher.stop()
     if (this.timer) clearTimeout(this.timer)
     if (this.win && !this.win.isDestroyed()) this.win.destroy()
     this.win = null
@@ -149,7 +157,7 @@ export class OverlayController {
       if (raw === null) this.setStatus('ligado, aguardando uma partida (a API da partida não respondeu)')
       else if (!snap) this.setStatus('partida detectada, mas não é o Summoner\'s Rift clássico ou os dados vieram incompletos')
       this.live = snap ? await this.stateFor(snap) : null
-      if (this.live) next = FAST_MS
+      if (this.live) next = this.gameFocused ? FAST_MS : IDLE_MS
       if (this.previewUntil <= Date.now()) this.setState(this.live)
     } catch (err) {
       this.deps.log(`overlay: ${err instanceof Error ? err.message : String(err)}`)
@@ -188,7 +196,21 @@ export class OverlayController {
       this.lastJson = json
       if (this.win && !this.win.isDestroyed()) this.win.webContents.send(this.deps.channel, state)
     }
-    if (state) this.show()
+    this.applyVisibility()
+  }
+
+  private onForeground(name: string | null): void {
+    // null = não consegui observar: mantém o painel sempre visível durante a partida
+    const focused = name === null ? true : isGameProcess(name)
+    if (focused === this.gameFocused) return
+    this.gameFocused = focused
+    this.applyVisibility()
+  }
+
+  /** O painel só fica na tela com a partida em andamento E o jogo na frente (a demonstração aparece sempre). */
+  private applyVisibility(): void {
+    const previewing = this.previewUntil > Date.now()
+    if (this.state && (this.gameFocused || previewing)) this.show()
     else this.hide()
   }
 

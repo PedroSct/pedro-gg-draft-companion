@@ -124,6 +124,10 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
 - **Overlay mais fácil de diagnosticar e coleta com tempo limite (0.7.1)**: o relatório de diagnóstico ganhou a linha "Overlay:" com o
   motivo de ele não aparecer, o overlay também funciona na Ferramenta de Treino, e o coletor de dados para sozinho antes
   do limite de 350 min do GitHub (`--max-minutes`), gerando o arquivo com o que já coletou.
+- **Overlay só com o jogo na frente (0.7.3)**: o painel some quando você sai do LoL (Alt+Tab, navegador, o próprio app) e volta
+  quando o jogo retoma o foco. Para saber qual janela está na frente, o app mantém um PowerShell leve rodando (só
+  Windows); se ele não puder rodar, o painel fica visível durante toda a partida, como antes. A leitura da partida
+  também ficou menos frequente (a cada 2,5 s) para pesar menos.
 - **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
   da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
