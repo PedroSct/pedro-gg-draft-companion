@@ -356,7 +356,7 @@ describe('Companion App', () => {
     act(() => fake.pushDraft(blind))
 
     const group = await screen.findByRole('group', { name: 'Rota que você vai jogar' })
-    await user.click(within(group).getByRole('button', { name: 'Mid' }))
+    await user.click(within(group).getByRole('button', { name: /^Mid/ }))
 
     expect(await screen.findByTestId('verdict')).toHaveTextContent('Orianna')
   })
