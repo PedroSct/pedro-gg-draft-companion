@@ -26,6 +26,7 @@ Requer a variável de ambiente RIOT_API_KEY (developer.riotgames.com).
   --min-pair-games <n>               jogos mínimos de uma sinergia ou "contra o time inimigo" (padrão: 6)
   --timeline-matches <n>             timelines (builds) só nas n primeiras partidas; as demais contam só winrates e confrontos (padrão: todas)
   --min-build-samples <n>            vitórias mínimas para publicar uma build (padrão: 15)
+  --max-minutes <n>                  para sozinho depois de n minutos e gera o arquivo com o que já coletou (padrão: 0 = sem limite)
   --out <arquivo>                    saída (padrão: meta.json)
   --work <pasta>                     checkpoint (padrão: meta-work)
   --finalize-only                    só refaz o meta.json a partir do checkpoint
@@ -51,6 +52,7 @@ const { values: v } = parseArgs({
     'min-pair-games': { type: 'string', default: '6' },
     'timeline-matches': { type: 'string', default: '0' },
     'min-build-samples': { type: 'string', default: '15' },
+    'max-minutes': { type: 'string', default: '0' },
     out: { type: 'string', default: 'meta.json' },
     work: { type: 'string', default: 'meta-work' },
     'finalize-only': { type: 'boolean', default: false },
@@ -81,6 +83,13 @@ async function main(): Promise<void> {
     console.error('\nInterrompendo… salvando o progresso.')
     controller.abort()
   })
+
+  const maxMinutes = num('max-minutes', v['max-minutes'], 0)
+  const timer = maxMinutes > 0 ? setTimeout(() => {
+    console.error(`\nLimite de ${maxMinutes} min atingido… salvando o progresso e gerando o arquivo.`)
+    controller.abort()
+  }, maxMinutes * 60_000) : null
+  timer?.unref()
 
   await buildMeta({
     apiKey: apiKey ?? '',

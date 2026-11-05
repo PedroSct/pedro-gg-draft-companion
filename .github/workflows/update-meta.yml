@@ -111,9 +111,18 @@ jobs:
         run: |
           # Um servidor que falha (chave vencida, limite) não impede os outros do cluster; o progresso fica salvo.
           failed=0
+          # O job tem 350 min. Cada servidor para sozinho no seu tempo e gera o arquivo com o que já coletou
+          # (assim o job termina bem e os dados são publicados); a próxima execução continua de onde parou.
+          start=$(date +%s)
+          total=$(echo "$PLATFORMS" | wc -w)
+          i=0
           for p in $PLATFORMS; do
-            echo "::group::Servidor $p"
-            pnpm meta:build --platform "$p" --max-matches "$MAX_MATCHES" --timeline-matches "$TIMELINE_MATCHES" --rps "$RPS" --days "$DAYS" --tiers "$TIERS" --out "meta-$p.json" --work meta-work || failed=$((failed+1))
+            i=$((i+1))
+            left=$(( 335 - ($(date +%s) - start) / 60 ))
+            share=$(( left / (total - i + 1) ))
+            if [ "$share" -lt 5 ]; then echo "::warning::Sem tempo para $p nesta execução."; continue; fi
+            echo "::group::Servidor $p (até $share min)"
+            pnpm meta:build --platform "$p" --max-matches "$MAX_MATCHES" --timeline-matches "$TIMELINE_MATCHES" --rps "$RPS" --days "$DAYS" --tiers "$TIERS" --max-minutes "$share" --out "meta-$p.json" --work meta-work || failed=$((failed+1))
             echo "::endgroup::"
           done
           if [ "$failed" -gt 0 ]; then

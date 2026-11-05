@@ -219,7 +219,7 @@ O que realmente aumenta a quantidade de dados:
   `na1`, `la1` etc. multiplica as partidas sem aumentar o tempo (só o do mesmo cluster, ex. `br1` e `na1`, soma tempo).
 - **Menos timelines**: cada partida custa 1 requisição e a timeline (builds) custa outra. Baixar `timeline_matches`
   libera requisições para mais partidas de winrate e confrontos.
-- **Tempo do job**: ele tem 350 min, cerca de 16 mil requisições por servidor. Algo como 7000 partidas com 5000 timelines
+- **Tempo do job**: ele tem 350 min e agora cada servidor para sozinho no seu tempo (`--max-minutes`), gera o arquivo com o que já coletou e o job termina bem, publicando os dados; a próxima execução continua de onde parou. Em 350 min cabem cerca de 16 mil requisições por servidor. Algo como 7000 partidas com 5000 timelines
   por servidor cabe; acima disso a coleta para no limite de tempo e continua na próxima execução (o progresso fica em cache).
 - **Chave de produção**: só a Riot libera limites maiores, pedindo uma revisão do produto no portal.
 
