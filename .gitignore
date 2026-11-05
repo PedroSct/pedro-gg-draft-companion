@@ -4,3 +4,4 @@ dist
 *.log
 meta-work
 pnpm-debug.log*
+*.zip
