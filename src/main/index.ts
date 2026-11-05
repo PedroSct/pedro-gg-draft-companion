@@ -44,7 +44,7 @@ async function createWindow(): Promise<void> {
     if (!internal) event.preventDefault()
   })
 
-  await registerIpc(win)
+  await registerIpc(win, devUrl)
 
   if (devUrl) await win.loadURL(devUrl)
   else await win.loadFile(join(__dirname, '../renderer/index.html'))

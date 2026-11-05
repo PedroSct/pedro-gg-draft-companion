@@ -259,3 +259,11 @@
   animation: none !important;
   transition: none !important;
 }
+
+/* Janela do overlay no jogo: fundo transparente (só o painel aparece) */
+html.overlay-mode,
+html.overlay-mode body,
+html.overlay-mode #root {
+  background: transparent !important;
+  overflow: hidden;
+}

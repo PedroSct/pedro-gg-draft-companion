@@ -29,7 +29,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoAcceptDelay: 1,
   tourDone: false,
   introAnimation: true,
-  reduceMotion: false
+  reduceMotion: false,
+  overlayEnabled: false,
+  overlayCorner: 'tr',
+  overlayOpacity: 0.9
 }
 
 function isHttpsUrl(v: string): boolean {
@@ -174,7 +177,16 @@ export function sanitizeSettingsPatch(raw: unknown): Partial<AppSettings> {
     if (typeof v === 'number' && Number.isFinite(v)) out.autoAcceptDelay = Math.min(8, Math.max(0, Math.round(v)))
     else throw new Error('Configuração inválida: autoAcceptDelay')
   }
-  for (const key of ['introAnimation', 'reduceMotion', 'tourDone'] as const) {
+  if ('overlayCorner' in raw) {
+    if (raw.overlayCorner === 'tl' || raw.overlayCorner === 'tr' || raw.overlayCorner === 'bl' || raw.overlayCorner === 'br') out.overlayCorner = raw.overlayCorner
+    else throw new Error('Configuração inválida: overlayCorner')
+  }
+  if ('overlayOpacity' in raw) {
+    const v = raw.overlayOpacity
+    if (typeof v === 'number' && Number.isFinite(v)) out.overlayOpacity = Math.round(Math.min(1, Math.max(0.4, v)) * 20) / 20
+    else throw new Error('Configuração inválida: overlayOpacity')
+  }
+  for (const key of ['introAnimation', 'reduceMotion', 'tourDone', 'overlayEnabled'] as const) {
     if (key in raw) {
       if (typeof raw[key] === 'boolean') out[key] = raw[key] as boolean
       else throw new Error(`Configuração inválida: ${key}`)

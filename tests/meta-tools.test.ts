@@ -272,6 +272,7 @@ function matchBody(n: number): RawMatch {
   return {
     info: {
       gameVersion: n === 6 ? '16.19.4.1' : '16.20.612.4409',
+      ...(n === 6 ? { gameCreation: 4_000_000_000_000 } : {}),
       queueId: 420,
       gameDuration: remake ? 200 : 1700,
       gameEndedInEarlySurrender: remake,
@@ -355,7 +356,9 @@ async function startMock(): Promise<Mock> {
     if (p === '/lol/league/v4/grandmasterleagues/by-queue/RANKED_SOLO_5x5') return send(200, { entries: [] })
     if (p === '/lol/league/v4/masterleagues/by-queue/RANKED_SOLO_5x5') return send(200, { entries: [{ summonerId: 's9' }] })
     if (p === '/lol/summoner/v4/summoners/s9') return send(200, { puuid: 'p4' })
-    const ids: Record<string, string[]> = { p1: ['BR1_1', 'BR1_2', 'BR1_3'], p2: ['BR1_3', 'BR1_4', 'BR1_5'], p3: ['BR1_6', 'BR1_7'], p4: [] }
+    const entries = p.match(/^\/lol\/league\/v4\/entries\/RANKED_SOLO_5x5\/(\w+)\/(I|II|III|IV)$/)
+    if (entries) return send(200, entries[1] === 'EMERALD' && entries[2] === 'I' && url.searchParams.get('page') === '1' ? [{ puuid: 'p5' }] : [])
+    const ids: Record<string, string[]> = { p1: ['BR1_1', 'BR1_2', 'BR1_3'], p2: ['BR1_3', 'BR1_4', 'BR1_5'], p3: ['BR1_6', 'BR1_7'], p4: [], p5: ['BR1_8'] }
     const byPuuid = p.match(/^\/lol\/match\/v5\/matches\/by-puuid\/([^/]+)\/ids$/)
     if (byPuuid) return send(200, ids[byPuuid[1]] ?? [])
     const tl = p.match(/^\/lol\/match\/v5\/matches\/BR1_(\d+)\/timeline$/)
@@ -424,6 +427,43 @@ describe('buildMeta (Riot simulada)', () => {
     expect(mock.hits.filter((p) => p === '/lol/match/v5/matches/BR1_3')).toHaveLength(1) // aparece em dois jogadores
     // timeline só das partidas contadas (M6 e M7 não pedem)
     expect(mock.hits.filter((p) => p.endsWith('/timeline'))).toHaveLength(5)
+  })
+
+  it('ao achar partida do patch anterior, passa a pedir só o que veio depois dela', async () => {
+    const floor = 4_000_000_000 + 1
+    await buildMeta(options({ seed: 3 }))
+    const state = JSON.parse(readFileSync(join(dir, 'work', 'state-v3-br1-16.20.json'), 'utf8')) as { floorTs?: number }
+    expect(state.floorTs).toBe(floor)
+    // a partir da partida velha (BR1_6), toda lista de ids pede só o que veio depois
+    const calls = mock.hits.map((p, i) => ({ p, q: mock.queries[i - (mock.hits.length - mock.queries.length)] }))
+    const oldAt = calls.findIndex((c) => c.p === '/lol/match/v5/matches/BR1_6')
+    expect(oldAt).toBeGreaterThan(-1)
+    const after = calls.slice(oldAt).filter((c) => /\/ids$/.test(c.p))
+    for (const c of after) expect(Number(c.q.get('startTime'))).toBeGreaterThanOrEqual(floor)
+    // e não baixa mais nada deste jogador depois da partida velha (BR1_7 vem depois de BR1_6 na lista)
+    expect(mock.hits).not.toContain('/lol/match/v5/matches/BR1_7')
+  })
+
+  it('lê Emerald/Diamond pela lista de entradas, por divisão e página', async () => {
+    const ds = await buildMeta(options({ tiers: ['master', 'emerald'], entryPages: 2 }))
+    const entryHits = mock.hits.filter((p) => p.startsWith('/lol/league/v4/entries/'))
+    expect(entryHits.sort()).toEqual(
+      ['I', 'II', 'III', 'IV'].map((d) => `/lol/league/v4/entries/RANKED_SOLO_5x5/EMERALD/${d}`).sort().flatMap((p) => (p.endsWith('/I') ? [p, p] : [p]))
+    ) // a divisão I tem página 2 consultada; as outras páginas vazias param na primeira
+    expect(mock.hits).toContain('/lol/match/v5/matches/BR1_8') // o jogador de Emerald (p5) entrou
+    expect(ds.source).toContain('1 partidas')
+  })
+
+  it('ao retomar com um elo novo, acrescenta os jogadores sem refazer os já lidos', async () => {
+    await buildMeta(options({ tiers: ['challenger', 'grandmaster', 'master'], maxMatches: 100 }))
+    mock.hits.length = 0
+    const ds = await buildMeta(options({ tiers: ['challenger', 'grandmaster', 'master', 'emerald'], maxMatches: 100 }))
+    expect(mock.hits.filter((p) => p.includes('/lol/match/v5/matches/BR1_')).sort()).toEqual(['/lol/match/v5/matches/BR1_8', '/lol/match/v5/matches/BR1_8/timeline'])
+    expect(ds.source).toBe('Riot Match-v5 (br1), 6 partidas')
+  })
+
+  it('elo desconhecido dá erro claro', async () => {
+    await expect(buildMeta(options({ tiers: ['bronze'] }))).rejects.toThrow(/Elo desconhecido: bronze/)
   })
 
   it('retoma do checkpoint sem recontar nem rebaixar partidas', async () => {

@@ -28,6 +28,8 @@ export interface RawParticipant {
 export interface RawMatch {
   info?: {
     gameVersion?: string
+    /** início da partida, em milissegundos */
+    gameCreation?: number
     queueId?: number
     gameDuration?: number
     gameEndedInEarlySurrender?: boolean
@@ -512,9 +514,34 @@ function topOptions<T>(
   return out
 }
 
+/** Mesmos itens em outra ordem de compra são a mesma build: chaves "a,b,c" viram o conjunto ordenado. */
+const setKey = (key: string): string => key.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0).sort((x, y) => x - y).join(',')
+
+/** Soma as variações de ordem de uma tabela de conjuntos de itens (dados antigos guardam a ordem na chave). */
+function mergeSets(table: Record<string, WinStats> | undefined): Record<string, WinStats> {
+  const out: Record<string, WinStats> = {}
+  for (const [key, s] of Object.entries(table ?? {})) {
+    const k = setKey(key)
+    if (!k) continue
+    const cur = (out[k] ??= { games: 0, wins: 0 })
+    cur.games += s.games
+    cur.wins += s.wins
+  }
+  return out
+}
+
+/** Ordena os itens do conjunto pela posição média em que costumam ser comprados (sem dado, pelo id). */
+function byBuyOrder(list: number[], pos: Record<string, CoreStat>): number[] {
+  const avgPos = (id: number): number => {
+    const st = pos[String(id)]
+    return st && st.count > 0 ? st.posSum / st.count : 99
+  }
+  return [...list].sort((a, b) => avgPos(a) - avgPos(b) || a - b)
+}
+
 const ids = (key: string): number[] => key.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0)
 
-function optionsFrom(opts: BuildOpts | undefined, games: number): BuildOptions | undefined {
+function optionsFrom(opts: BuildOpts | undefined, games: number, buyPos: Record<string, CoreStat> = {}): BuildOptions | undefined {
   if (!opts) return undefined
   const runes = topOptions<RunePage>(opts.runes, 3, (key) => {
     const [primary, sub, list] = key.split('|')
@@ -530,9 +557,10 @@ function optionsFrom(opts: BuildOpts | undefined, games: number): BuildOptions |
     return list.length ? list : null
   })
   const boots = topOptions<number>(opts.boots, 3, (key) => (Number(key) > 0 ? Number(key) : null))
-  const core = topOptions<number[]>(opts.core, 4, (key) => {
+  // Os mesmos 3 itens em ordens diferentes contam juntos; a ordem mostrada é a de compra mais comum.
+  const core = topOptions<number[]>(mergeSets(opts.core), 4, (key) => {
     const list = ids(key)
-    return list.length === 3 ? list : null
+    return list.length === 3 ? byBuyOrder(list, buyPos) : null
   })
 
   // Habilidades: soma por prioridade e usa o prefixo mais comum de cada uma para completar os 18 níveis
@@ -594,14 +622,14 @@ function buildFrom(b: BuildAgg, minSamples: number, games: number): ChampionBuil
   }
 
   const enoughItems = b.samples >= lite
-  const starting = enoughItems ? ids(top(b.starting) ?? '') : []
-  const boots = enoughItems
+  let starting = enoughItems ? ids(top(b.starting) ?? '') : []
+  let boots = enoughItems
     ? Object.entries(b.boots).sort((x, y) => y[1] - x[1] || Number(x[0]) - Number(y[0])).slice(0, 2).map(([id]) => Number(id))
     : []
 
   // Os 3 itens mais frequentes entre os 3 primeiros completados, ordenados pela posição média de compra
   const coreRanked = Object.entries(b.core).sort((x, y) => y[1].count - x[1].count || Number(x[0]) - Number(y[0]))
-  const core = enoughItems
+  let core = enoughItems
     ? coreRanked
         .slice(0, 3)
         .sort((x, y) => x[1].posSum / x[1].count - y[1].posSum / y[1].count || Number(x[0]) - Number(y[0]))
@@ -611,7 +639,7 @@ function buildFrom(b: BuildAgg, minSamples: number, games: number): ChampionBuil
   // Situacionais: o que mais aparece depois dos 3 principais (ou como alternativa a eles)
   const rest: Counter = { ...b.other }
   for (const [id, stat] of coreRanked.slice(3)) bump(rest, id, stat.count)
-  const situational: SituationalItem[] = enoughItems
+  let situational: SituationalItem[] = enoughItems
     ? Object.entries(rest)
         .sort((x, y) => y[1] - x[1] || Number(x[0]) - Number(y[0]))
         .slice(0, 5)
@@ -629,7 +657,13 @@ function buildFrom(b: BuildAgg, minSamples: number, games: number): ChampionBuil
   const spells = spellKey && total(b.spells ?? {}) >= lite ? (ids(spellKey) as [number, number]) : undefined
 
   // Construções alternativas: as 3 mais usadas (a mais comum costuma coincidir com `items`)
-  const variants: BuildVariant[] = Object.entries(b.variants ?? {})
+  const variantCounts: Counter = {}
+  for (const [key, n] of Object.entries(b.variants ?? {})) {
+    const [items, boot] = key.split('|')
+    const merged = `${setKey(items ?? '')}|${Number(boot) || 0}`
+    variantCounts[merged] = (variantCounts[merged] ?? 0) + n
+  }
+  const variants: BuildVariant[] = Object.entries(variantCounts)
     .filter(([, n]) => n >= 5 && b.samples > 0 && n / b.samples >= 0.06)
     .sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1))
     .slice(0, 3)
@@ -637,13 +671,24 @@ function buildFrom(b: BuildAgg, minSamples: number, games: number): ChampionBuil
       const [items, boot] = key.split('|')
       const bootId = Number(boot)
       return {
-        core: items.split(',').map(Number),
+        core: byBuyOrder(items.split(',').map(Number), b.core),
         ...(bootId > 0 ? { boots: bootId } : {}),
         share: Math.round((n / b.samples) * 1000) / 1000
       }
     })
 
-  const options = optionsFrom(b.opts, games)
+  const options = optionsFrom(b.opts, games, b.core)
+
+  // O padrão (o que o botão de importar usa sem escolha) é a opção mais jogada por todos os jogadores, e não uma
+  // mistura dos 3 itens mais frequentes (que podem nunca ter sido comprados juntos) só das vitórias.
+  const topCore = options?.core?.[0]
+  if (topCore && topCore.games >= lite) core = topCore.value
+  situational = situational.filter((x) => !core.includes(x.itemId))
+  const topBoots = options?.boots?.[0]
+  if (topBoots && topBoots.games >= lite) boots = [topBoots.value, ...boots.filter((id) => id !== topBoots.value)].slice(0, 2)
+  const topStart = options?.starting?.[0]
+  if (topStart && topStart.games >= lite) starting = topStart.value
+
   const hasItems = core.length > 0 || starting.length > 0 || boots.length > 0
   if (!skillOrder && !runes && !spells && !hasItems && !options) return undefined
 

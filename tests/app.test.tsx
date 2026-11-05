@@ -107,7 +107,10 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     autoAccept: false,
     autoAcceptDelay: 1,
     introAnimation: true,
-    reduceMotion: false
+    reduceMotion: false,
+    overlayEnabled: false,
+    overlayCorner: 'tr',
+    overlayOpacity: 0.9
   }
   let identity: IdentityState = { account: null, profileId: null }
   let situation: BuildSituation | null = null
@@ -139,6 +142,9 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     getDiagnostics: async () => 'diagnóstico de teste',
     getLastAccept: async () => null,
     getMetaCounters: async () => [],
+    getOverlayState: async () => null,
+    onOverlayState: () => () => {},
+    previewOverlay: async () => false,
     exportBackup: async () => ({ ok: false, reason: 'canceled' }),
     importBackup: async () => ({ ok: false, reason: 'canceled' }),
     getPatchChanges: async () => null,

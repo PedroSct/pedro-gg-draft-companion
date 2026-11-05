@@ -55,6 +55,8 @@ export const IPC = {
   UPDATE_DOWNLOAD: 'update:download',
   UPDATE_INSTALL: 'update:install',
 
+  OVERLAY_GET: 'overlay:get',
+  OVERLAY_PREVIEW: 'overlay:preview',
   DIAG_REPORT: 'diag:report',
   DIAG_ACCEPT: 'diag:accept',
   DIAG_SAVE: 'diag:save',
@@ -66,6 +68,8 @@ export const IPC = {
   // Main → Renderer (push): uma partida nova foi analisada
   POSTGAME_READY: 'postgame:ready',
 
+  // Main → janela do overlay (push): novo estado do painel
+  OVERLAY_STATE: 'overlay:state',
   // Main → Renderer (push): o meta foi atualizado em segundo plano
   META_UPDATED: 'meta:updated',
   // Main → Renderer (push): mudou o estado da atualização do app

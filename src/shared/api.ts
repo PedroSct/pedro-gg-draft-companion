@@ -1,5 +1,6 @@
 // src/shared/api.ts
 // Contrato do `window.api` exposto pelo preload. Main, Preload e Renderer usam estes tipos.
+import type { OverlayState } from './overlay'
 import type { BuildSelection } from './buildSelection'
 import type { AccountStats, DraftState, LcuIdentity, LcuStatus, Role } from './types'
 import type {
@@ -74,6 +75,11 @@ export interface LolApi {
   onPostGameReady(cb: (summary: PgSummary) => void): Unsubscribe
 
   // Renderer → Main
+  /** Estado atual do painel dentro do jogo (null = nada a mostrar). */
+  getOverlayState(): Promise<OverlayState | null>
+  onOverlayState(cb: (state: OverlayState | null) => void): () => void
+  /** Mostra o painel com dados de exemplo por alguns segundos; false = sem dados de meta reais para mostrar. */
+  previewOverlay(): Promise<boolean>
   /** Texto de diagnóstico (sem dados pessoais) para copiar e enviar. */
   getDiagnostics(): Promise<string>
   /** Última tentativa de aceitar a partida (null = nenhuma ainda). */

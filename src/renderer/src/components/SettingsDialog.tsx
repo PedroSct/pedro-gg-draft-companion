@@ -96,6 +96,7 @@ export function SettingsDialog() {
   const [checkingApp, setCheckingApp] = useState(false)
   const [tab, setTab] = useState<TabId>('general')
   const [diagMsg, setDiagMsg] = useState<Message>(null)
+  const [overlayMsg, setOverlayMsg] = useState<Message>(null)
   const [probe, setProbe] = useState<string[] | null>(null)
   const [backupMsg, setBackupMsg] = useState<Message>(null)
   const reloadProfiles = useApp((s) => s.reloadProfiles)
@@ -237,6 +238,15 @@ export function SettingsDialog() {
     }
   }
 
+  async function testOverlay(): Promise<void> {
+    try {
+      const ok = await window.api.previewOverlay()
+      setOverlayMsg(ok ? { ok: true, text: 'O painel aparece por 12 segundos no canto escolhido, com dados de exemplo.' } : { ok: false, text: 'Preciso dos dados de meta reais para a demonstração: atualize os dados em Configurações > Dados.' })
+    } catch {
+      setOverlayMsg({ ok: false, text: 'Não consegui abrir a demonstração.' })
+    }
+  }
+
   async function saveDiagnostics(): Promise<void> {
     try {
       const r = await window.api.saveDiagnostics()
@@ -360,6 +370,51 @@ export function SettingsDialog() {
                     ? `${lastAccept.ok ? 'aceita' : `recusada pelo cliente (HTTP ${lastAccept.status})`} às ${new Date(lastAccept.at).toLocaleTimeString('pt-BR')}`
                     : 'nenhuma ainda'}
                 </p>
+              </Card>
+              <Card title="Overlay no jogo">
+                <p className="text-sm text-mist">
+                  Um painel pequeno sobre o jogo com a próxima habilidade a evoluir e os itens da sua build. Usa a API oficial da partida em andamento (só o que você já vê), não mexe no jogo e o clique atravessa o painel. Aparece com o LoL em <strong>janela ou tela cheia sem bordas</strong>; em tela cheia exclusiva o Windows esconde o painel.
+                </p>
+                <Row title="Mostrar o overlay durante a partida">
+                  <Switch label="Mostrar o overlay durante a partida" checked={settings?.overlayEnabled ?? false} onChange={(v) => void saveSettings({ overlayEnabled: v })} />
+                </Row>
+                <Row title="Canto da tela">
+                  <select
+                    aria-label="Canto do overlay"
+                    value={settings?.overlayCorner ?? 'tr'}
+                    onChange={(e) => void saveSettings({ overlayCorner: e.target.value as 'tl' | 'tr' | 'bl' | 'br' })}
+                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                  >
+                    <option value="tr">Superior direito</option>
+                    <option value="tl">Superior esquerdo</option>
+                    <option value="br">Inferior direito</option>
+                    <option value="bl">Inferior esquerdo</option>
+                  </select>
+                </Row>
+                <Row title="Opacidade">
+                  <select
+                    aria-label="Opacidade do overlay"
+                    value={String(settings?.overlayOpacity ?? 0.9)}
+                    onChange={(e) => void saveSettings({ overlayOpacity: Number(e.target.value) })}
+                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                  >
+                    {[1, 0.9, 0.8, 0.7, 0.6, 0.5].map((n) => (
+                      <option key={n} value={n}>
+                        {Math.round(n * 100)}%
+                      </option>
+                    ))}
+                  </select>
+                </Row>
+                <div className="mt-2 flex items-center gap-2">
+                  <button type="button" className={btn} onClick={() => void testOverlay()}>
+                    Testar o overlay
+                  </button>
+                </div>
+                {overlayMsg && (
+                  <p role="status" className={`mt-2 text-sm ${overlayMsg.ok ? 'text-ally' : 'text-mist'}`}>
+                    {overlayMsg.text}
+                  </p>
+                )}
               </Card>
               <Card title="Sugestões do draft">
                 <Row title="Prioridade padrão" hint="Também dá para trocar durante a seleção.">

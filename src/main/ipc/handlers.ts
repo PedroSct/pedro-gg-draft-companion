@@ -10,13 +10,14 @@ import { MetaStore, MetaUpdateError } from '../data/meta'
 import { recommend } from '../data/recommender'
 import { buildSituation } from '../data/situation'
 import { banPhaseOpen, suggestBans } from '../data/bans'
-import { applyBuildSelection, sanitizeSelection } from '../../shared/buildSelection'
+import { applyBuildSelection, sanitizeSelection, type BuildSelection } from '../../shared/buildSelection'
 import { championDetail, tierRows } from '../data/metaStats'
 import { ROLES, type ChampionInfo, type ItemInfo } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO, regionUrl } from '../../shared/config'
 import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
 import { AutoAccept } from '../autoAccept'
 import { patchNotice, snapshotOf, type MetaSnapshot } from '../data/patchChanges'
+import { OverlayController } from '../overlay/controller'
 import { suggestMetaCounters } from '../data/counters'
 import { Diagnostics, formatProbe, probeClient } from '../diagnostics'
 import { applyLoadout } from '../lcu/loadout'
@@ -44,7 +45,7 @@ export interface AppServices {
  *
  * Tudo que o renderer envia é validado aqui ou nos serviços (o renderer não é confiável).
  */
-export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
+export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<AppServices> {
   const userData = app.getPath('userData') // por usuário/PC; sobrevive a atualizações e reinstalações
   const resourcesDir = app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'resources')
 
@@ -84,9 +85,15 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     for (const l of res.learn) void profiles.learnPuuid(l.profileId, l.puuid).catch(() => undefined)
     return res.draft
   }
+  // Rota e campeão do último draft: o overlay usa quando o jogo não informa a rota.
+  let lastPick: { championId: number; role: Role } | null = null
   const pushDraft = (): void => {
     const d = annotatedDraft()
-    if (d) send(IPC.DRAFT_UPDATE, d)
+    if (d) {
+      send(IPC.DRAFT_UPDATE, d)
+      const me = d.allies.find((a) => a.cellId === d.localPlayerCellId)
+      if (me && me.championId > 0 && d.localRole) lastPick = { championId: me.championId, role: d.localRole }
+    }
   }
   lcu.on('draft', pushDraft)
   lcu.on('identity', () => {
@@ -230,6 +237,7 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
   handle(IPC.SETTINGS_SET, async (patch) => {
     const settings = await profiles.updateSettings(patch)
     autoAccept.enabledChanged()
+    overlay.refresh()
     return settings
   })
   handle(IPC.SETTINGS_PICK_GAME_DIR, async () => {
@@ -333,6 +341,36 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
     return notice
   })
   handle(IPC.META_PATCH_ACK, () => writeSeen())
+  // ---- Overlay dentro do jogo (opcional): próxima habilidade e itens da build, lidos da API oficial da partida
+  const lastSelections = new Map<string, BuildSelection>()
+  const keyToId = (key: string): number | null => {
+    for (const [id, k] of champKeys) if (k.toLowerCase() === key.toLowerCase()) return id
+    return null
+  }
+  const overlay = new OverlayController(
+    {
+      getSettings: () => profiles.getSettings(),
+      getDataset: () => meta.get(),
+      getBuild: (id, role) => meta.getBuild(id, role),
+      idOfKey: keyToId,
+      nameOf: (id) => champNames.get(id) ?? `Campeão ${id}`,
+      lastSelection: (id, role) => lastSelections.get(`${id}|${role}`) ?? null,
+      lastDraftPick: () => lastPick,
+      warm: warmChampionKeys,
+      send,
+      channel: IPC.OVERLAY_STATE,
+      log: (m) => diag.log('overlay', m)
+    },
+    win,
+    devUrl
+  )
+  handle(IPC.OVERLAY_GET, () => overlay.getState())
+  handle(IPC.OVERLAY_PREVIEW, async () => {
+    await warmChampionKeys()
+    return overlay.preview()
+  })
+  overlay.refresh()
+
   // ---- Melhor pick do meta contra o inimigo da rota, fora da Pool
   handle(IPC.DRAFT_COUNTERS, (raw) => {
     const req = isRecord(raw) ? raw : {}
@@ -381,6 +419,7 @@ export async function registerIpc(win: BrowserWindow): Promise<AppServices> {
         parts: { runes: parts.runes === true, spells: parts.spells === true, items: parts.items === true }
       }
     )
+    lastSelections.set(`${req.championId}|${role}`, sanitizeSelection(req.selection))
     diag.log('build', `importação ${req.championId}/${role}: ${JSON.stringify(result).slice(0, 200)}`)
     return { ok: true, parts: result }
   })

@@ -150,6 +150,9 @@ function ItemOptions({
  * Build completa. Com `build.options` (dados da 0.5.2) mostra as opções mais jogadas de cada parte, com escolha e
  * winrate; sem elas, mostra a build única de sempre.
  */
+/** Abaixo disto as escolhas de itens e habilidades ainda são ruído. */
+const LOW_SAMPLE = 40
+
 export function BuildOptionsView({
   build,
   spells,
@@ -202,8 +205,15 @@ export function BuildOptionsView({
     items: { starting: [], boots: [], core: [], situational: [] }
   })
 
+  // Poucas partidas com timeline: as porcentagens de itens e habilidades oscilam muito.
+  const lowSample = o !== undefined && o.timeline > 0 && o.timeline < LOW_SAMPLE
   return (
     <>
+      {lowSample && (
+        <p role="note" className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-xs text-gold">
+          Poucos dados: esta build vem de {o.timeline} {o.timeline === 1 ? 'partida' : 'partidas'}. Itens e habilidades podem não refletir o meta.
+        </p>
+      )}
       {(build.runes || build.spells || o?.runes || o?.spells) && (
         <div className="flex flex-col gap-3">
           <h3 className="text-sm text-mist">Runas e feitiços</h3>

@@ -55,6 +55,12 @@ export interface AppSettings {
   introAnimation: boolean
   /** Menos movimento: desliga animações e transições. */
   reduceMotion: boolean
+  /** Painel dentro do jogo com a próxima habilidade e os itens da build (desligado por padrão). */
+  overlayEnabled: boolean
+  /** Canto da tela do painel. */
+  overlayCorner: 'tl' | 'tr' | 'bl' | 'br'
+  /** Opacidade do painel (0,4 a 1). */
+  overlayOpacity: number
 }
 
 export interface ProfilesFile {

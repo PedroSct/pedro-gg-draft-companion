@@ -102,6 +102,25 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
 - **Draft com rolagem (0.6.0)**: a coluna do meio agora rola, então runas, itens e feitiços que serão enviados ao LoL
   ficam sempre visíveis depois de travar o campeão.
 - **Menor e mais rápido (0.6.0)**: o código da tela passou a ser minificado (de 666 kB para 280 kB no pacote principal).
+- **Builds mais fiéis (0.7.0)**: os mesmos 3 itens comprados em ordens diferentes agora contam como a mesma build (antes
+  se dividiam e a opção "mais usada" era quase aleatória com poucas partidas). O padrão da build passou a ser a opção
+  mais jogada por todos os jogadores, e não uma mistura dos itens mais frequentes nas vitórias. Quando a build vem de
+  menos de 40 partidas com timeline, o app avisa "Poucos dados". Rode o workflow de novo para aplicar (o progresso
+  guardado é reaproveitado).
+- **Overlay no jogo (0.7.0)**: um painel pequeno, transparente e que **não recebe cliques** aparece num canto da tela durante
+  a partida (Summoner's Rift) e mostra **qual habilidade subir agora** (pela ordem da build, corrigindo se você fugiu dela)
+  e **os itens da build** na ordem de compra, com o próximo destacado e os já comprados marcados. Ele só **lê** os dados
+  da própria partida pela Live Client Data API oficial da Riot (o que você já vê na tela): não automatiza nada, não clica,
+  não mostra informação escondida e não mexe no processo do jogo (mesma ideia do Blitz/Porofessor). Liga em Configurações >
+  Partida > "Overlay no jogo" (canto e opacidade ajustáveis, botão **Testar o overlay**). Só aparece com o LoL em **janela
+  ou sem bordas**; em tela cheia exclusiva o Windows não deixa nada por cima.
+- **Mais elos na coleta (0.7.0)**: o gerador aceita `--tiers challenger,grandmaster,master,diamond,emerald` (padrão do
+  workflow; `platinum` também existe) e `--entry-pages <n>` (padrão 3 páginas de ~200 jogadores por divisão). Resultados
+  anteriores são retomados e os elos novos entram no meio dos jogadores que faltam. Mais jogadores e elos variados dão
+  builds mais próximas das de OP.GG/Lolalytics.
+- **Coleta pós-patch mais rápida (0.7.0)**: logo após um patch novo, as partidas do patch antigo eram baixadas e jogadas
+  fora (cerca de 14 requisições por partida válida). Agora o coletor descobre a data em que o patch começou e para de
+  pedir partidas mais antigas daquele jogador.
 - **Correções de estabilidade**: gravação do pós-jogo em fila segura, aviso falso de counter desligado quando o inimigo
   da rota já está confirmado, e download de dados sem redirecionamento inseguro.
 - **Visual**: cabeçalho integrado à barra da janela, animação de abertura (dá para desligar), cantos arredondados,
@@ -179,7 +198,7 @@ vem apontando para ela (`DEFAULT_META_URL` em `src/shared/config.ts`). Configura
    em "Partidas por servidor", quantas coletar (padrão 6000) e, em "Partidas com timeline", quantas baixam a timeline
    (builds, habilidades e itens; padrão 3000, 0 = todas). Cada **cluster** da Riot (americas, europe, asia, sea)
    tem o próprio limite da chave, então servidores de clusters diferentes rodam **em paralelo** (cada um leva de 2 a
-   3 horas) e servidores do mesmo cluster (ex.: `br1,na1`) rodam em sequência no mesmo job (cabem uns dois). No fim, as
+   3 horas) e servidores do mesmo cluster (ex.: `br1,na1`) rodam em sequência no mesmo job, que tem 350 min: com 7000 partidas e 5000 timelines por servidor **só cabe um**, então rode um servidor do mesmo cluster por execução ou reduza as partidas. No fim, as
    contagens de todos os servidores são **somadas num `meta.json` global** (só entram partidas do mesmo patch) e cada servidor
    também gera o seu `meta-<servidor>.json`. Se a chave
    vencer no meio, rode de novo: o progresso fica em cache. Os campos **rps** e **days** (partidas dos últimos N dias)
@@ -227,7 +246,7 @@ electron-builder passa a assinar sozinho no workflow de build.
   guarda a resposta bruta das últimas 5 partidas em `postgame/raw` (pasta de dados do app) para ajustar o leitor se o
   formato vier diferente.
 - O **importar runas/itens** e a **leitura da conta/amigos** também usam endpoints não oficiais do cliente e foram testados só contra um cliente simulado.
-- Não há nada durante a partida (sem overlay), de propósito: a análise vem depois do jogo (um overlay dentro do jogo pode violar regras de anti-cheat e fica fora do app).
+- O **overlay** foi testado com dados simulados da Live Client Data API, não numa partida real. Ele só lê; não automatiza nada. Não aparece com o jogo em tela cheia exclusiva, e só funciona em Summoner's Rift (Normal, Ranqueada, etc.).
 - Os dados de meta reais dependem de você rodar o gerador uma vez por patch (e de uma chave da Riot).
 - A atualização automática foi testada com um atualizador simulado e com o app empacotado, mas ainda não contra um
   Release real do GitHub: o primeiro teste de verdade é publicar uma versão nova e ver o aviso na anterior.

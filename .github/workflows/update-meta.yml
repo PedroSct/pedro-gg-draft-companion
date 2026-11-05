@@ -32,6 +32,9 @@ on:
       rps:
         description: Requisições por segundo. Mantenha 0.8 - o limite longo da Riot (100 a cada 2 min) vale também para chave aprovada; acima disso dá erro 429.
         default: '0.8'
+      tiers:
+        description: Elos dos jogadores (challenger, grandmaster, master, diamond, emerald, platinum). Emerald e Diamond deixam o meta parecido com o do OP.GG e Lolalytics.
+        default: challenger,grandmaster,master,diamond,emerald
       days:
         description: Só partidas dos últimos N dias (mais dias = mais partidas disponíveis no começo do patch).
         default: '14'
@@ -104,12 +107,13 @@ jobs:
           TIMELINE_MATCHES: ${{ inputs.timeline_matches || '3000' }}
           RPS: ${{ inputs.rps || '0.8' }}
           DAYS: ${{ inputs.days || '14' }}
+          TIERS: ${{ inputs.tiers || 'challenger,grandmaster,master,diamond,emerald' }}
         run: |
           # Um servidor que falha (chave vencida, limite) não impede os outros do cluster; o progresso fica salvo.
           failed=0
           for p in $PLATFORMS; do
             echo "::group::Servidor $p"
-            pnpm meta:build --platform "$p" --max-matches "$MAX_MATCHES" --timeline-matches "$TIMELINE_MATCHES" --rps "$RPS" --days "$DAYS" --out "meta-$p.json" --work meta-work || failed=$((failed+1))
+            pnpm meta:build --platform "$p" --max-matches "$MAX_MATCHES" --timeline-matches "$TIMELINE_MATCHES" --rps "$RPS" --days "$DAYS" --tiers "$TIERS" --out "meta-$p.json" --work meta-work || failed=$((failed+1))
             echo "::endgroup::"
           done
           if [ "$failed" -gt 0 ]; then

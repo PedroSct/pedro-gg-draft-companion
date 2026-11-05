@@ -13,7 +13,8 @@ const HELP = `Uso: npm run meta:build -- [opções]
 Requer a variável de ambiente RIOT_API_KEY (developer.riotgames.com).
 
   --platform <br1|na1|euw1|kr|...>  servidor dos jogadores (padrão: br1)
-  --tiers <lista>                    challenger,grandmaster,master (padrão: os três)
+  --tiers <lista>                    challenger,grandmaster,master,diamond,emerald,platinum (padrão: challenger,grandmaster,master)
+  --entry-pages <n>                  páginas (205 jogadores) por divisão em diamond/emerald/platinum (padrão: 3)
   --patch <auto|16.20>               patch alvo (padrão: auto = o mais recente do Data Dragon)
   --max-matches <n>                  partidas a coletar (padrão: 3000)
   --per-player <n>                   partidas recentes lidas de cada jogador (padrão: 10)
@@ -38,6 +39,7 @@ const { values: v } = parseArgs({
   options: {
     platform: { type: 'string', default: 'br1' },
     tiers: { type: 'string', default: 'challenger,grandmaster,master' },
+    'entry-pages': { type: 'string', default: '3' },
     patch: { type: 'string', default: 'auto' },
     'max-matches': { type: 'string', default: '3000' },
     'per-player': { type: 'string', default: '10' },
@@ -84,6 +86,7 @@ async function main(): Promise<void> {
     apiKey: apiKey ?? '',
     platform: String(v.platform),
     tiers: String(v.tiers).split(',').map((t) => t.trim()).filter(Boolean),
+    entryPages: num('entry-pages', v['entry-pages'], 1),
     patch: String(v.patch),
     maxMatches: num('max-matches', v['max-matches'], 1),
     matchesPerPlayer: Math.min(100, num('per-player', v['per-player'], 1)),
