@@ -113,7 +113,7 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   da própria partida pela Live Client Data API oficial da Riot (o que você já vê na tela): não automatiza nada, não clica,
   não mostra informação escondida e não mexe no processo do jogo (mesma ideia do Blitz/Porofessor). Liga em Configurações >
   Partida > "Overlay no jogo" (canto e opacidade ajustáveis, botão **Testar o overlay**). Só aparece com o LoL em **janela
-  ou sem bordas**; em tela cheia exclusiva o Windows não deixa nada por cima.
+  ou sem bordas**; em tela cheia exclusiva o Windows não deixa nada por cima. Se ele não aparecer, o relatório de diagnóstico (Configurações > Aplicativo) tem uma linha "Overlay:" dizendo o motivo.
 - **Mais elos na coleta (0.7.0)**: o gerador aceita `--tiers challenger,grandmaster,master,diamond,emerald` (padrão do
   workflow; `platinum` também existe) e `--entry-pages <n>` (padrão 3 páginas de ~200 jogadores por divisão). Resultados
   anteriores são retomados e os elos novos entram no meio dos jogadores que faltam. Mais jogadores e elos variados dão

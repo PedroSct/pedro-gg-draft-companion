@@ -9,10 +9,10 @@ import type { Role } from '../../shared/types'
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown, fallback = 0): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback)
 
-/** Só o modo clássico do Summoner's Rift tem build: ARAM, Arena etc. ficam de fora. */
+/** Só o Summoner's Rift (clássico e Ferramenta de Treino) tem build: ARAM, Arena etc. ficam de fora. */
 export function isSummonersRift(raw: unknown): boolean {
   if (!isRecord(raw) || !isRecord(raw.gameData)) return false
-  return raw.gameData.mapNumber === 11 && raw.gameData.gameMode === 'CLASSIC'
+  return raw.gameData.mapNumber === 11 && (raw.gameData.gameMode === 'CLASSIC' || raw.gameData.gameMode === 'PRACTICETOOL')
 }
 
 /** Transforma a resposta de /liveclientdata/allgamedata no retrato usado pelo painel; null se faltar o essencial. */

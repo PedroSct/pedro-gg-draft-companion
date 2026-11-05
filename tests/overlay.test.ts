@@ -87,6 +87,7 @@ describe('leitura da partida (Live Client Data)', () => {
   })
   it('ignora ARAM e outros modos, e respostas incompletas', () => {
     expect(isSummonersRift(allgame())).toBe(true)
+    expect(isSummonersRift(allgame({ gameData: { gameMode: 'PRACTICETOOL', mapNumber: 11, gameTime: 5 } }))).toBe(true)
     expect(parseLive(allgame({ gameData: { gameMode: 'ARAM', mapNumber: 12 } }))).toBeNull()
     expect(parseLive(allgame({ activePlayer: { riotId: 'Ninguém#X', level: 1 } }))).toBeNull()
     expect(parseLive(null)).toBeNull()

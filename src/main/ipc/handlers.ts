@@ -193,6 +193,7 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
       `Região do meta: ${st.metaRegion ?? 'global'}`,
       `Aceite automático: ${st.autoAccept ? 'ligado' : 'desligado'}, espera ${st.autoAcceptDelay}s`,
       `Última tentativa de aceite: ${diag.getAccept() ? `${diag.getAccept()?.ok ? 'ok' : 'falhou'} (HTTP ${diag.getAccept()?.status})` : 'nenhuma'}`,
+      `Overlay: ${overlay.getStatus()}`,
       `Perfis: ${profiles.list().length}`
     ])
   }

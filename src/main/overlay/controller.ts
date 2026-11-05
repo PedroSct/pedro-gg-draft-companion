@@ -77,6 +77,7 @@ export class OverlayController {
   private previewUntil = 0
   private running = false
   private stopped = false
+  private status = 'desligado'
 
   constructor(private readonly deps: OverlayDeps, parent: BrowserWindow, private readonly devUrl: string | undefined) {
     parent.on('closed', () => this.destroy())
@@ -86,17 +87,30 @@ export class OverlayController {
     return this.state
   }
 
+  /** O que o overlay está fazendo agora (vai no relatório de diagnóstico: explica por que não apareceu). */
+  getStatus(): string {
+    return this.status
+  }
+
+  private setStatus(status: string): void {
+    if (status === this.status) return
+    this.status = status
+    this.deps.log(status)
+  }
+
   /** Chamar ao iniciar e sempre que as configurações mudarem. */
   refresh(): void {
     if (this.stopped) return
     const s = this.deps.getSettings()
     if (s.overlayEnabled) {
       if (!this.running) {
+        this.setStatus('ligado, aguardando uma partida')
         this.running = true
         void this.tick()
       }
       this.applyWindowSettings()
     } else {
+      this.setStatus('desligado nas configurações')
       this.running = false
       if (this.timer) clearTimeout(this.timer)
       this.timer = null
@@ -130,7 +144,10 @@ export class OverlayController {
     if (!this.running || this.stopped) return
     let next: number = IDLE_MS
     try {
-      const snap = parseLive(await fetchLive())
+      const raw = await fetchLive()
+      const snap = parseLive(raw)
+      if (raw === null) this.setStatus('ligado, aguardando uma partida (a API da partida não respondeu)')
+      else if (!snap) this.setStatus('partida detectada, mas não é o Summoner\'s Rift clássico ou os dados vieram incompletos')
       this.live = snap ? await this.stateFor(snap) : null
       if (this.live) next = FAST_MS
       if (this.previewUntil <= Date.now()) this.setState(this.live)
@@ -143,14 +160,24 @@ export class OverlayController {
   private async stateFor(snap: LiveSnapshot): Promise<OverlayState | null> {
     await this.deps.warm()
     const id = snap.championKey ? this.deps.idOfKey(snap.championKey) : null
-    if (id === null) return null
+    if (id === null) {
+      this.setStatus(`partida detectada (${snap.championName || snap.championKey || '?'}), mas o catálogo de campeões não carregou (precisa de internet na 1ª vez)`)
+      return null
+    }
     const ds = this.deps.getDataset()
     const pick = this.deps.lastDraftPick()
     const role: Role | null = snap.role ?? (pick && pick.championId === id ? pick.role : null) ?? (ds ? rolesOf(ds, id)[0] : null) ?? null
-    if (!role) return null
+    if (!role) {
+      this.setStatus(`partida detectada (${this.deps.nameOf(id)}), mas não foi possível descobrir a rota`)
+      return null
+    }
     const base = this.deps.getBuild(id, role)
-    if (!base) return null
+    if (!base) {
+      this.setStatus(`partida detectada (${this.deps.nameOf(id)}, ${role}), mas os dados de meta não têm build para esse campeão nessa rota`)
+      return null
+    }
     const build = applyBuildSelection(base, this.deps.lastSelection(id, role) ?? ZERO_SELECTION)
+    this.setStatus(`mostrando o painel: ${this.deps.nameOf(id)} (${role})`)
     return computeOverlay({ championId: id, role, build, live: { ...snap, championName: snap.championName || this.deps.nameOf(id) } })
   }
 
