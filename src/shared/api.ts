@@ -1,6 +1,7 @@
 // src/shared/api.ts
 // Contrato do `window.api` exposto pelo preload. Main, Preload e Renderer usam estes tipos.
 import type { OverlayState } from './overlay'
+import type { PoolSuggestResult } from './poolImport'
 import type { BuildSelection } from './buildSelection'
 import type { AccountStats, DraftState, LcuIdentity, LcuStatus, Role } from './types'
 import type {
@@ -80,6 +81,8 @@ export interface LolApi {
   onOverlayState(cb: (state: OverlayState | null) => void): () => void
   /** Mostra o painel com dados de exemplo por alguns segundos; false = sem dados de meta reais para mostrar. */
   previewOverlay(): Promise<boolean>
+  /** Lê do cliente do LoL (só leitura) as partidas recentes e a maestria da conta logada e sugere uma Pool. */
+  suggestPoolFromAccount(): Promise<PoolSuggestResult>
   /** Liga o modo mover (arrastar o painel); false = sem dados para mostrar o painel. */
   startOverlayMove(): Promise<boolean>
   /** Salva a posição atual do painel e volta ao modo normal. */

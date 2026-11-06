@@ -65,6 +65,25 @@ describe('Overlay (painel no jogo)', () => {
     await screen.findByRole('img', { name: 'Suba agora: R' })
     expect(screen.queryByRole('button', { name: 'Salvar posição' })).toBeNull()
   })
+  it('recuado: só o próximo item (e a habilidade quando há ponto)', async () => {
+    mount(state({ compact: true }))
+    expect(await screen.findByText('Chama Sombria')).toBeTruthy()
+    expect(screen.getByText(/3\.000 g/)).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Suba agora: R' })).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Ordem de compra' })).toBeNull()
+    expect(screen.queryByLabelText('Habilidades')).toBeNull()
+  })
+  it('recuado sem ponto de habilidade não mostra a habilidade; build completa é avisada', async () => {
+    mount(state({ compact: true, nextItemId: null, items: [{ itemId: 6655, label: 'Item 1', owned: true }], skill: { ...state().skill, ready: false } }))
+    expect(await screen.findByText('Build completa')).toBeTruthy()
+    expect(screen.queryByRole('img', { name: /Suba agora/ })).toBeNull()
+  })
+  it('estendido mostra a linha do time inimigo e o motivo dos situacionais', async () => {
+    mount(state({ matchup: { focus: 'armor', physical: 0.74, magic: 0.26 }, items: [{ itemId: 4645, label: 'Item 2', owned: false }, { itemId: 3157, label: 'Situacional', owned: false, reason: 'armor' }] }))
+    expect(await screen.findByText(/74% dano físico/)).toBeTruthy()
+    expect(screen.getByText(/priorize armadura/)).toBeTruthy()
+    expect(screen.getByText('Armad.')).toBeTruthy()
+  })
   it('não desenha nada sem partida e reage a novas atualizações', async () => {
     const push = mount(null)
     await act(async () => { await Promise.resolve() })

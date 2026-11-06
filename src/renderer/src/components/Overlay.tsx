@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Catalog } from '../../../shared/dataTypes'
 import type { OverlayItemStep, OverlayState } from '../../../shared/overlay'
 import { ROLE_SHORT } from '../lib/format'
@@ -8,6 +8,8 @@ const MAX: Record<(typeof KEYS)[number], number> = { Q: 5, W: 5, E: 5, R: 3 }
 const NO_DRAG = { WebkitAppRegion: 'no-drag' } as CSSProperties
 const DRAG = { WebkitAppRegion: 'drag' } as CSSProperties
 
+const REASON_SHORT = { armor: 'Armad.', 'magic-resist': 'RM', penetration: 'Pen.' } as const
+const FOCUS_TEXT = { armor: 'priorize armadura', 'magic-resist': 'priorize resistência mágica', penetration: 'muitos tanques: priorize penetração' } as const
 const fmtTime = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const fmtGold = (n: number): string => n.toLocaleString('pt-BR')
 /** a ultimate ganha outra cor para não se confundir com as demais */
@@ -38,7 +40,7 @@ function Tile({ step, catalog, next, size }: { step: OverlayItemStep; catalog: C
         )}
         {step.owned && <span className="absolute inset-0 grid place-items-center text-base font-bold text-ally">✓</span>}
       </span>
-      <span className={`text-[9px] leading-none ${next ? 'font-semibold text-gold' : 'text-dim'}`}>{step.label === 'Situacional' ? 'Situ.' : step.label}</span>
+      <span className={`text-[9px] leading-none ${next ? 'font-semibold text-gold' : 'text-dim'}`}>{step.label === 'Situacional' ? (step.reason ? REASON_SHORT[step.reason] : 'Situ.') : step.label}</span>
     </li>
   )
 }
@@ -66,6 +68,59 @@ export default function Overlay() {
   const starting = state.items.filter((i) => i.label === 'Inicial')
   const path = state.items.filter((i) => i.label !== 'Inicial' && i.label !== 'Situacional')
   const situ = state.items.filter((i) => i.label === 'Situacional')
+
+  const frame = (children: ReactNode, width: string) => (
+    <div
+      role="region"
+      aria-label="Pedro.gg no jogo"
+      style={{ ...(state.editing ? DRAG : {}), background: 'linear-gradient(165deg, rgba(22,28,44,0.95) 0%, rgba(9,11,18,0.95) 70%)' }}
+      className={`m-1 flex ${width} flex-col gap-2 rounded-2xl border p-2.5 text-snow shadow-2xl ${state.editing ? 'cursor-move border-gold' : 'border-white/10'}`}
+    >
+      {state.editing && (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-gold/15 px-2 py-1.5 text-xs text-gold">
+          <span>Arraste o painel para onde quiser</span>
+          <button type="button" style={NO_DRAG} className="cursor-pointer rounded-md bg-gold px-2 py-1 font-semibold text-[#0b0e17]" onClick={() => void window.api.finishOverlayMove()}>
+            Salvar posição
+          </button>
+        </div>
+      )}
+      {children}
+    </div>
+  )
+
+  if (state.compact) {
+    return frame(
+      <div className="flex items-center gap-2.5">
+        {nextStep ? (
+          <>
+            <span className="relative block h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-gold shadow-[0_0_12px_rgba(220,184,112,0.55)]">
+              {nextInfo ? <img src={nextInfo.iconUrl} alt={nextInfo.name} className="h-full w-full object-cover" draggable={false} /> : <span className="grid h-full w-full place-items-center bg-white/5 text-[10px] text-mist">{nextStep.itemId}</span>}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] uppercase tracking-wide text-dim">Comprar</div>
+              <div className="truncate font-display text-base font-semibold leading-tight text-gold">{nextInfo?.name ?? `Item ${nextStep.itemId}`}</div>
+              {nextInfo && nextInfo.goldTotal > 0 && (
+                <div className="text-[11px] text-mist">
+                  {fmtGold(nextInfo.goldTotal)} g{state.gold !== undefined && <span className="text-dim"> · você tem {fmtGold(state.gold)}</span>}
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-base font-semibold text-ally">{path.length > 0 && path.every((i) => i.owned) ? 'Build completa' : state.championName}</div>
+            <div className="text-[11px] text-mist">Sem item principal para comprar agora</div>
+          </div>
+        )}
+        {sk.ready && sk.next && (
+          <div aria-label={`Suba agora: ${sk.next}`} role="img" className="overlay-pulse grid h-11 w-11 shrink-0 place-items-center rounded-lg border-2 border-gold bg-gold/20 font-display text-2xl font-bold text-gold">
+            {sk.next}
+          </div>
+        )}
+      </div>,
+      'w-[292px]'
+    )
+  }
 
   return (
     <div
@@ -173,8 +228,14 @@ export default function Overlay() {
               <Tile key={`${it.itemId}-${i}`} step={it} catalog={catalog} next={it.itemId === state.nextItemId} size="lg" />
             ))}
           </ul>
+          {state.matchup && (
+            <p className="mt-2 border-t border-white/10 pt-2 text-[11px] text-mist">
+              Time inimigo: {Math.round(state.matchup.physical * 100)}% dano físico · {Math.round(state.matchup.magic * 100)}% mágico
+              {state.matchup.focus && <span className="text-gold"> — {FOCUS_TEXT[state.matchup.focus]}</span>}
+            </p>
+          )}
           {situ.length > 0 && (
-            <div className="mt-2 flex items-center gap-2 border-t border-white/10 pt-2">
+            <div className={`${state.matchup ? 'mt-1.5' : 'mt-2 border-t border-white/10 pt-2'} flex items-center gap-2`}>
               <span className="text-[10px] uppercase tracking-wide text-dim">Se precisar</span>
               <ul className="flex gap-1" aria-label="Itens situacionais">
                 {situ.map((it, i) => (

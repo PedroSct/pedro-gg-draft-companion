@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   overlayEnabled: false,
   overlayCorner: 'tr',
   overlayOpacity: 0.9,
+  overlayCompact: false,
   overlayPos: null
 }
 
@@ -193,7 +194,7 @@ export function sanitizeSettingsPatch(raw: unknown): Partial<AppSettings> {
     else if (typeof v === 'object' && v !== undefined && typeof v.x === 'number' && typeof v.y === 'number' && Number.isFinite(v.x) && Number.isFinite(v.y) && Math.abs(v.x) < 30000 && Math.abs(v.y) < 30000) out.overlayPos = { x: Math.round(v.x), y: Math.round(v.y) }
     else throw new Error('Configuração inválida: overlayPos')
   }
-  for (const key of ['introAnimation', 'reduceMotion', 'tourDone', 'overlayEnabled'] as const) {
+  for (const key of ['introAnimation', 'reduceMotion', 'tourDone', 'overlayEnabled', 'overlayCompact'] as const) {
     if (key in raw) {
       if (typeof raw[key] === 'boolean') out[key] = raw[key] as boolean
       else throw new Error(`Configuração inválida: ${key}`)

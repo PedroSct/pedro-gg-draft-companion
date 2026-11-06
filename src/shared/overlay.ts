@@ -16,6 +16,8 @@ export interface LiveSnapshot {
   abilities: Record<'Q' | 'W' | 'E' | 'R', number>
   /** ouro atual do jogador (só o dele) */
   gold?: number
+  /** campeões do time inimigo (id do Data Dragon, ex.: "Zed"); a escalação é pública na partida */
+  enemyKeys?: string[]
   /** itens que o jogador carrega agora (ids) */
   items: number[]
   /** id interno do campeão no Data Dragon (ex.: "Ahri"); null se não deu para ler */
@@ -41,6 +43,8 @@ export interface OverlayItemStep {
   itemId: number
   label: string
   owned: boolean
+  /** só nos situacionais escolhidos pelo time inimigo: o que o item resolve */
+  reason?: 'armor' | 'magic-resist' | 'penetration'
 }
 
 export interface OverlayState {
@@ -59,6 +63,10 @@ export interface OverlayState {
   gold?: number
   /** é uma demonstração (botão de testar nas Configurações) */
   demo?: boolean
+  /** versão recuada: só o próximo item (e a habilidade, quando há ponto) */
+  compact?: boolean
+  /** contra o time inimigo desta partida: o que priorizar e a divisão do dano */
+  matchup?: { focus: 'armor' | 'magic-resist' | 'penetration' | null; physical: number; magic: number } | null
   /** modo "mover": o painel aceita arrastar e mostra o botão de salvar a posição */
   editing?: boolean
 }
@@ -103,11 +111,20 @@ export function nextSkill(
   return { next, upcoming: [...upcoming], ready }
 }
 
+/** O que o time inimigo desta partida pede (calculado no main com os dados de meta). */
+export interface MatchSituation {
+  focus: 'armor' | 'magic-resist' | 'penetration' | null
+  physical: number
+  magic: number
+  picks: { itemId: number; reason: 'armor' | 'magic-resist' | 'penetration' }[]
+}
+
 export interface OverlayInput {
   championId: number
   role: Role
   build: ChampionBuild
   live: LiveSnapshot
+  situation?: MatchSituation | null
 }
 
 /** Monta o estado do painel. A build já vem com as opções escolhidas (a mais usada, ou a que foi enviada ao LoL). */
@@ -124,8 +141,18 @@ export function computeOverlay(input: OverlayInput): OverlayState {
   if (boots !== undefined) steps.push({ itemId: boots, label: 'Botas', owned: owned.has(boots) })
   if (c2 !== undefined) steps.push({ itemId: c2, label: 'Item 2', owned: owned.has(c2) })
   if (c3 !== undefined) steps.push({ itemId: c3, label: 'Item 3', owned: owned.has(c3) })
-  for (const s of build.items.situational.filter((x) => !steps.some((st) => st.itemId === x.itemId)).slice(0, 2)) {
+  // Situacionais: primeiro os que o time inimigo desta partida pede, depois os mais comuns da build
+  const sit = input.situation
+  const wanted = sit?.picks ?? []
+  for (const w of wanted) {
+    if (steps.length >= 14 || steps.some((st) => st.itemId === w.itemId)) continue
+    steps.push({ itemId: w.itemId, label: 'Situacional', owned: owned.has(w.itemId), reason: w.reason })
+  }
+  let extra = 0
+  for (const s of build.items.situational) {
+    if (extra + wanted.length >= 3 || steps.some((st) => st.itemId === s.itemId)) continue
     steps.push({ itemId: s.itemId, label: 'Situacional', owned: owned.has(s.itemId) })
+    extra++
   }
 
   const skillInfo = nextSkill(build.skillOrder, live.abilities, live.level)
@@ -146,6 +173,7 @@ export function computeOverlay(input: OverlayInput): OverlayState {
     },
     items: steps,
     nextItemId: nextItem?.itemId ?? null,
+    matchup: sit && (sit.focus || sit.physical + sit.magic > 0) ? { focus: sit.focus, physical: sit.physical, magic: sit.magic } : null,
     lowData: build.options !== undefined && build.options.timeline > 0 && build.options.timeline < LOW_DATA_BELOW
   }
 }

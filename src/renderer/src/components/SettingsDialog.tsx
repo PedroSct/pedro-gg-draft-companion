@@ -391,6 +391,17 @@ export function SettingsDialog() {
                 <Row title="Mostrar o overlay durante a partida">
                   <Switch label="Mostrar o overlay durante a partida" checked={settings?.overlayEnabled ?? false} onChange={(v) => void saveSettings({ overlayEnabled: v })} />
                 </Row>
+                <Row title="Tamanho do painel" hint="Recuado mostra só o próximo item (e a habilidade quando há ponto). Durante a partida, Ctrl+Shift+E alterna.">
+                  <select
+                    aria-label="Tamanho do overlay"
+                    value={settings?.overlayCompact ? 'compact' : 'full'}
+                    onChange={(e) => void saveSettings({ overlayCompact: e.target.value === 'compact' })}
+                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                  >
+                    <option value="full">Estendido (build completa)</option>
+                    <option value="compact">Recuado (só o próximo item)</option>
+                  </select>
+                </Row>
                 <Row title="Canto da tela">
                   <select
                     aria-label="Canto do overlay"

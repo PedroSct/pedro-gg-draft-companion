@@ -2,7 +2,7 @@
 // Transforma partidas do Match-v5 (e suas timelines) em estatísticas e builds.
 // Tudo aqui é função pura sobre um estado serializável, então dá para retomar uma coleta interrompida.
 import type { Role } from '../../src/shared/types'
-import type { BuildOption, BuildOptions, BuildVariant, ChampionBuild, ChampionProfile, RunePage, SkillKey, MetaDataset, RoleMeta, SituationalItem, WinStats } from '../../src/shared/dataTypes'
+import type { BuildOption, BuildOptions, BuildVariant, ChampionBuild, ChampionProfile, MatchupBuild, RunePage, SkillKey, MetaDataset, RoleMeta, SituationalItem, WinStats } from '../../src/shared/dataTypes'
 
 // ------------------------------------------------------------ tipos crus da API (só o que usamos)
 
@@ -101,7 +101,15 @@ export interface ProfAgg {
   absorbed: number
   cc: number
 }
+/** Runas e feitiços escolhidos contra um oponente de rota (todas as partidas, com vitórias de cada escolha). */
+export interface VsOpts {
+  games: number
+  runes: Record<string, WinStats>
+  spells: Record<string, WinStats>
+}
 export interface RoleAgg extends WinStats {
+  /** chave = oponente de rota: o que o campeão usou contra ele. Ausente em checkpoints antigos. */
+  vsOpts?: Record<string, VsOpts>
   matchups: Record<string, WinStats>
   /** chave = campeão aliado (qualquer rota). Ausente em checkpoints antigos. */
   synergies?: Record<string, WinStats>
@@ -405,6 +413,13 @@ export function addMatch(state: AggState, match: RawMatch, timeline: RawTimeline
       const mu = (roleAgg(state, me.championId, role).matchups[String(other.championId)] ??= { games: 0, wins: 0 })
       mu.games++
       if (me.win) mu.wins++
+      // O que cada um escolheu de runas e feitiços contra este oponente
+      const vs = ((roleAgg(state, me.championId, role).vsOpts ??= {})[String(other.championId)] ??= { games: 0, runes: {}, spells: {} })
+      vs.games++
+      const rk = runeKeyOf(me)
+      const sk = spellKeyOf(me)
+      if (rk) tally(vs.runes, rk, me.win)
+      if (sk) tally(vs.spells, sk, me.win)
     }
   }
 
@@ -474,6 +489,8 @@ export function addMatch(state: AggState, match: RawMatch, timeline: RawTimeline
 // ----------------------------------------------------------------------------- finalizar
 
 export interface FinalizeOptions {
+  /** partidas mínimas contra um oponente para guardar runas e feitiços dele (padrão: 20) */
+  minMatchupBuildGames?: number
   /** jogos mínimos de um campeão numa rota para entrar no dataset */
   minGames: number
   /** jogos mínimos de um confronto para entrar */
@@ -753,6 +770,12 @@ export function mergeStates(states: AggState[]): { merged: AggState; used: numbe
         addStats(t.matchups, agg.matchups)
         addStats((t.synergies ??= {}), agg.synergies)
         addStats((t.versus ??= {}), agg.versus)
+        for (const [enemy, v] of Object.entries(agg.vsOpts ?? {})) {
+          const x = ((t.vsOpts ??= {})[enemy] ??= { games: 0, runes: {}, spells: {} })
+          x.games += v.games
+          addStats(x.runes, v.runes)
+          addStats(x.spells, v.spells)
+        }
         if (agg.prof) {
           const p = (t.prof ??= { n: 0, minutes: 0, physical: 0, magic: 0, true: 0, absorbed: 0, cc: 0 })
           p.n += agg.prof.n
@@ -786,6 +809,35 @@ export function mergeStates(states: AggState[]): { merged: AggState; used: numbe
   return { merged, used, skipped }
 }
 
+/** Partidas mínimas contra um oponente para guardar a escolha de runas e feitiços dele; e quantos oponentes por rota. */
+export const MIN_MATCHUP_BUILD_GAMES = 20
+const MAX_MATCHUP_BUILDS = 15
+
+/** A escolha mais usada contra cada oponente (só quando há amostra); runas e feitiços decididos separadamente. */
+function matchupBuildsFrom(vs: Record<string, VsOpts> | undefined, minGames: number): Record<string, MatchupBuild> | undefined {
+  if (!vs) return undefined
+  const rows = Object.entries(vs)
+    .filter(([, v]) => v.games >= minGames)
+    .sort((a, b) => b[1].games - a[1].games || (a[0] < b[0] ? -1 : 1))
+    .slice(0, MAX_MATCHUP_BUILDS)
+  const out: Record<string, MatchupBuild> = {}
+  for (const [enemy, v] of rows) {
+    const runes = topOptions<RunePage>(v.runes, 1, (key) => {
+      const [primary, sub, list] = key.split('|')
+      const perkIds = ids(list ?? '')
+      return perkIds.length === 9 ? { primaryStyleId: Number(primary), subStyleId: Number(sub), perkIds } : null
+    })[0]
+    const spells = topOptions<[number, number]>(v.spells, 1, (key) => {
+      const [a, b] = ids(key)
+      return a && b ? [a, b] : null
+    })[0]
+    // uma escolha com 3 partidas é palpite, não dado
+    const ok = (o: { games: number } | undefined): boolean => !!o && o.games >= Math.max(5, Math.round(v.games * 0.2))
+    if (ok(runes) || ok(spells)) out[enemy] = { games: v.games, ...(ok(runes) ? { runes } : {}), ...(ok(spells) ? { spells } : {}) }
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
 export function finalize(state: AggState, o: FinalizeOptions): MetaDataset {
   const champions: MetaDataset['champions'] = {}
   for (const [id, roles] of Object.entries(state.champions)) {
@@ -800,6 +852,7 @@ export function finalize(state: AggState, o: FinalizeOptions): MetaDataset {
       for (const [foe, s] of Object.entries(agg.versus ?? {})) if (s.games >= (o.minPairGames ?? o.minMatchupGames)) versus[foe] = { games: s.games, wins: s.wins }
       const profile = profileFrom(agg.prof, 20)
       const build = buildFrom(agg.build, o.minBuildSamples, agg.games)
+      const matchupBuilds = matchupBuildsFrom(agg.vsOpts, o.minMatchupBuildGames ?? MIN_MATCHUP_BUILD_GAMES)
       out[role] = {
         games: agg.games,
         wins: agg.wins,
@@ -807,7 +860,8 @@ export function finalize(state: AggState, o: FinalizeOptions): MetaDataset {
         ...(Object.keys(synergies).length ? { synergies } : {}),
         ...(Object.keys(versus).length ? { versus } : {}),
         ...(profile ? { profile } : {}),
-        ...(build ? { build } : {})
+        ...(build ? { build } : {}),
+        ...(matchupBuilds ? { matchupBuilds } : {})
       }
     }
     if (Object.keys(out).length) champions[id] = { roles: out }

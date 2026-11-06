@@ -5,14 +5,17 @@ import { join } from 'node:path'
 import { BrowserWindow, globalShortcut, screen } from 'electron'
 import { applyBuildSelection, ZERO_SELECTION, type BuildSelection } from '../../shared/buildSelection'
 import type { AppSettings, ChampionBuild, MetaDataset } from '../../shared/dataTypes'
-import { computeOverlay, type LiveSnapshot, type OverlayCorner, type OverlayState } from '../../shared/overlay'
+import { computeOverlay, type LiveSnapshot, type MatchSituation, type OverlayCorner, type OverlayState } from '../../shared/overlay'
 import type { Role } from '../../shared/types'
 import { rolesOf } from '../data/metaStats'
 import { ForegroundWatcher, isGameProcess } from './foreground'
 import { fetchLive, parseLive } from './live'
 
-const WIDTH = 320
-const HEIGHT = 470
+export type PanelSize = { width: number; height: number }
+const FULL: PanelSize = { width: 320, height: 520 }
+/** O recuado é bem menor; a folga em cima do banner do modo mover cabe na altura. */
+const COMPACT: PanelSize = { width: 300, height: 150 }
+const sizeOf = (compact: boolean): PanelSize => (compact ? COMPACT : FULL)
 const MARGIN = 16
 const FAST_MS = 2500
 const IDLE_MS = 6000
@@ -20,6 +23,10 @@ const PREVIEW_MS = 12_000
 
 export interface OverlayDeps {
   getSettings: () => AppSettings
+  /** situação do time inimigo desta partida (itens que ajudam contra ele); null se não há dados */
+  situation: (championId: number, role: Role, enemyIds: number[]) => MatchSituation | null
+  /** guarda uma configuração do overlay (ex.: recuado/estendido pelo atalho) */
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>
   /** guarda a posição escolhida arrastando (null = volta ao canto) */
   savePosition: (pos: { x: number; y: number } | null) => Promise<void>
   getDataset: () => MetaDataset | null
@@ -38,12 +45,12 @@ export interface OverlayDeps {
   log: (message: string) => void
 }
 
-export function cornerPosition(corner: OverlayCorner, area: { x: number; y: number; width: number; height: number }): { x: number; y: number } {
+export function cornerPosition(corner: OverlayCorner, area: { x: number; y: number; width: number; height: number }, size: PanelSize = FULL): { x: number; y: number } {
   const left = corner === 'tl' || corner === 'bl'
   const top = corner === 'tl' || corner === 'tr'
   return {
-    x: left ? area.x + MARGIN : area.x + area.width - WIDTH - MARGIN,
-    y: top ? area.y + MARGIN + 80 : area.y + area.height - HEIGHT - MARGIN - 80
+    x: left ? area.x + MARGIN : area.x + area.width - size.width - MARGIN,
+    y: top ? area.y + MARGIN + 80 : area.y + area.height - size.height - MARGIN - 80
   }
 }
 
@@ -53,19 +60,20 @@ type Area = { x: number; y: number; width: number; height: number }
 export function resolvePosition(
   pos: { x: number; y: number } | null,
   corner: OverlayCorner,
-  areas: Area[]
+  areas: Area[],
+  size: PanelSize = FULL
 ): { x: number; y: number } {
   if (pos) {
     const inside = areas.find((a) => pos.x + 40 >= a.x && pos.x + 40 <= a.x + a.width && pos.y + 40 >= a.y && pos.y + 40 <= a.y + a.height)
     if (inside) {
       // mantém o painel inteiro dentro da tela
       return {
-        x: Math.min(Math.max(pos.x, inside.x), inside.x + inside.width - WIDTH),
-        y: Math.min(Math.max(pos.y, inside.y), inside.y + inside.height - HEIGHT)
+        x: Math.min(Math.max(pos.x, inside.x), inside.x + inside.width - size.width),
+        y: Math.min(Math.max(pos.y, inside.y), inside.y + inside.height - size.height)
       }
     }
   }
-  return cornerPosition(corner, areas[0] ?? { x: 0, y: 0, width: 1920, height: 1080 })
+  return cornerPosition(corner, areas[0] ?? { x: 0, y: 0, width: 1920, height: 1080 }, size)
 }
 
 /** Estado de demonstração a partir de um campeão que tenha build com os 18 níveis de habilidade. */
@@ -167,6 +175,7 @@ export class OverlayController {
 
   /** Atalho global para mover o painel durante a partida (só mexe na janela do overlay). */
   static readonly SHORTCUT = 'CommandOrControl+Shift+O'
+  static readonly SHORTCUT_SIZE = 'CommandOrControl+Shift+E'
   private shortcutOn = false
   private registerShortcut(): void {
     if (this.shortcutOn) return
@@ -175,6 +184,7 @@ export class OverlayController {
         if (this.editing) void this.finishMove()
         else this.startMove()
       })
+      globalShortcut.register(OverlayController.SHORTCUT_SIZE, () => void this.toggleCompact())
     } catch {
       this.shortcutOn = false
     }
@@ -183,10 +193,20 @@ export class OverlayController {
     if (!this.shortcutOn) return
     try {
       globalShortcut.unregister(OverlayController.SHORTCUT)
+      globalShortcut.unregister(OverlayController.SHORTCUT_SIZE)
     } catch {
       /* ignora */
     }
     this.shortcutOn = false
+  }
+
+  /** Alterna entre o painel recuado (só o próximo item) e o estendido (build completa). */
+  async toggleCompact(): Promise<void> {
+    await this.deps.saveSettings({ overlayCompact: !this.deps.getSettings().overlayCompact })
+    this.refresh()
+    this.lastJson = ''
+    const base = this.editing ? this.state : this.live
+    if (base) this.setState(base)
   }
 
   /** Liga o modo mover: mostra o painel (da partida, ou de exemplo) e deixa arrastar com o mouse. */
@@ -282,11 +302,14 @@ export class OverlayController {
     }
     const build = applyBuildSelection(base, this.deps.lastSelection(id, role) ?? ZERO_SELECTION)
     this.setStatus(`mostrando o painel: ${this.deps.nameOf(id)} (${role})`)
-    return computeOverlay({ championId: id, role, build, live: { ...snap, championName: snap.championName || this.deps.nameOf(id) } })
+    const enemyIds = (snap.enemyKeys ?? []).map((k) => this.deps.idOfKey(k)).filter((x): x is number => x !== null)
+    const situation = enemyIds.length > 0 ? this.deps.situation(id, role, enemyIds) : null
+    return computeOverlay({ championId: id, role, build, situation, live: { ...snap, championName: snap.championName || this.deps.nameOf(id) } })
   }
 
   private setState(raw: OverlayState | null): void {
-    const state = raw && this.editing ? { ...raw, editing: true } : raw
+    const compact = this.deps.getSettings().overlayCompact
+    const state = raw ? { ...raw, ...(compact ? { compact: true } : {}), ...(this.editing ? { editing: true } : {}) } : raw
     this.state = state
     const json = JSON.stringify(state)
     if (json !== this.lastJson) {
@@ -314,10 +337,14 @@ export class OverlayController {
   private applyWindowSettings(): void {
     if (!this.win || this.win.isDestroyed()) return
     const st = this.deps.getSettings()
+    const size = sizeOf(st.overlayCompact)
     if (!this.editing) {
       const areas = [screen.getPrimaryDisplay(), ...screen.getAllDisplays().filter((d) => d.id !== screen.getPrimaryDisplay().id)].map((d) => d.workArea)
-      const pos = resolvePosition(st.overlayPos, st.overlayCorner, areas)
-      this.win.setBounds({ x: pos.x, y: pos.y, width: WIDTH, height: HEIGHT })
+      const pos = resolvePosition(st.overlayPos, st.overlayCorner, areas, size)
+      this.win.setBounds({ x: pos.x, y: pos.y, width: size.width, height: size.height })
+    } else {
+      const b = this.win.getBounds()
+      this.win.setBounds({ x: b.x, y: b.y, width: size.width, height: size.height })
     }
     this.win.setOpacity(this.editing ? 1 : st.overlayOpacity)
   }
@@ -325,8 +352,8 @@ export class OverlayController {
   private ensureWindow(): BrowserWindow {
     if (this.win && !this.win.isDestroyed()) return this.win
     const win = new BrowserWindow({
-      width: WIDTH,
-      height: HEIGHT,
+      width: FULL.width,
+      height: FULL.height,
       show: false,
       frame: false,
       transparent: true,

@@ -37,6 +37,15 @@ export function parseLive(raw: unknown): LiveSnapshot | null {
     .map((i) => (isRecord(i) ? num(i.itemID) : 0))
     .filter((id) => id > 0)
 
+  const keyOf = (p: unknown): string | null => {
+    const n = isRecord(p) && typeof p.rawChampionName === 'string' ? p.rawChampionName.replace(/^game_character_displayname_/i, '') : ''
+    return n && n !== (isRecord(p) ? p.rawChampionName : '') ? n : null
+  }
+  const enemyKeys = all
+    .filter((p) => isRecord(p) && typeof p.team === 'string' && typeof me.team === 'string' && p.team !== me.team)
+    .map(keyOf)
+    .filter((k): k is string => k !== null)
+
   const rawName = typeof me.rawChampionName === 'string' ? me.rawChampionName : ''
   const key = rawName.replace(/^game_character_displayname_/i, '')
   const position = typeof me.position === 'string' ? me.position.toUpperCase() : ''
@@ -47,6 +56,7 @@ export function parseLive(raw: unknown): LiveSnapshot | null {
     level: Math.max(1, num(active.level, 1)),
     abilities: { Q: lvl('Q'), W: lvl('W'), E: lvl('E'), R: lvl('R') },
     gold: typeof active.currentGold === 'number' && Number.isFinite(active.currentGold) ? Math.floor(active.currentGold) : undefined,
+    enemyKeys: enemyKeys.length > 0 ? enemyKeys : undefined,
     items,
     championKey: key && key !== rawName ? key : null,
     championName: typeof me.championName === 'string' ? me.championName : key,

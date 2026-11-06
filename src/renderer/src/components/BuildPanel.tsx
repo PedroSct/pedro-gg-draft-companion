@@ -176,6 +176,20 @@ function SituationCard({ situation }: { situation: BuildSituation }) {
   )
 }
 
+/** Avisa que as runas e os feitiços foram ajustados ao oponente de rota (ou que a escolha geral já é a mais usada contra ele). */
+function MatchupNote({ matchup }: { matchup: NonNullable<ChampionBuild['matchup']> }) {
+  const enemy = useChampionName(matchup.enemyId)
+  const changed = [matchup.runes && 'runas', matchup.spells && 'feitiços'].filter(Boolean).join(' e ')
+  return (
+    <p role="note" className="rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-sm text-mist">
+      <span className="text-gold">Contra {enemy}</span>
+      {changed
+        ? `: ${changed} trocados pelos mais usados nesse confronto (${matchup.games} partidas). A opção geral continua na lista.`
+        : `: a escolha geral já é a mais usada nesse confronto (${matchup.games} partidas).`}
+    </p>
+  )
+}
+
 export function BuildPanel() {
   const focus = useFocus()
   const champ = useApp((s) => (focus ? s.champById.get(focus.championId) : undefined))
@@ -211,7 +225,12 @@ export function BuildPanel() {
     return () => {
       cancelled = true
     }
-  }, [championId, role, key])
+  }, [championId, role, key, enemySignature])
+
+  // A lista de opções muda quando o confronto entra: volta para a primeira (a do confronto, se houver)
+  useEffect(() => {
+    setSelection(ZERO_SELECTION)
+  }, [championId, role, data.build?.matchup?.enemyId])
 
   useEffect(() => {
     if (championId === undefined || !role) {
@@ -293,6 +312,7 @@ export function BuildPanel() {
         {status === 'ready' && build && (
           <>
             {focus.role && <ImportPanel championId={focus.championId} role={focus.role} build={build} forLocal={focus.forLocal} selection={selection} />}
+            {build.matchup && <MatchupNote matchup={build.matchup} />}
             {situation && <SituationCard situation={situation} />}
             <BuildOptionsView build={build} spells={data.spells} highlightCore={situation?.variantCore} selection={selection} onSelect={setSelection} />
           </>

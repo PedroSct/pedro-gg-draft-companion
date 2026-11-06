@@ -111,6 +111,7 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     overlayEnabled: false,
     overlayCorner: 'tr',
     overlayOpacity: 0.9,
+    overlayCompact: false,
     overlayPos: null
   }
   let identity: IdentityState = { account: null, profileId: null }
@@ -146,6 +147,7 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     getOverlayState: async () => null,
     onOverlayState: () => () => {},
     previewOverlay: async () => false,
+    suggestPoolFromAccount: async () => ({ ok: false as const, message: 'sem cliente' }),
     startOverlayMove: async () => false,
     finishOverlayMove: async () => undefined,
     exportBackup: async () => ({ ok: false, reason: 'canceled' }),

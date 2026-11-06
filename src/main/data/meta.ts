@@ -10,6 +10,7 @@ import {
   type BuildVariant,
   type ChampionBuild,
   type ChampionProfile,
+  type MatchupBuild,
   type MetaDataset,
   type MetaInfo,
   type RoleMeta,
@@ -18,6 +19,7 @@ import {
   type WinStats
 } from '../../shared/dataTypes'
 import { readJson, writeJsonAtomic } from '../store/fsJson'
+import { withMatchupBuild } from './matchupBuild'
 
 const MAX_IMPORT_BYTES = 64 * 1024 * 1024
 const SKILL_KEYS: readonly string[] = ['Q', 'W', 'E', 'R']
@@ -120,6 +122,20 @@ function parseOptions(raw: unknown): BuildOptions | undefined {
   return Object.keys(out).length > 2 ? out : undefined
 }
 
+/** Runas e feitiços por oponente de rota (opcional: entrada ruim é ignorada, nunca derruba o arquivo). */
+function parseMatchupBuilds(raw: unknown): Record<string, MatchupBuild> | undefined {
+  if (!isRecord(raw)) return undefined
+  const out: Record<string, MatchupBuild> = {}
+  for (const [enemy, v] of Object.entries(raw)) {
+    if (!/^\d+$/.test(enemy) || !isRecord(v)) continue
+    const games = typeof v.games === 'number' && v.games > 0 ? v.games : 0
+    const runes = asOpt<RunePage>([v.runes], (x) => parseRunes({ runes: x }).runes ?? null)[0]
+    const spells = asOpt<[number, number]>([v.spells], (x) => parseRunes({ spells: x }).spells ?? null)[0]
+    if (games > 0 && (runes || spells)) out[enemy] = { games, ...(runes ? { runes } : {}), ...(spells ? { spells } : {}) }
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
 function parseBuild(raw: unknown): ChampionBuild | undefined {
   if (!isRecord(raw) || !isRecord(raw.items)) return undefined
   const skills = (v: unknown): SkillKey[] =>
@@ -198,13 +214,15 @@ export function validateDataset(raw: unknown): MetaDataset {
       }
       const profile = parseProfile(r.profile)
       const build = parseBuild(r.build)
+      const matchupBuilds = parseMatchupBuilds(r.matchupBuilds)
       roles[role] = {
         ...stats,
         matchups,
         ...(Object.keys(synergies).length ? { synergies } : {}),
         ...(Object.keys(versus).length ? { versus } : {}),
         ...(profile ? { profile } : {}),
-        ...(build ? { build } : {})
+        ...(build ? { build } : {}),
+        ...(matchupBuilds ? { matchupBuilds } : {})
       }
     }
     champions[id] = { roles }
@@ -304,8 +322,12 @@ export class MetaStore {
     }
   }
 
-  getBuild(championId: number, role: Role): ChampionBuild | null {
-    return this.dataset?.champions[String(championId)]?.roles[role]?.build ?? null
+  /** Com o oponente de rota conhecido, as runas e os feitiços mais usados contra ele passam a ser o padrão (se houver amostra). */
+  getBuild(championId: number, role: Role, enemyId?: number | null): ChampionBuild | null {
+    const r = this.dataset?.champions[String(championId)]?.roles[role]
+    const base = r?.build ?? null
+    if (!base || !enemyId || enemyId <= 0) return base
+    return withMatchupBuild(base, r?.matchupBuilds?.[String(enemyId)], enemyId)
   }
 
   /**

@@ -44,7 +44,7 @@ const pick = (o: Obj | undefined, keys: string[]): unknown => {
   return undefined
 }
 
-function toRole(raw: unknown, lane?: unknown): Role | null {
+export function toRole(raw: unknown, lane?: unknown): Role | null {
   const r = str(raw).toUpperCase()
   if (r === 'TOP' || r === 'JUNGLE' || r === 'MIDDLE' || r === 'BOTTOM' || r === 'UTILITY') return r
   if (r === 'MID') return 'MIDDLE'

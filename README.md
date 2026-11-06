@@ -128,6 +128,26 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   quando o jogo retoma o foco. Para saber qual janela está na frente, o app mantém um PowerShell leve rodando (só
   Windows); se ele não puder rodar, o painel fica visível durante toda a partida, como antes. A leitura da partida
   também ficou menos frequente (a cada 2,5 s) para pesar menos.
+- **Runas e feitiços por confronto (0.8.1)**: a coleta agora guarda o que cada campeão mais usa de runas e feitiços **contra cada
+  oponente de rota** (só com 20+ partidas no confronto e uma escolha que se repete; até 15 oponentes por campeão e rota).
+  No draft, quando o inimigo da sua rota já está travado, a build mostra "Contra X", troca as runas e os feitiços padrão
+  pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
+  amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
+  juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Overlay recuado e estendido (0.8.1)**: o painel tem duas versões. **Recuado** mostra só o próximo item a comprar (com o custo
+  e o seu ouro) e, quando há ponto de habilidade, a letra a subir. **Estendido** mostra tudo: habilidades, a build em ordem
+  e os itens situacionais. Troque em Configurações > Partida > "Tamanho do painel" ou, durante a partida, com
+  **Ctrl+Shift+E**. No estendido, os situacionais agora consideram o **time inimigo da partida** (a escalação é pública no
+  jogo): se o dano deles é muito físico ou mágico, ou há muitos tanques, o app sugere antes os itens da sua build que
+  ajudam (armadura, resistência mágica ou penetração) e mostra a divisão do dano.
+- **Importar a Pool da sua conta (0.8.0)**: na tela de Pools, **Importar da minha conta** lê do cliente do LoL (só leitura) as
+  suas partidas recentes (normais e ranqueadas) e os pontos de maestria e sugere campeões por rota, já com o **conforto
+  automático** de 1 a 5 (partidas na rota + maestria + taxa de vitória). Você marca o que quer, nada é salvo até clicar em
+  "Salvar perfil" e o que você já tem (conforto e anotações) não é alterado, a menos que marque "atualizar o conforto".
+  Também sugere as suas rotas principais quando o perfil não tem nenhuma. Ele usa a conta logada no cliente.
+- **Correção do conjunto de itens (0.8.0)**: o cliente recusava o conjunto (HTTP 413) depois de muitos campeões importados,
+  porque a lista de conjuntos ficava grande demais. Agora o app guarda só os 12 conjuntos mais recentes dele (os seus e
+  os de outros apps nunca são apagados) e tenta de novo sem os antigos se o cliente ainda recusar.
 - **Overlay redesenhado (0.7.4)**: a habilidade a subir agora vira um destaque grande (com brilho quando há ponto para gastar),
   os 4 níveis das habilidades ficam logo abaixo e a faixa "Depois" mostra as próximas 5 com o nível de cada uma. A build
   aparece na ordem de compra (iniciais só no começo), o próximo item é destacado com o custo, os situacionais ficam

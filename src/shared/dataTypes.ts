@@ -61,6 +61,8 @@ export interface AppSettings {
   overlayCorner: 'tl' | 'tr' | 'bl' | 'br'
   /** Opacidade do painel (0,4 a 1). */
   overlayOpacity: number
+  /** Painel recuado: só o próximo item a comprar (Ctrl+Shift+E alterna durante a partida). */
+  overlayCompact: boolean
   /** Posição escolhida arrastando o painel (canto superior esquerdo, em pixels da tela); null = usa o canto. */
   overlayPos: { x: number; y: number } | null
 }
@@ -135,6 +137,8 @@ export interface BuildOptions {
 }
 
 export interface ChampionBuild {
+  /** presente quando a build foi ajustada ao oponente de rota desta partida */
+  matchup?: { enemyId: number; games: number; runes: boolean; spells: boolean }
   /** opções com escolha e winrate (ausente em dados anteriores à 0.5.2) */
   options?: BuildOptions
   /** construções alternativas mais usadas nas vitórias (a principal vem em `items`) */
@@ -158,7 +162,17 @@ export interface ChampionBuild {
   }
 }
 
+/** O que mais se usa contra um oponente de rota específico (só existe com amostra suficiente). */
+export interface MatchupBuild {
+  /** partidas do campeão contra este oponente na rota */
+  games: number
+  runes?: BuildOption<RunePage>
+  spells?: BuildOption<[number, number]>
+}
+
 export interface RoleMeta extends WinStats {
+  /** chave = championId do oponente de rota: runas e feitiços mais usados contra ele */
+  matchupBuilds?: Record<string, MatchupBuild>
   /** chave = championId do oponente na MESMA rota */
   matchups: Record<string, WinStats>
   /** chave = championId de um aliado (em qualquer rota): partidas em que os dois jogaram no mesmo time */

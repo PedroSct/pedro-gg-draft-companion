@@ -7,11 +7,12 @@ import { resolveInstallDir } from '../lcu/installDir'
 import { ProfileStore } from '../store/profiles'
 import { DataDragon } from '../data/ddragon'
 import { MetaStore, MetaUpdateError } from '../data/meta'
-import { recommend } from '../data/recommender'
+import { laneEnemyOf, recommend } from '../data/recommender'
 import { buildSituation } from '../data/situation'
 import { banPhaseOpen, suggestBans } from '../data/bans'
 import { applyBuildSelection, sanitizeSelection, type BuildSelection } from '../../shared/buildSelection'
-import { championDetail, tierRows } from '../data/metaStats'
+import { championDetail, rolesOf, tierRows } from '../data/metaStats'
+import { suggestPoolFromAccount } from '../lcu/accountPool'
 import { ROLES, type ChampionInfo, type ItemInfo } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO, regionUrl } from '../../shared/config'
 import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
@@ -298,11 +299,17 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     if (!ds || typeof req.championId !== 'number' || !ROLES.includes(req.role as Role)) return null
     return championDetail(ds, req.championId, req.role as Role)
   })
+  /** Oponente de rota desta partida (para trocar as runas e feitiços pelos do confronto); null se não é certo. */
+  const laneEnemy = (role: Role): number | null => {
+    const d = annotatedDraft()
+    const ds = meta.get()
+    return d && ds ? laneEnemyOf(d, ds, role) : null
+  }
   handle(IPC.META_GET_BUILD, (raw) => {
     const req = isRecord(raw) ? raw : {}
     const role = req.role as Role
     if (typeof req.championId !== 'number' || !ROLES.includes(role)) return null
-    return meta.getBuild(req.championId, role)
+    return meta.getBuild(req.championId, role, laneEnemy(role))
   })
   // ---- Sugestões de banimento (só enquanto os bans ainda estão abertos)
   handle(IPC.DRAFT_BANS, (raw) => {
@@ -351,6 +358,15 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   const overlay = new OverlayController(
     {
       getSettings: () => profiles.getSettings(),
+      situation: (championId, role, enemyIds) => {
+        const draft = { enemies: enemyIds.map((id, i) => ({ cellId: 5 + i, championId: id, status: 'locked', role: null })), allies: [] } as unknown as DraftState
+        const s = buildSituation({ dataset: meta.get(), draft, build: meta.getBuild(championId, role), championId, champions: champInfos, items: itemInfos })
+        if (!s.enemyDamage) return null
+        return { focus: s.focus, physical: s.enemyDamage.physical, magic: s.enemyDamage.magic, picks: s.picks }
+      },
+      saveSettings: async (patch) => {
+        await profiles.updateSettings(patch)
+      },
       savePosition: async (pos) => {
         await profiles.updateSettings({ overlayPos: pos })
       },
@@ -380,6 +396,11 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   })
   overlay.refresh()
 
+  // ---- Importar a Pool da conta logada no cliente (partidas recentes + maestria, só leitura)
+  handle(IPC.POOL_FROM_ACCOUNT, async () => {
+    const ds = meta.get()
+    return suggestPoolFromAccount((p) => lcu.get(p), (id) => (ds && !ds.isSample ? (rolesOf(ds, id)[0] ?? null) : null))
+  })
   // ---- Melhor pick do meta contra o inimigo da rota, fora da Pool
   handle(IPC.DRAFT_COUNTERS, (raw) => {
     const req = isRecord(raw) ? raw : {}
@@ -413,7 +434,7 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     const parts = isRecord(req.parts) ? req.parts : {}
     if (typeof req.championId !== 'number' || !ROLES.includes(role)) return { ok: false, message: 'Pedido inválido.' }
     if (lcu.getStatus() !== 'connected') return { ok: false, message: 'O cliente do LoL não está conectado.' }
-    const base = meta.getBuild(req.championId, role)
+    const base = meta.getBuild(req.championId, role, laneEnemy(role))
     if (!base) return { ok: false, message: 'Não há build deste campeão nos dados de meta.' }
     // A opção escolhida na tela (só índices): quem monta a build é o main, a partir do meta.
     const build = applyBuildSelection(base, sanitizeSelection(req.selection))

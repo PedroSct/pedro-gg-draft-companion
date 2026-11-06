@@ -33,6 +33,7 @@ let pages: unknown[] = []
 let sets: unknown[] = []
 let session = true
 let pagePostStatus = 200
+let putLimit = Infinity
 
 beforeAll(async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'lcu-lo-'))
@@ -58,7 +59,7 @@ beforeAll(async () => {
         if (u === '/lol-perks/v1/currentpage' && req.method === 'PUT') return send(204, {})
         if (u === '/lol-champ-select/v1/session/my-selection' && req.method === 'PATCH') return session ? send(204, {}) : send(404, {})
         if (u === '/lol-item-sets/v1/item-sets/777/sets' && req.method === 'GET') return send(200, { accountId: 555, itemSets: sets, timestamp: 1 })
-        if (u === '/lol-item-sets/v1/item-sets/777/sets' && req.method === 'PUT') return send(200, {})
+        if (u === '/lol-item-sets/v1/item-sets/777/sets' && req.method === 'PUT') return text.length > putLimit ? send(413, {}) : send(200, {})
         send(404, {})
       })
     }
@@ -152,6 +153,36 @@ describe('importar build para o cliente', () => {
     const mine = body.itemSets[1]
     expect(mine.blocks.map((b) => b.type)).toEqual(['Inicial', 'Botas', 'Itens principais, na ordem', 'Situacionais'])
     expect(mine.blocks[2].items.map((i) => i.id)).toEqual(['6655', '4645', '3089'])
+  })
+
+  it('itens: com a lista grande demais (HTTP 413) mantém os do usuário e poda só os antigos do app', async () => {
+    const fat = (uid: string) => ({ uid, title: uid, blocks: [], pad: 'x'.repeat(400) })
+    sets = [fat('meu-set'), ...Array.from({ length: 30 }, (_, i) => fat(`pedrogg-${1000 + i}`))]
+    putLimit = 4000
+    try {
+      const res = await withClient((lcu) => applyLoadout(io(lcu), input({ items: true })))
+      expect(res.items?.ok).toBe(true)
+      expect(res.items?.message).toContain('removidos')
+      const puts = calls.filter((c) => c.method === 'PUT')
+      expect(puts).toHaveLength(2) // 1ª tentativa recusada, 2ª sem os antigos do app
+      const last = puts[1].body as { itemSets: { uid: string }[] }
+      expect(last.itemSets.map((s) => s.uid)).toEqual(['meu-set', 'pedrogg-103'])
+    } finally {
+      putLimit = Infinity
+    }
+  })
+
+  it('itens: quando nem o app é o problema, explica o 413', async () => {
+    const fat = (uid: string) => ({ uid, title: uid, blocks: [], pad: 'x'.repeat(400) })
+    sets = Array.from({ length: 30 }, (_, i) => fat(`outro-${i}`))
+    putLimit = 4000
+    try {
+      const res = await withClient((lcu) => applyLoadout(io(lcu), input({ items: true })))
+      expect(res.items?.ok).toBe(false)
+      expect(res.items?.message).toContain('grande demais')
+    } finally {
+      putLimit = Infinity
+    }
   })
 
   it('só faz o que foi marcado e só escreve nos caminhos permitidos', async () => {

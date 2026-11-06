@@ -38,6 +38,7 @@ export const IPC = {
   META_BUILD_SITUATION: 'meta:buildSituation',
   DRAFT_BANS: 'draft:bans',
   DRAFT_COUNTERS: 'draft:counters',
+  POOL_FROM_ACCOUNT: 'pool:from-account',
   META_TIERS: 'meta:tiers',
   META_DETAIL: 'meta:detail',
   META_IMPORT: 'meta:import',

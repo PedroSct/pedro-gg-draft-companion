@@ -98,6 +98,15 @@ function matchupStats(dataset: MetaDataset, championId: number, role: Role, vs: 
 }
 
 /** Quem provavelmente enfrentará o jogador na rota (inimigos não revelam rota na Champ Select). */
+/** O oponente de rota quando dá para ter quase certeza (travado e de rota conhecida); null nos demais casos. */
+export function laneEnemyOf(draft: DraftState, dataset: MetaDataset, role: Role): number | null {
+  const list = laneOpponents(draft, dataset, role).sort((a, b) => b.weight - a.weight)
+  const [top, second] = list
+  if (!top || top.weight < 0.6) return null
+  if (second && second.weight > top.weight - 0.2) return null
+  return top.championId
+}
+
 function laneOpponents(
   draft: DraftState,
   dataset: MetaDataset,

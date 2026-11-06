@@ -58,7 +58,7 @@ describe('itens do overlay', () => {
     expect(mid.items.some((i) => i.label === 'Inicial')).toBe(false)
     expect(mid.items.find((i) => i.itemId === 6655)?.owned).toBe(true)
     expect(mid.nextItemId).toBe(4645) // ordem: item 1, botas, item 2, item 3
-    expect(mid.items.filter((i) => i.label === 'Situacional')).toHaveLength(2)
+    expect(mid.items.filter((i) => i.label === 'Situacional')).toHaveLength(3)
   })
   it('quando tudo foi comprado, não há próximo item; poucos dados são sinalizados', () => {
     const b: ChampionBuild = { ...build, options: { games: 100, timeline: 12 } }
@@ -108,7 +108,7 @@ describe('janela e configurações do overlay', () => {
       expect(p.x).toBeGreaterThanOrEqual(0)
       expect(p.x + 320).toBeLessThanOrEqual(1920)
       expect(p.y).toBeGreaterThanOrEqual(0)
-      expect(p.y + 470).toBeLessThanOrEqual(1040)
+      expect(p.y + 520).toBeLessThanOrEqual(1040)
     }
     expect(cornerPosition('tl', area).x).toBeLessThan(cornerPosition('tr', area).x)
     expect(cornerPosition('tl', area).y).toBeLessThan(cornerPosition('bl', area).y)
@@ -204,7 +204,7 @@ describe('mover o overlay', () => {
   it('mantém o painel inteiro dentro da tela', () => {
     const p = resolvePosition({ x: 1900, y: 1030 }, 'tr', [tela])
     expect(p.x + 320).toBeLessThanOrEqual(1920)
-    expect(p.y + 470).toBeLessThanOrEqual(1040)
+    expect(p.y + 520).toBeLessThanOrEqual(1040)
     expect(resolvePosition({ x: -20, y: -10 }, 'tr', [tela])).toEqual({ x: 0, y: 0 })
   })
   it('valida a posição salva', () => {
@@ -212,5 +212,38 @@ describe('mover o overlay', () => {
     expect(sanitizeSettingsPatch({ overlayPos: null }).overlayPos).toBeNull()
     expect(() => sanitizeSettingsPatch({ overlayPos: { x: 'a', y: 1 } })).toThrow()
     expect(() => sanitizeSettingsPatch({ overlayPos: { x: 1e9, y: 1 } })).toThrow()
+  })
+})
+
+describe('overlay recuado e itens para a partida', () => {
+  it('os situacionais pedidos pelo time inimigo vêm primeiro, com o motivo', () => {
+    const sit = { focus: 'armor' as const, physical: 0.74, magic: 0.26, picks: [{ itemId: 3157, reason: 'armor' as const }] }
+    const s = computeOverlay({ championId: 103, role: 'MIDDLE', build, live: live({ items: [] }), situation: sit })
+    const situ = s.items.filter((i) => i.label === 'Situacional')
+    expect(situ[0]).toMatchObject({ itemId: 3157, reason: 'armor' })
+    expect(situ.map((i) => i.itemId)).toEqual([3157, 3102, 3135]) // sem repetir o 3157 que já estava na build
+    expect(s.matchup).toEqual({ focus: 'armor', physical: 0.74, magic: 0.26 })
+  })
+  it('sem inimigos conhecidos não há linha do confronto', () => {
+    expect(computeOverlay({ championId: 103, role: 'MIDDLE', build, live: live() }).matchup).toBeNull()
+  })
+  it('lê os campeões do time inimigo pela equipe', () => {
+    const raw = allgame() as { allPlayers: Record<string, unknown>[] }
+    raw.allPlayers[0].team = 'CHAOS'
+    raw.allPlayers[1].team = 'ORDER'
+    raw.allPlayers.push({ riotId: 'Aliado#BR1', rawChampionName: 'game_character_displayname_Lux', team: 'ORDER', items: [] })
+    expect(parseLive(raw)?.enemyKeys).toEqual(['Zed'])
+  })
+  it('o painel recuado é menor e cabe em qualquer canto', () => {
+    const area = { x: 0, y: 0, width: 1920, height: 1040 }
+    const small = { width: 300, height: 150 }
+    for (const c of ['tl', 'tr', 'bl', 'br'] as const) {
+      const p = cornerPosition(c, area, small)
+      expect(p.x + 300).toBeLessThanOrEqual(1920)
+      expect(p.y + 150).toBeLessThanOrEqual(1040)
+    }
+    expect(cornerPosition('br', area, small).y).toBeGreaterThan(cornerPosition('br', area).y)
+    expect(sanitizeSettingsPatch({ overlayCompact: true }).overlayCompact).toBe(true)
+    expect(() => sanitizeSettingsPatch({ overlayCompact: 'sim' })).toThrow()
   })
 })

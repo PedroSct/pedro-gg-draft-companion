@@ -9,6 +9,8 @@ export type { LoadoutParts, LoadoutResult, PartResult }
 
 export const PAGE_PREFIX = 'Pedro.gg'
 const SET_UID_PREFIX = 'pedrogg-'
+/** Quantos conjuntos de outros campeões criados pelo app ficam guardados no cliente (a lista grande demais dá HTTP 413). */
+const MAX_OUR_SETS = 12
 const FLASH = 4
 
 export interface LoadoutIO {
@@ -105,10 +107,29 @@ async function importItems(io: LoadoutIO, input: LoadoutInput): Promise<PartResu
   const existing = Array.isArray(data.itemSets) ? data.itemSets.filter(isRecord) : []
   // Troca só o conjunto deste campeão que o próprio app criou antes; os seus ficam como estão.
   const kept = existing.filter((x) => x.uid !== set.uid)
+  const isOurs = (x: Record<string, unknown>): boolean => typeof x.uid === 'string' && x.uid.startsWith(SET_UID_PREFIX)
+  const others = kept.filter((x) => !isOurs(x))
+  const ours = kept.filter(isOurs)
   const accountId = data.accountId ?? d.accountId
-  const res = await io.write('PUT', path, { ...(accountId !== undefined ? { accountId } : {}), itemSets: [...kept, set], timestamp: Date.now() })
+  const send = (keepOurs: number) =>
+    io.write('PUT', path, {
+      ...(accountId !== undefined ? { accountId } : {}),
+      // o cliente recusa o envio (HTTP 413) quando a lista fica grande demais: guarda só os conjuntos mais recentes do app
+      itemSets: [...others, ...(keepOurs > 0 ? ours.slice(-keepOurs) : []), set],
+      timestamp: Date.now()
+    })
+  let res = await send(MAX_OUR_SETS)
+  let pruned = ours.length > MAX_OUR_SETS
+  if (res.status === 413 && ours.length > 0) {
+    res = await send(0)
+    pruned = true
+  }
+  if (res.status === 413) return { ok: false, message: 'O cliente recusou o conjunto de itens porque a lista de conjuntos ficou grande demais (HTTP 413). Apague conjuntos antigos de outros apps na loja do jogo e tente de novo.' }
   if (!ok2xx(res.status)) return { ok: false, message: `O cliente recusou o conjunto de itens (HTTP ${res.status}).` }
-  return { ok: true, message: `Conjunto de itens “${String(set.title)}” salvo. Ele aparece na loja durante a partida.` }
+  return {
+    ok: true,
+    message: `Conjunto de itens “${String(set.title)}” salvo. Ele aparece na loja durante a partida.${pruned ? ' Os conjuntos mais antigos do Pedro.gg foram removidos para caber no cliente.' : ''}`
+  }
 }
 
 /** Aplica só o que o usuário marcou; cada parte falha sozinha, sem impedir as outras. */

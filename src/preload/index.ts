@@ -27,6 +27,7 @@ const api: LolApi = {
   getOverlayState: () => ipcRenderer.invoke(IPC.OVERLAY_GET),
   onOverlayState: (cb) => subscribe(IPC.OVERLAY_STATE, cb),
   previewOverlay: () => ipcRenderer.invoke(IPC.OVERLAY_PREVIEW),
+  suggestPoolFromAccount: () => ipcRenderer.invoke(IPC.POOL_FROM_ACCOUNT),
   startOverlayMove: () => ipcRenderer.invoke(IPC.OVERLAY_MOVE_START),
   finishOverlayMove: () => ipcRenderer.invoke(IPC.OVERLAY_MOVE_DONE),
   getDiagnostics: () => ipcRenderer.invoke(IPC.DIAG_REPORT),

@@ -8,6 +8,8 @@ import { btn, btnDanger, btnGold, input } from '../lib/ui'
 import { ChampionIcon, Stars, useChampionName } from './Icons'
 import { ChampionPicker } from './ChampionPicker'
 import { ImportDialog } from './ImportDialog'
+import { AccountPoolDialog } from './AccountPoolDialog'
+import { applySuggestion, type PoolCandidate } from '../../../shared/poolImport'
 import { ShareDialog } from './ShareDialog'
 
 interface FormState {
@@ -185,6 +187,8 @@ export function PoolScreen() {
   const [role, setRole] = useState<Role>('MIDDLE')
   const [shareOpen, setShareOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const champById = useApp((s) => s.champById)
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -254,6 +258,16 @@ export function PoolScreen() {
     setImportOpen(false)
   }
 
+  function applyAccount(picked: PoolCandidate[], opts: { updateComfort: boolean; mainRoles: Role[] | null }): void {
+    setForm((f) => ({
+      ...f,
+      mainRoles: opts.mainRoles ?? f.mainRoles,
+      pool: applySuggestion(f.pool, picked, (id) => champById.get(id)?.key ?? '', opts)
+    }))
+    setNotice(`${picked.length} ${picked.length === 1 ? 'campeão adicionado' : 'campeões adicionados'} da sua conta. Revise o conforto e clique em “Salvar perfil” para guardar.`)
+    setAccountOpen(false)
+  }
+
   async function save(): Promise<void> {
     if (!form.nickname.trim()) {
       setDetailsOpen(true)
@@ -294,6 +308,7 @@ export function PoolScreen() {
   return (
     <section aria-label="Perfis e Pools" className="flex h-full min-h-0 flex-col gap-3 max-[1000px]:overflow-y-auto">
       {shareOpen && <ShareDialog profile={shareProfile} onClose={() => setShareOpen(false)} />}
+      {accountOpen && <AccountPoolDialog pool={form.pool} mainRoles={form.mainRoles} onApply={applyAccount} onClose={() => setAccountOpen(false)} />}
       {importOpen && (
         <ImportDialog target={form.id ? { nickname: form.nickname, pool: form.pool } : null} onApply={applyImport} onClose={() => setImportOpen(false)} />
       )}
@@ -327,6 +342,9 @@ export function PoolScreen() {
           </button>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button type="button" className={btn} onClick={() => setAccountOpen(true)} title="Lê as partidas recentes e a maestria da conta logada no cliente do LoL">
+            Importar da minha conta
+          </button>
           <button type="button" className={btn} onClick={() => setImportOpen(true)}>
             Importar de um amigo
           </button>
