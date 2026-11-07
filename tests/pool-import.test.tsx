@@ -19,6 +19,17 @@ describe('conforto automático', () => {
     expect(comfortFor(0, 0, 120_000)).toBe(2)
     expect(comfortFor(10, 3, 0)).toBe(2) // 1 + 1 − 0,5
   })
+  it('quem é main não cai por causa da taxa de vitória', () => {
+    expect(comfortFor(25, 8, 400_000)).toBe(5) // 32% de vitórias, mas 25 partidas e 400 mil pontos
+    expect(comfortFor(14, 4, 150_000)).toBe(4) // 29% de vitórias: o piso de 4 vale
+    expect(comfortFor(14, 5, 150_000)).toBe(4)
+    expect(comfortFor(0, 0, 650_000)).toBe(3) // 1 + 2: só maestria, sem prática recente
+  })
+  it('"mono" (40% ou mais das partidas da rota) ganha meia estrela', () => {
+    expect(comfortFor(9, 4, 0, 0.5)).toBe(3) // 1 + 1 + 0,5
+    expect(comfortFor(9, 4, 0, 0.2)).toBe(2)
+    expect(comfortFor(5, 3, 0, 1)).toBe(2) // poucas partidas: não conta como mono
+  })
 })
 
 describe('sugestão de Pool', () => {

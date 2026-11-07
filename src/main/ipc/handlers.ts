@@ -196,6 +196,7 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
       `Aceite automático: ${st.autoAccept ? 'ligado' : 'desligado'}, espera ${st.autoAcceptDelay}s`,
       `Última tentativa de aceite: ${diag.getAccept() ? `${diag.getAccept()?.ok ? 'ok' : 'falhou'} (HTTP ${diag.getAccept()?.status})` : 'nenhuma'}`,
       `Overlay: ${overlay.getStatus()}`,
+      `Atalhos do overlay: ${overlay.getShortcutStatus()}`,
       `Perfis: ${profiles.list().length}`
     ])
   }

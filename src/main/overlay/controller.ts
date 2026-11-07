@@ -10,6 +10,7 @@ import type { Role } from '../../shared/types'
 import { rolesOf } from '../data/metaStats'
 import { ForegroundWatcher, isGameProcess } from './foreground'
 import { fetchLive, parseLive } from './live'
+import { formatAccelerator } from '../../shared/shortcuts'
 
 export type PanelSize = { width: number; height: number }
 const FULL: PanelSize = { width: 320, height: 520 }
@@ -143,10 +144,10 @@ export class OverlayController {
       if (!this.running) {
         this.setStatus('ligado, aguardando uma partida')
         this.watcher.start()
-        this.registerShortcut()
         this.running = true
         void this.tick()
       }
+      this.registerShortcut() // também quando só o atalho mudou
       this.applyWindowSettings()
     } else {
       this.setStatus('desligado nas configurações')
@@ -173,31 +174,52 @@ export class OverlayController {
     return true
   }
 
-  /** Atalho global para mover o painel durante a partida (só mexe na janela do overlay). */
-  static readonly SHORTCUT = 'CommandOrControl+Shift+O'
-  static readonly SHORTCUT_SIZE = 'CommandOrControl+Shift+E'
-  private shortcutOn = false
+  /**
+   * Atalhos globais (configuráveis): um alterna recuado/estendido, outro liga o modo mover. Só mexem na janela do overlay.
+   * `register` devolve false quando outro programa já usa a combinação; o resultado fica no relatório de diagnóstico.
+   */
+  private keys: { size: string | null; move: string | null } = { size: null, move: null }
+  private keyStatus = 'não registrados'
+  getShortcutStatus(): string {
+    return this.keyStatus
+  }
   private registerShortcut(): void {
-    if (this.shortcutOn) return
-    try {
-      this.shortcutOn = globalShortcut.register(OverlayController.SHORTCUT, () => {
-        if (this.editing) void this.finishMove()
-        else this.startMove()
-      })
-      globalShortcut.register(OverlayController.SHORTCUT_SIZE, () => void this.toggleCompact())
-    } catch {
-      this.shortcutOn = false
+    const s = this.deps.getSettings()
+    const want = { size: s.overlayKeySize, move: s.overlayKeyMove }
+    if (this.keys.size === want.size && this.keys.move === want.move) return
+    this.unregisterShortcut()
+    const note: string[] = []
+    const reg = (acc: string, label: string, fn: () => void): string | null => {
+      if (!acc) return null
+      try {
+        if (globalShortcut.register(acc, fn)) {
+          note.push(`${label} ${formatAccelerator(acc)} ok`)
+          return acc
+        }
+      } catch {
+        /* cai no aviso abaixo */
+      }
+      note.push(`${label} ${formatAccelerator(acc)} NÃO registrou (outro programa já usa; troque em Configurações > Partida)`)
+      return null
     }
+    this.keys = {
+      size: reg(want.size, 'tamanho', () => void this.toggleCompact()),
+      move: want.move === want.size ? (note.push('mover: igual ao do tamanho, ignorado'), null) : reg(want.move, 'mover', () => (this.editing ? void this.finishMove() : void this.startMove()))
+    }
+    this.keyStatus = note.join(', ')
+    this.deps.log(`atalhos: ${this.keyStatus}`)
   }
   private unregisterShortcut(): void {
-    if (!this.shortcutOn) return
-    try {
-      globalShortcut.unregister(OverlayController.SHORTCUT)
-      globalShortcut.unregister(OverlayController.SHORTCUT_SIZE)
-    } catch {
-      /* ignora */
+    for (const acc of [this.keys.size, this.keys.move]) {
+      if (!acc) continue
+      try {
+        globalShortcut.unregister(acc)
+      } catch {
+        /* ignora */
+      }
     }
-    this.shortcutOn = false
+    this.keys = { size: null, move: null }
+    this.keyStatus = 'não registrados'
   }
 
   /** Alterna entre o painel recuado (só o próximo item) e o estendido (build completa). */

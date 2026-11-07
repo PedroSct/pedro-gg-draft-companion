@@ -112,6 +112,8 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     overlayCorner: 'tr',
     overlayOpacity: 0.9,
     overlayCompact: false,
+    overlayKeySize: 'CommandOrControl+Shift+F9',
+    overlayKeyMove: 'CommandOrControl+Shift+F10',
     overlayPos: null
   }
   let identity: IdentityState = { account: null, profileId: null }
@@ -409,7 +411,7 @@ describe('Companion App', () => {
 
     const panel = await screen.findByRole('region', { name: 'Importar para o cliente' })
     expect(apply).not.toHaveBeenCalled()
-    await user.click(within(panel).getByRole('checkbox', { name: /Itens/ })) // desmarca os itens
+    expect(within(panel).getByRole('checkbox', { name: /Itens/ })).not.toBeChecked() // itens: só se a pessoa marcar
     await user.click(within(panel).getByRole('button', { name: 'Importar para o cliente' }))
 
     await waitFor(() => expect(apply).toHaveBeenCalledWith({
@@ -419,6 +421,21 @@ describe('Companion App', () => {
         selection: { runes: 0, spells: 0, starting: 0, boots: 0, core: 0 }
       }))
     expect(await within(panel).findByText(/Runas: Runas aplicadas/)).toBeInTheDocument()
+  })
+
+  it('o conjunto de itens só é enviado quando a pessoa marca "Itens"', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    const apply = vi.spyOn(fake.api, 'applyLoadout')
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    const locked = draftWithZed()
+    locked.allies[1] = player(1, 103, 'locked', 'MIDDLE')
+    act(() => fake.pushDraft(locked))
+    const panel = await screen.findByRole('region', { name: 'Importar para o cliente' })
+    await user.click(within(panel).getByRole('checkbox', { name: /Itens/ }))
+    await user.click(within(panel).getByRole('button', { name: 'Importar para o cliente' }))
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(expect.objectContaining({ parts: { runes: true, spells: true, items: true } })))
   })
 
   it('mostra o painel "Para esta partida" com o foco da build e o motivo da composição', async () => {
@@ -938,6 +955,29 @@ describe('0.6: counters do meta, evolução e aviso de patch', () => {
     expect(within(panel).getByRole('region', { name: 'Desempenho por campeão' })).toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: 'Partida' }))
     expect(await screen.findByRole('complementary', { name: 'Partidas analisadas' })).toBeInTheDocument()
+  })
+
+  it('troca o atalho do overlay apertando as teclas, recusa o repetido e volta ao padrão', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    const setSettings = vi.spyOn(fake.api, 'setSettings')
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'Configurações' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Configurações' })
+    await user.click(within(dialog).getByRole('tab', { name: /^Partida/ }))
+    const size = await screen.findByRole('button', { name: 'Atalho de tamanho do overlay' })
+    expect(size).toHaveTextContent('Ctrl+Shift+F9')
+    expect(screen.getByRole('button', { name: 'Atalho de mover o overlay' })).toHaveTextContent('Ctrl+Shift+F10')
+
+    await user.click(size)
+    await user.keyboard('{Control>}{Shift>}{F10}{/Shift}{/Control}') // igual ao do mover
+    expect(await screen.findByText('Já é o outro atalho.')).toBeInTheDocument()
+    expect(setSettings).not.toHaveBeenCalledWith(expect.objectContaining({ overlayKeySize: expect.anything() }))
+
+    await user.keyboard('{Control>}{Alt>}{F8}{/Alt}{/Control}')
+    await waitFor(() => expect(setSettings).toHaveBeenCalledWith({ overlayKeySize: 'CommandOrControl+Alt+F8' }))
+    await user.click(await screen.findByRole('button', { name: 'Padrão' }))
+    await waitFor(() => expect(setSettings).toHaveBeenCalledWith({ overlayKeySize: 'CommandOrControl+Shift+F9' }))
   })
 
   it('avisa o que mudou no patch para a Pool e some ao confirmar', async () => {

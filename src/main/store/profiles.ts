@@ -15,6 +15,7 @@ import {
 } from '../../shared/dataTypes'
 import type { SharedProfile } from '../../shared/poolShare'
 import { writeJsonAtomic } from './fsJson'
+import { DEFAULT_KEY_MOVE, DEFAULT_KEY_SIZE, sanitizeAccelerator } from '../../shared/shortcuts'
 
 const DEFAULT_SETTINGS: AppSettings = {
   lockfilePath: null,
@@ -34,6 +35,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   overlayCorner: 'tr',
   overlayOpacity: 0.9,
   overlayCompact: false,
+  overlayKeySize: DEFAULT_KEY_SIZE,
+  overlayKeyMove: DEFAULT_KEY_MOVE,
   overlayPos: null
 }
 
@@ -193,6 +196,13 @@ export function sanitizeSettingsPatch(raw: unknown): Partial<AppSettings> {
     if (v === null) out.overlayPos = null
     else if (typeof v === 'object' && v !== undefined && typeof v.x === 'number' && typeof v.y === 'number' && Number.isFinite(v.x) && Number.isFinite(v.y) && Math.abs(v.x) < 30000 && Math.abs(v.y) < 30000) out.overlayPos = { x: Math.round(v.x), y: Math.round(v.y) }
     else throw new Error('Configuração inválida: overlayPos')
+  }
+  for (const key of ['overlayKeySize', 'overlayKeyMove'] as const) {
+    if (key in raw) {
+      const v = raw[key]
+      if (typeof v === 'string' && sanitizeAccelerator(v, '') !== '') out[key] = sanitizeAccelerator(v, '')
+      else throw new Error(`Configuração inválida: ${key}`)
+    }
   }
   for (const key of ['introAnimation', 'reduceMotion', 'tourDone', 'overlayEnabled', 'overlayCompact'] as const) {
     if (key in raw) {

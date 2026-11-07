@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useApp } from '../store/useApp'
 import { DEFAULT_META_URL } from '../../../shared/config'
 import { btn, btnGold, input } from '../lib/ui'
+import { acceleratorFromEvent, DEFAULT_KEY_MOVE, DEFAULT_KEY_SIZE, formatAccelerator } from '../../../shared/shortcuts'
 
 const STATUS_TEXT = {
   searching: 'Procurando o League of Legends. Abra o cliente e entre na sua conta.',
@@ -36,6 +37,44 @@ const REGION_NAMES: Record<string, string> = {
   la1: 'LAN',
   la2: 'LAS',
   jp1: 'Japão (JP)'
+}
+
+/** Campo que grava a combinação de teclas apertada. Esc cancela; precisa de Ctrl, Alt ou Shift e uma tecla. */
+function ShortcutField({ label, value, fallback, other, onChange }: { label: string; value: string; fallback: string; other: string; onChange: (acc: string) => void }) {
+  const [recording, setRecording] = useState(false)
+  const [warn, setWarn] = useState('')
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        aria-label={label}
+        className={`${btn} min-w-[9rem] font-mono text-xs`}
+        onClick={() => {
+          setWarn('')
+          setRecording(true)
+        }}
+        onBlur={() => setRecording(false)}
+        onKeyDown={(e) => {
+          if (!recording) return
+          e.preventDefault()
+          if (e.key === 'Escape') return setRecording(false)
+          const acc = acceleratorFromEvent(e)
+          if (!acc) return // só o modificador: espera a tecla
+          if (acc === other) return setWarn('Já é o outro atalho.')
+          setRecording(false)
+          onChange(acc)
+        }}
+      >
+        {recording ? 'Aperte as teclas… (Esc cancela)' : formatAccelerator(value)}
+      </button>
+      {value !== fallback && (
+        <button type="button" className={btn} onClick={() => onChange(fallback)}>
+          Padrão
+        </button>
+      )}
+      {warn && <span className="text-xs text-enemy">{warn}</span>}
+    </span>
+  )
 }
 
 function Row({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
@@ -252,7 +291,7 @@ export function SettingsDialog() {
       const ok = await window.api.startOverlayMove()
       setOverlayMsg(
         ok
-          ? { ok: true, text: 'Arraste o painel e clique em "Salvar posição". Durante uma partida, use Ctrl+Shift+O para ligar e desligar o modo mover.' }
+          ? { ok: true, text: 'Arraste o painel e clique em "Salvar posição". Durante uma partida, use o atalho de mover (Configurações > Partida) para ligar e desligar o modo mover.' }
           : { ok: false, text: 'Preciso dos dados de meta reais para mostrar o painel: atualize os dados em Configurações > Dados.' }
       )
     } catch {
@@ -391,7 +430,7 @@ export function SettingsDialog() {
                 <Row title="Mostrar o overlay durante a partida">
                   <Switch label="Mostrar o overlay durante a partida" checked={settings?.overlayEnabled ?? false} onChange={(v) => void saveSettings({ overlayEnabled: v })} />
                 </Row>
-                <Row title="Tamanho do painel" hint="Recuado mostra só o próximo item (e a habilidade quando há ponto). Durante a partida, Ctrl+Shift+E alterna.">
+                <Row title="Tamanho do painel" hint="Recuado mostra só o próximo item (e a habilidade quando há ponto). Durante a partida, o atalho abaixo alterna.">
                   <select
                     aria-label="Tamanho do overlay"
                     value={settings?.overlayCompact ? 'compact' : 'full'}
@@ -401,6 +440,24 @@ export function SettingsDialog() {
                     <option value="full">Estendido (build completa)</option>
                     <option value="compact">Recuado (só o próximo item)</option>
                   </select>
+                </Row>
+                <Row title="Atalho: recuado ⇄ estendido" hint="Funciona com o jogo na frente. Se outro programa (como o painel da AMD) já usa a combinação, troque aqui.">
+                  <ShortcutField
+                    label="Atalho de tamanho do overlay"
+                    value={settings?.overlayKeySize ?? DEFAULT_KEY_SIZE}
+                    fallback={DEFAULT_KEY_SIZE}
+                    other={settings?.overlayKeyMove ?? DEFAULT_KEY_MOVE}
+                    onChange={(acc) => void saveSettings({ overlayKeySize: acc })}
+                  />
+                </Row>
+                <Row title="Atalho: mover o painel" hint="Liga e desliga o modo mover durante a partida (arrastar o painel e soltar).">
+                  <ShortcutField
+                    label="Atalho de mover o overlay"
+                    value={settings?.overlayKeyMove ?? DEFAULT_KEY_MOVE}
+                    fallback={DEFAULT_KEY_MOVE}
+                    other={settings?.overlayKeySize ?? DEFAULT_KEY_SIZE}
+                    onChange={(acc) => void saveSettings({ overlayKeyMove: acc })}
+                  />
                 </Row>
                 <Row title="Canto da tela">
                   <select

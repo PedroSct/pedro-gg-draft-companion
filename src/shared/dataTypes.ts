@@ -61,8 +61,12 @@ export interface AppSettings {
   overlayCorner: 'tl' | 'tr' | 'bl' | 'br'
   /** Opacidade do painel (0,4 a 1). */
   overlayOpacity: number
-  /** Painel recuado: só o próximo item a comprar (Ctrl+Shift+E alterna durante a partida). */
+  /** Painel recuado: só o próximo item a comprar (o atalho de tamanho alterna durante a partida). */
   overlayCompact: boolean
+  /** Atalho global (formato do Electron) que alterna recuado/estendido. */
+  overlayKeySize: string
+  /** Atalho global que liga e desliga o modo mover. */
+  overlayKeyMove: string
   /** Posição escolhida arrastando o painel (canto superior esquerdo, em pixels da tela); null = usa o canto. */
   overlayPos: { x: number; y: number } | null
 }

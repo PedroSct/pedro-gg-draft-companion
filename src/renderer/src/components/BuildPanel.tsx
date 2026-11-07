@@ -26,7 +26,7 @@ const SPELL_NAME: Record<number, string> = {
   32: 'Marca'
 }
 
-const PART_LABEL: Record<keyof LoadoutParts, string> = { runes: 'Runas', spells: 'Feitiços', items: 'Itens' }
+const PART_LABEL: Record<keyof LoadoutParts, string> = { runes: 'Runas', spells: 'Feitiços', items: 'Itens (opcional)' }
 
 /** "Importar para o cliente": só por clique, só desta partida, e só o que a pessoa marcar. */
 function ImportPanel({ championId, role, build, forLocal, selection }: { championId: number; role: Role; build: ChampionBuild; forLocal: boolean; selection: BuildSelection }) {
@@ -38,7 +38,7 @@ function ImportPanel({ championId, role, build, forLocal, selection }: { champio
     spells: !!(build.spells || build.options?.spells?.length),
     items: build.items.core.length + build.items.starting.length + build.items.boots.length > 0
   }
-  const [picked, setPicked] = useState<LoadoutParts>({ runes: true, spells: true, items: true })
+  const [picked, setPicked] = useState<LoadoutParts>({ runes: true, spells: true, items: false }) // itens: opcional, o overlay já guia as compras
   const [busy, setBusy] = useState(false)
   const [results, setResults] = useState<Partial<Record<keyof LoadoutParts, PartResult>> | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -81,7 +81,7 @@ function ImportPanel({ championId, role, build, forLocal, selection }: { champio
   const detail: Record<keyof LoadoutParts, string> = {
     runes: build.runes ? 'Cria ou atualiza a página “Pedro.gg” e a deixa ativa' : 'sem dados',
     spells: build.spells ? `${build.spells.map((id) => SPELL_NAME[id] ?? `#${id}`).join(' + ')}${inDraft ? '' : ' (só durante a seleção)'}` : 'sem dados',
-    items: 'Salva o conjunto “Pedro.gg” (aparece na loja)'
+    items: 'Opcional: salva o conjunto “Pedro.gg” na loja. O overlay já mostra a ordem de compra; o cliente às vezes exibe o conjunto incompleto'
   }
 
   return (

@@ -45,22 +45,29 @@ const MASTERY_ONLY_MIN = 40_000
 const MAX_PER_ROLE = 10
 
 /**
- * Conforto de 1 a 5:
- *  - partida na rota: 3+ = +0,5; 6+ = +1; 12+ = +1,5
- *  - maestria: 15 mil = +0,4; 40 mil = +0,8; 100 mil = +1,2; 300 mil = +1,5
- *  - com 5+ partidas, taxa de vitória a partir de 60% = +0,5 e até 40% = −0,5
- * A soma começa em 1 e é arredondada.
+ * Conforto de 1 a 5 = o quanto você conhece o campeão, não o quanto ganhou com ele (poucas partidas recentes dizem pouco
+ * sobre habilidade, e quem é main costuma jogar justamente os campeões difíceis):
+ *  - partidas na rota: 3+ = +0,5; 6+ = +1; 12+ = +1,5; 20+ = +2
+ *  - maestria: 15 mil = +0,4; 40 mil = +0,8; 100 mil = +1,2; 300 mil = +1,6; 600 mil = +2
+ *  - "mono": 8+ partidas e 40% ou mais das partidas da rota = +0,5
+ *  - só um empurrão pela taxa de vitória, e com 10+ partidas: 60% ou mais = +0,5; 35% ou menos = −0,5
+ * A soma começa em 1 e é arredondada. Quem tem muita prática E muita maestria nunca fica abaixo de 4 (5 com 20+ partidas
+ * e 300 mil pontos), mesmo com a taxa de vitória ruim.
  */
-export function comfortFor(games: number, wins: number, masteryPoints: number): number {
+export function comfortFor(games: number, wins: number, masteryPoints: number, roleShare = 0): number {
   let s = 1
-  s += games >= 12 ? 1.5 : games >= 6 ? 1 : games >= 3 ? 0.5 : 0
-  s += masteryPoints >= 300_000 ? 1.5 : masteryPoints >= 100_000 ? 1.2 : masteryPoints >= 40_000 ? 0.8 : masteryPoints >= 15_000 ? 0.4 : 0
-  if (games >= 5) {
+  s += games >= 20 ? 2 : games >= 12 ? 1.5 : games >= 6 ? 1 : games >= 3 ? 0.5 : 0
+  s += masteryPoints >= 600_000 ? 2 : masteryPoints >= 300_000 ? 1.6 : masteryPoints >= 100_000 ? 1.2 : masteryPoints >= 40_000 ? 0.8 : masteryPoints >= 15_000 ? 0.4 : 0
+  if (games >= 8 && roleShare >= 0.4) s += 0.5
+  if (games >= 10) {
     const wr = wins / games
     if (wr >= 0.6) s += 0.5
-    else if (wr <= 0.4) s -= 0.5
+    else if (wr <= 0.35) s -= 0.5
   }
-  return Math.min(5, Math.max(1, Math.round(s)))
+  let stars = Math.min(5, Math.max(1, Math.round(s)))
+  if (games >= 20 && masteryPoints >= 300_000) stars = 5
+  else if (games >= 12 && masteryPoints >= 100_000) stars = Math.max(stars, 4)
+  return stars
 }
 
 const pct = (n: number): string => `${Math.round(n * 100)}%`
@@ -89,12 +96,13 @@ export function buildPoolSuggestion(
 
   const byRole = { TOP: [], JUNGLE: [], MIDDLE: [], BOTTOM: [], UTILITY: [] } as Record<Role, PoolCandidate[]>
   const make = (championId: number, role: Role, gm: number, wins: number): PoolCandidate => {
+    const share = counted > 0 && (roleGames[role] ?? 0) > 0 ? gm / (roleGames[role] ?? 1) : 0
     const m = masteryOf.get(championId)
     const points = m?.points ?? 0
     const parts: string[] = []
     if (gm > 0) parts.push(`${gm} ${gm === 1 ? 'partida' : 'partidas'} recentes (${pct(wins / gm)} de vitórias)`)
     if (points > 0) parts.push(`maestria ${fmtPoints(points)}`)
-    return { championId, role, games: gm, wins, masteryPoints: points, masteryLevel: m?.level ?? 0, comfort: comfortFor(gm, wins, points), reason: parts.join(' · ') }
+    return { championId, role, games: gm, wins, masteryPoints: points, masteryLevel: m?.level ?? 0, comfort: comfortFor(gm, wins, points, share), reason: parts.join(' · ') }
   }
 
   const seen = new Set<string>()

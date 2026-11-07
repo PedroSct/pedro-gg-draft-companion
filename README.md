@@ -134,6 +134,18 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Atalhos do overlay configuráveis (0.8.3)**: Ctrl+Shift+E e Ctrl+Shift+O são tomados pelo painel da AMD (Radeon), então os
+  padrões passaram a **Ctrl+Shift+F9** (recuado ⇄ estendido) e **Ctrl+Shift+F10** (modo mover). Em Configurações > Partida,
+  clique no atalho e aperte a combinação que preferir (precisa de Ctrl, Alt ou Shift e uma tecla; Esc cancela; "Padrão" volta).
+  O relatório de diagnóstico tem a linha "Atalhos do overlay:" dizendo se cada combinação foi registrada ou se outro programa
+  já a usa. Mover pelo botão do app sempre funcionou, independente dos atalhos.
+- **Estrelas da importação de Pool (0.8.3)**: o conforto mede o quanto você conhece o campeão, não a taxa de vitória. Agora há
+  20+ partidas e maestria até 600 mil como degraus mais altos, "mono" (40% ou mais das partidas da rota) vale meia estrela,
+  a taxa de vitória é só um empurrão (e só com 10+ partidas), e quem tem muita prática e muita maestria nunca fica abaixo de 4
+  (5 com 20+ partidas e 300 mil pontos), mesmo ganhando pouco. As estrelas continuam editáveis na tela de Pools.
+- **Itens para o cliente viram opcionais (0.8.3)**: em "Enviar para o LoL" a caixa **Itens (opcional)** vem desmarcada; o
+  overlay já mostra a ordem de compra e o conjunto de itens às vezes aparecia incompleto no cliente. Runas e feitiços continuam
+  marcados por padrão. Quem joga em tela cheia exclusiva (sem overlay) ainda pode marcar Itens.
 - **Coleta automática e contínua (0.8.2)**: o workflow de dados agora roda **sozinho a cada 8 horas** (01:00, 09:00 e 17:00 UTC)
   e cada execução continua de onde a anterior parou, então os dados do patch só crescem. O teto de partidas por servidor
   subiu de 6000 para 200 mil (e o de timelines para 100 mil): antes ele era atingido na primeira rodada e as execuções
@@ -161,7 +173,7 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
 - **Overlay recuado e estendido (0.8.1)**: o painel tem duas versões. **Recuado** mostra só o próximo item a comprar (com o custo
   e o seu ouro) e, quando há ponto de habilidade, a letra a subir. **Estendido** mostra tudo: habilidades, a build em ordem
   e os itens situacionais. Troque em Configurações > Partida > "Tamanho do painel" ou, durante a partida, com
-  **Ctrl+Shift+E**. No estendido, os situacionais agora consideram o **time inimigo da partida** (a escalação é pública no
+  o atalho **Ctrl+Shift+F9** (configurável). No estendido, os situacionais agora consideram o **time inimigo da partida** (a escalação é pública no
   jogo): se o dano deles é muito físico ou mágico, ou há muitos tanques, o app sugere antes os itens da sua build que
   ajudam (armadura, resistência mágica ou penetração) e mostra a divisão do dano.
 - **Importar a Pool da sua conta (0.8.0)**: na tela de Pools, **Importar da minha conta** lê do cliente do LoL (só leitura) as
@@ -177,7 +189,7 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   aparece na ordem de compra (iniciais só no começo), o próximo item é destacado com o custo, os situacionais ficam
   separados em "Se precisar" e o seu ouro atual aparece no topo.
 - **Mover o overlay (0.7.4)**: Configurações > Partida > "Mover o overlay" mostra o painel para você arrastar para onde quiser e
-  "Salvar posição". Durante uma partida, **Ctrl+Shift+O** liga e desliga o modo mover (assim dá para posicionar olhando
+  "Salvar posição". Durante uma partida, **Ctrl+Shift+F10** (configurável) liga e desliga o modo mover (assim dá para posicionar olhando
   o jogo de verdade). "Voltar ao canto" desfaz. O atalho só mexe na janela do overlay; não envia nada ao jogo. O overlay
   continua não aparecendo com o LoL em **tela cheia exclusiva**: o Windows não deixa nenhuma janela por cima dela, e a
   única saída seria injetar no jogo, o que a Riot não permite. Use "Sem bordas".
