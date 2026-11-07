@@ -75,6 +75,11 @@ function main(): void {
     })
   )
   const writes: Promise<void>[] = [writeJsonAtomic(out, dataset)]
+  // Partidas reservadas para teste (não entram no meta): servem ao `pnpm meta:backtest`.
+  if (merged.holdout?.length) {
+    writes.push(writeJsonAtomic(path.join(path.dirname(out), 'holdout.json'), { patch: merged.patch, matches: merged.holdout }))
+    console.error(`Gerado holdout.json: ${merged.holdout.length} partidas reservadas para teste`)
+  }
   console.error(`Gerado ${out}: ${Object.keys(dataset.champions).length} campeões, ${merged.matches} partidas, servidores: ${regions.join(', ')}`)
 
   // Um arquivo por servidor (meta-br1.json...), para o app poder escolher entre "Global" e um servidor.

@@ -102,12 +102,17 @@ function Meter({ bars }: { bars: number }) {
   )
 }
 
+/** "850 jogos" / "12,4 mil jogos": mostra de quantas partidas vem o número (poucas = menos confiável). */
+function gamesLabel(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil jogos` : `${n} jogos`
+}
+
 function VsNames({ pick }: { pick: PickScore }) {
   const first = pick.matchups[0]
   const name = useChampionName(first?.vsChampionId ?? 0)
   if (!first) return null
   const more = pick.matchups.length - 1
-  return <>{`contra ${name}${more > 0 ? ` e +${more}` : ''}`}</>
+  return <>{`contra ${name}${more > 0 ? ` e +${more}` : ` · ${gamesLabel(first.games)}`}`}</>
 }
 
 function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
@@ -268,7 +273,7 @@ function AltRow({ pick, selected, onSelect }: { pick: PickScore; selected: boole
                 {pct(pick.matchupWinrate)} <VsNames pick={pick} />
               </>
             ) : pick.baselineWinrate !== null ? (
-              `${pct(pick.baselineWinrate)} na rota`
+              `${pct(pick.baselineWinrate)} na rota${pick.baselineGames ? ` · ${gamesLabel(pick.baselineGames)}` : ''}`
             ) : (
               'sem dados de meta'
             )}

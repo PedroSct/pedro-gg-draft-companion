@@ -6,7 +6,7 @@
 # Como usar:
 #   1. developer.riotgames.com > entre com a conta do LoL > copie a chave (Development ou Personal API Key).
 #   2. Settings > Secrets and variables > Actions > New repository secret: nome RIOT_API_KEY, valor = a chave.
-#   3. Aba Actions > "Atualizar dados de meta" > Run workflow (escolha os servidores). Leva umas 2 a 3 horas.
+#   3. Aba Actions > "Atualizar dados de meta" > Run workflow (escolha os servidores). Cada execução leva até ~5,6 h; o agendamento abaixo repete sozinho.
 #
 # Como funciona: o limite da chave é por cluster da Riot (americas, europe, asia, sea). Servidores de clusters
 # diferentes coletam em paralelo (um job por cluster); servidores do mesmo cluster rodam em sequência no mesmo job.
@@ -24,11 +24,11 @@ on:
         description: Servidores separados por vírgula (br1, na1, euw1, eun1, kr, la1...). Um por cluster roda em paralelo.
         default: br1,euw1,kr
       max_matches:
-        description: Partidas a coletar POR servidor (winrates, confrontos, sinergias)
-        default: '6000'
+        description: Teto de partidas por servidor no patch (winrates, confrontos, sinergias). O tempo do job (cerca de 7 mil partidas por execução) costuma acabar antes do teto.
+        default: '200000'
       timeline_matches:
         description: Destas, quantas também baixam a timeline (builds, itens, habilidades). 0 = todas.
-        default: '3000'
+        default: '100000'
       rps:
         description: Requisições por segundo. Mantenha 0.8 - o limite longo da Riot (100 a cada 2 min) vale também para chave aprovada; acima disso dá erro 429.
         default: '0.8'
@@ -39,7 +39,9 @@ on:
         description: Só partidas dos últimos N dias (mais dias = mais partidas disponíveis no começo do patch).
         default: '14'
   schedule:
-    - cron: '0 7 * * 3' # quartas, 07:00 UTC (só funciona se a chave ainda estiver válida)
+    # A cada 8 horas (01:00, 09:00 e 17:00 UTC). Cada execução leva até ~5,6 h e continua de onde a anterior parou, então
+    # os dados do patch só crescem. Precisa da chave pessoal (a de desenvolvimento vence em 24 h).
+    - cron: '0 1,9,17 * * *'
 
 permissions:
   contents: write # publicar a branch "data"
@@ -90,6 +92,13 @@ jobs:
             echo "::error::Falta o secret RIOT_API_KEY (veja as instruções no topo deste arquivo)."
             exit 1
           fi
+          # A chave é testada com uma chamada barata, para falhar logo e com um aviso claro se estiver vencida.
+          first=$(echo "${{ matrix.platforms }}" | awk '{print $1}')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Riot-Token: $RIOT_API_KEY" "https://${first}.api.riotgames.com/lol/status/v4/platform-data" || echo 000)
+          if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+            echo "::error::A chave da Riot foi recusada (HTTP $code). Ela venceu ou está errada: atualize o secret RIOT_API_KEY."
+            exit 1
+          fi
 
       # O progresso fica guardado entre execuções: se a chave vencer, a próxima continua de onde parou.
       - name: Recuperar o progresso
@@ -103,8 +112,8 @@ jobs:
         env:
           RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
           PLATFORMS: ${{ matrix.platforms }}
-          MAX_MATCHES: ${{ inputs.max_matches || '6000' }}
-          TIMELINE_MATCHES: ${{ inputs.timeline_matches || '3000' }}
+          MAX_MATCHES: ${{ inputs.max_matches || '200000' }}
+          TIMELINE_MATCHES: ${{ inputs.timeline_matches || '100000' }}
           RPS: ${{ inputs.rps || '0.8' }}
           DAYS: ${{ inputs.days || '14' }}
           TIERS: ${{ inputs.tiers || 'challenger,grandmaster,master,diamond,emerald' }}
@@ -175,11 +184,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir pub && cp meta.json meta-*.json pub/ && cd pub
+          mkdir pub && cp meta.json meta-*.json pub/ && (cp holdout.json pub/ 2>/dev/null || true) && cd pub
           git init -q
           git config user.name "pedro-gg-bot"
           git config user.email "actions@users.noreply.github.com"
           git checkout -q --orphan data
           git add meta.json meta-*.json
+          [ -f holdout.json ] && git add holdout.json || true
           git commit -q -m "Dados de meta ($(date -u +%F))"
           git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" data

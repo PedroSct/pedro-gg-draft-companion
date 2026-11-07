@@ -223,6 +223,24 @@ describe('recomendação: sinergia e risco', () => {
     expect(withAlly.ranking[0].championId).toBe(1)
   })
 
+  it('sinergia com amostra pequena não penaliza campeão forte (suaviza em direção ao winrate dele, não a 50%)', () => {
+    const strong = validateDataset({
+      schemaVersion: 1, source: 't', patch: '1', generatedAt: '',
+      champions: {
+        // 56% no geral; com o Top (4) foram só 20 partidas, a 60%: deve contar como ajuda, não como atrapalho
+        '1': { roles: { MIDDLE: { games: 20000, wins: 11200, matchups: {}, synergies: { '4': { games: 20, wins: 12 } } } } },
+        '4': { roles: { TOP: { games: 10000, wins: 5000, matchups: {} } } }
+      }
+    })
+    const r = recommend({
+      draft: draft({ allies: [P(0, 4, 'locked', 'TOP'), P(1, 0, 'none', 'MIDDLE')] }),
+      profile: me([[1, 'A', 3]]),
+      dataset: strong
+    })
+    expect(r.ranking[0].synergyDelta).toBeGreaterThan(0)
+    expect(r.ranking[0].synergyDelta).toBeLessThan(4) // e sem exagero com 20 partidas
+  })
+
   it('aponta counters que o inimigo ainda pode pegar; some se estiverem banidos ou o oponente já for conhecido', () => {
     const open = recommend({ draft: draft(), profile: me([[1, 'A', 3]]), dataset })
     expect(open.ranking[0].risk.level).not.toBe('none')

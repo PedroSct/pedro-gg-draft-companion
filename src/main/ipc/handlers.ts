@@ -19,6 +19,7 @@ import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
 import { AutoAccept } from '../autoAccept'
 import { patchNotice, snapshotOf, type MetaSnapshot } from '../data/patchChanges'
 import { OverlayController } from '../overlay/controller'
+import { fetchLive } from '../overlay/live'
 import { suggestMetaCounters } from '../data/counters'
 import { Diagnostics, formatProbe, probeClient } from '../diagnostics'
 import { applyLoadout } from '../lcu/loadout'
@@ -216,8 +217,8 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   })
   handle(IPC.DIAG_PROBE, async () => {
     if (lcu.getStatus() !== 'connected') return ['O cliente do LoL não está conectado.']
-    const lines = formatProbe(await probeClient({ get: (p) => lcu.get(p) }))
-    diag.log('teste', lines.join(' | '))
+    const lines = formatProbe(await probeClient({ get: (p) => lcu.get(p), live: async () => (await fetchLive(1000)) !== null }))
+    for (const l of lines) diag.log('teste', l)
     return lines
   })
   handle(IPC.DIAG_ACCEPT, () => diag.getAccept())

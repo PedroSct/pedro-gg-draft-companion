@@ -35,10 +35,13 @@ git branch "$BACKUP"
 git push origin "$BACKUP" --quiet && echo "Backup criado e enviado: $BACKUP"
 echo
 
-# 3) Confere se compila ANTES de enviar (é o que a build do GitHub faz; evita tag com erro)
+# 3) Confere tipos e testes ANTES de enviar (é o que a build do GitHub faz; evita tag com erro)
 if [ -d node_modules ] && command -v pnpm >/dev/null 2>&1; then
   echo "Conferindo os tipos (pnpm typecheck)..."
   pnpm typecheck || { echo; echo "Há erro de tipos: nada foi enviado. Corrija (ou me mande a mensagem) e rode de novo."; exit 1; }
+  echo
+  echo "Rodando os testes (pnpm test)..."
+  pnpm test || { echo; echo "Algum teste falhou: nada foi enviado. É o mesmo teste que o GitHub roda antes de gerar o instalador; me mande a mensagem."; exit 1; }
   echo
 fi
 

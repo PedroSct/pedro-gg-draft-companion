@@ -289,6 +289,8 @@ export interface PickScore {
   comfort: number
   confidence: Confidence
   baselineWinrate: number | null
+  /** partidas do campeão nesta rota no meta (base do winrate acima) */
+  baselineGames?: number
   matchupWinrate: number | null
   /** fração (0..1) dos oponentes prováveis da rota que têm dados de matchup */
   matchupCoverage: number

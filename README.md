@@ -134,6 +134,30 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Coleta automática e contínua (0.8.2)**: o workflow de dados agora roda **sozinho a cada 8 horas** (01:00, 09:00 e 17:00 UTC)
+  e cada execução continua de onde a anterior parou, então os dados do patch só crescem. O teto de partidas por servidor
+  subiu de 6000 para 200 mil (e o de timelines para 100 mil): antes ele era atingido na primeira rodada e as execuções
+  seguintes terminavam em menos de 1 minuto sem coletar nada novo. Quando o coletor chega ao fim da lista de jogadores com
+  tempo sobrando, dá **outra volta** (as partidas novas aparecem; as já contadas são ignoradas) e para sozinho se a volta não
+  trouxer nada. O workflow também testa a chave da Riot logo no começo e falha com um aviso claro se ela estiver vencida
+  (o GitHub avisa por e-mail quando uma execução agendada falha). Dá para disparar à mão quando quiser, como antes.
+- **Partidas reservadas e medição da recomendação (0.8.2)**: 1 em cada 10 partidas coletadas (escolhidas pelo id) **não entra
+  nas contagens do meta**: fica guardada, só com os campeões de cada rota e o vencedor, em `holdout.json` na branch `data`.
+  Com elas, `pnpm meta:backtest --meta meta.json --holdout holdout.json` (baixe os dois arquivos da branch `data`) pontua os
+  dez jogadores de cada partida com a mesma função do app e diz **qual combinação de fatores prevê melhor quem ganhou**:
+  winrate puro (referência), confronto de rota, sinergia, desempenho contra o time inimigo, composição e os pesos dos modos
+  Equilibrado e Meta, com margem de erro. É a medida honesta de que os pesos funcionam (ou não). `--no-holdout` no
+  coletor usa todas as partidas no meta.
+- **Sinergia corrigida (0.8.2)**: com poucas partidas ao lado de um aliado, a sinergia era suavizada em direção a 50% e não ao
+  winrate do próprio campeão; um campeão forte parecia "piorar" com qualquer aliado de amostra pequena. Agora a suavização
+  é em direção ao winrate dele (como já era no desempenho contra o time inimigo). A lista de picks mostra **de quantas
+  partidas** vem cada número ("54,1% na rota · 3,2 mil jogos", "contra Yasuo · 120 jogos").
+- **Autoteste do cliente (0.8.2)**: Configurações > Aplicativo > **Autoteste do cliente** lê (sem escrever nada) cada coisa
+  que o app usa e mostra, recurso por recurso, se respondeu: fase da partida, conta, seleção de campeões, runas, histórico,
+  maestria, conjuntos de itens, fim de jogo e o Live Client do overlay. `--` é normal fora da fase certa (ex.: seleção de
+  campeões); `ERR` indica problema e o resumo final diz quantos. O resultado também entra no relatório de diagnóstico.
+- **`publicar.sh` roda os testes (0.8.2)**: além dos tipos, o script roda `pnpm test` antes de enviar; se algum teste falhar,
+  nada é enviado (é o mesmo teste que barra o instalador no GitHub).
 - **Overlay recuado e estendido (0.8.1)**: o painel tem duas versões. **Recuado** mostra só o próximo item a comprar (com o custo
   e o seu ouro) e, quando há ponto de habilidade, a letra a subir. **Estendido** mostra tudo: habilidades, a build em ordem
   e os itens situacionais. Troque em Configurações > Partida > "Tamanho do painel" ou, durante a partida, com
@@ -231,8 +255,8 @@ vem apontando para ela (`DEFAULT_META_URL` em `src/shared/config.ts`). Configura
    `RGAPI-...` de developer.riotgames.com (chave de desenvolvimento vale 24 h; para ficar permanente, peça uma chave
    pessoal no portal da Riot).
 2. **Actions > Atualizar dados de meta > Run workflow**. Em "Servidores" escolha um ou mais (padrão `br1,euw1,kr`) e,
-   em "Partidas por servidor", quantas coletar (padrão 6000) e, em "Partidas com timeline", quantas baixam a timeline
-   (builds, habilidades e itens; padrão 3000, 0 = todas). Cada **cluster** da Riot (americas, europe, asia, sea)
+   em "Partidas por servidor", o teto no patch (padrão 200 mil; o tempo do job acaba antes) e, em "Partidas com timeline", quantas baixam a timeline
+   (builds, habilidades e itens; padrão 100 mil, 0 = todas). O workflow também roda sozinho a cada 8 horas. Cada **cluster** da Riot (americas, europe, asia, sea)
    tem o próprio limite da chave, então servidores de clusters diferentes rodam **em paralelo** (cada um leva de 2 a
    3 horas) e servidores do mesmo cluster (ex.: `br1,na1`) rodam em sequência no mesmo job, que tem 350 min: com 7000 partidas e 5000 timelines por servidor **só cabe um**, então rode um servidor do mesmo cluster por execução ou reduza as partidas. No fim, as
    contagens de todos os servidores são **somadas num `meta.json` global** (só entram partidas do mesmo patch) e cada servidor

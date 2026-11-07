@@ -2,6 +2,7 @@
 // Transforma partidas do Match-v5 (e suas timelines) em estatísticas e builds.
 // Tudo aqui é função pura sobre um estado serializável, então dá para retomar uma coleta interrompida.
 import type { Role } from '../../src/shared/types'
+import { ROLES } from '../../src/shared/dataTypes'
 import type { BuildOption, BuildOptions, BuildVariant, ChampionBuild, ChampionProfile, MatchupBuild, RunePage, SkillKey, MetaDataset, RoleMeta, SituationalItem, WinStats } from '../../src/shared/dataTypes'
 
 // ------------------------------------------------------------ tipos crus da API (só o que usamos)
@@ -118,10 +119,21 @@ export interface RoleAgg extends WinStats {
   prof?: ProfAgg
   build: BuildAgg
 }
+/**
+ * Partida reservada para teste (não entra nas contagens do meta): campeões de cada time na ordem de ROLES
+ * (Top, Selva, Meio, Atirador, Suporte) e o time vencedor (0 = azul, 1 = vermelho).
+ */
+export interface HoldoutMatch {
+  w: 0 | 1
+  a: number[]
+  b: number[]
+}
 export interface AggState {
   schemaVersion: 1
   patch: string
   matches: number
+  /** partidas reservadas para medir a qualidade das recomendações (ausente em checkpoints antigos) */
+  holdout?: HoldoutMatch[]
   /** partidas com timeline baixada (ausente em checkpoints antigos) */
   timelineMatches?: number
   champions: Record<string, Partial<Record<Role, RoleAgg>>>
@@ -140,6 +152,33 @@ const STARTING_WINDOW_MS = 60_000
 const SKILL_LETTERS = 'QWER'
 const MIN_LEVELS_FOR_BUILD = 14
 const PREFIX_LEVELS = 9
+
+/** Fatia das partidas reservada para teste (1 em cada 10, escolhida pelo id, sempre a mesma). */
+export function isHoldout(matchId: string): boolean {
+  let h = 2166136261
+  for (let i = 0; i < matchId.length; i++) h = Math.imul(h ^ matchId.charCodeAt(i), 16777619) >>> 0
+  return h % 10 === 0
+}
+
+/** Guarda a partida reservada, se for válida e tiver as 5 rotas de cada time. Não toca nas contagens do meta. */
+export function addHoldout(state: AggState, match: RawMatch): boolean {
+  const participants = acceptMatch(match, state.patch)
+  if (!participants) return false
+  const teams: [number[], number[]] = [Array(5).fill(0), Array(5).fill(0)]
+  let win: 0 | 1 | null = null
+  for (const p of participants) {
+    const role = toRole(p.teamPosition)
+    const side = p.teamId === 100 ? 0 : p.teamId === 200 ? 1 : null
+    if (!role || side === null || !(p.championId > 0)) return false
+    const idx = ROLES.indexOf(role)
+    if (teams[side][idx] !== 0) return false
+    teams[side][idx] = p.championId
+    if (p.win) win = side
+  }
+  if (win === null || teams.some((t) => t.some((c) => c === 0))) return false
+  ;(state.holdout ??= []).push({ w: win, a: teams[0], b: teams[1] })
+  return true
+}
 
 export const newState = (patch: string): AggState => ({ schemaVersion: 1, patch, matches: 0, champions: {} })
 
@@ -762,6 +801,7 @@ export function mergeStates(states: AggState[]): { merged: AggState; used: numbe
     used.push(i)
     merged.matches += s.matches
     merged.timelineMatches = (merged.timelineMatches ?? 0) + (s.timelineMatches ?? 0)
+    if (s.holdout?.length) (merged.holdout ??= []).push(...s.holdout)
     for (const [champId, roles] of Object.entries(s.champions)) {
       for (const [role, agg] of Object.entries(roles) as [Role, RoleAgg][]) {
         const t = roleAgg(merged, Number(champId), role)

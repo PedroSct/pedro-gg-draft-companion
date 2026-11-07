@@ -123,6 +123,9 @@ function laneOpponents(
   return out
 }
 
+/** "Jogos fictícios" da sinergia (em torno do winrate do próprio campeão), como no desempenho contra inimigos. */
+const SYNERGY_PRIOR = 40
+
 /** Média ponderada de quanto cada aliado já escolhido ajuda (ou atrapalha) o campeão. */
 function synergyOf(
   dataset: MetaDataset,
@@ -141,7 +144,9 @@ function synergyOf(
     const stats = table[String(a.championId)]
     if (!stats || stats.games <= 0) continue
     const w = a.status === 'locked' ? 1 : 0.5
-    const delta = (shrink(stats) - baseline) * 100
+    // Suaviza em direção ao winrate do próprio campeão (e não a 50%): senão um campeão forte com poucas partidas ao
+    // lado de um aliado pareceria "piorar" com ele só porque 50% < seu winrate normal.
+    const delta = ((stats.wins + SYNERGY_PRIOR * baseline) / (stats.games + SYNERGY_PRIOR) - baseline) * 100
     weighted += w * delta
     weights += w
     list.push({ withChampionId: a.championId, delta, games: stats.games })
@@ -387,6 +392,7 @@ export function recommend(input: RecommendInput): Recommendation {
       comfort: entry.comfort,
       confidence,
       baselineWinrate,
+      ...(base && base.games > 0 ? { baselineGames: base.games } : {}),
       matchupWinrate,
       matchupCoverage,
       matchups,

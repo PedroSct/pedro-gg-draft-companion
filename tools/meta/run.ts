@@ -7,8 +7,10 @@ import { writeJsonAtomic, readJson } from '../../src/main/store/fsJson'
 import { validateDataset } from '../../src/main/data/meta'
 import type { MetaDataset } from '../../src/shared/dataTypes'
 import {
+  addHoldout,
   addMatch,
   finalize,
+  isHoldout,
   itemRulesFrom,
   newState,
   patchOf,
@@ -43,6 +45,10 @@ export interface BuildMetaOptions {
   /** false = não baixa timelines (sem builds, só winrates e confrontos; metade das requisições) */
   timeline: boolean
   seed: number
+  /** false = usa todas as partidas no meta (padrão: reserva 1 em cada 10 para medir a recomendação) */
+  holdout?: boolean
+  /** voltas completas pela lista de jogadores (padrão 50); 1 = só uma passada */
+  maxPasses?: number
   /** substitui os hosts da Riot (testes) */
   riotBase?: string
   ddragonBase?: string
@@ -212,62 +218,80 @@ export async function buildMeta(o: BuildMetaOptions): Promise<MetaDataset> {
   let sinceSave = 0
   let aborted = false
   try {
-    while (run.agg.matches < o.maxMatches && run.cursor < run.puuids.length) {
-      if (o.signal?.aborted) {
-        aborted = true
-        break
-      }
-      const puuid = run.puuids[run.cursor]
-      // Logo depois de um patch quase tudo no período é do patch antigo: depois da primeira partida velha achada,
-      // só se pede o que veio depois dela (as ids vêm da mais nova para a mais velha).
-      const startTime = Math.max(daysStart, run.floorTs ?? 0)
-      const ids =
-        (await client.get<string[]>('regional', `/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids`, {
-          queue: 420,
-          type: 'ranked',
-          start: 0,
-          count: o.matchesPerPlayer,
-          startTime
-        })) ?? []
-
-      let playerDone = true
-      for (const id of ids) {
-        if (run.agg.matches >= o.maxMatches || o.signal?.aborted) {
-          playerDone = false // sobraram partidas deste jogador: ele volta na retomada
+    // Ao chegar ao fim da lista de jogadores com tempo e vagas sobrando, o coletor dá outra volta: as ids dos
+    // jogadores mudam com o tempo (partidas novas) e as já contadas são ignoradas. Se a volta não trouxe nada, para.
+    let passStart = run.agg.matches
+    let pass = 1
+    for (;;) {
+      while (run.agg.matches < o.maxMatches && run.cursor < run.puuids.length) {
+        if (o.signal?.aborted) {
+          aborted = true
           break
         }
-        if (processed.has(id)) continue
-        const match = await client.get<RawMatch>('regional', `/lol/match/v5/matches/${encodeURIComponent(id)}`)
-        processed.add(id) // mesmo as ignoradas: não baixar de novo
-        if (!match) continue
-        const ver = match.info?.gameVersion
-        if (typeof ver === 'string' && patchOlder(ver, patch)) {
-          // Partida do patch anterior: as próximas deste jogador são ainda mais velhas, e o patch começou depois desta.
-          if (typeof match.info?.gameCreation === 'number') {
-            const floor = Math.floor(match.info.gameCreation / 1000) + 1
-            if (floor > (run.floorTs ?? 0)) {
-              if (run.floorTs === undefined) log(`Partidas do patch anterior: pedindo só o que veio depois de ${new Date(floor * 1000).toISOString()}`)
-              run.floorTs = floor
-            }
+        const puuid = run.puuids[run.cursor]
+        // Logo depois de um patch quase tudo no período é do patch antigo: depois da primeira partida velha achada,
+        // só se pede o que veio depois dela (as ids vêm da mais nova para a mais velha).
+        const startTime = Math.max(daysStart, run.floorTs ?? 0)
+        const ids =
+          (await client.get<string[]>('regional', `/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids`, {
+            queue: 420,
+            type: 'ranked',
+            start: 0,
+            count: o.matchesPerPlayer,
+            startTime
+          })) ?? []
+
+        let playerDone = true
+        for (const id of ids) {
+          if (run.agg.matches >= o.maxMatches || o.signal?.aborted) {
+            playerDone = false // sobraram partidas deste jogador: ele volta na retomada
+            break
           }
-          break
+          if (processed.has(id)) continue
+          const match = await client.get<RawMatch>('regional', `/lol/match/v5/matches/${encodeURIComponent(id)}`)
+          processed.add(id) // mesmo as ignoradas: não baixar de novo
+          if (!match) continue
+          const ver = match.info?.gameVersion
+          if (typeof ver === 'string' && patchOlder(ver, patch)) {
+            // Partida do patch anterior: as próximas deste jogador são ainda mais velhas, e o patch começou depois desta.
+            if (typeof match.info?.gameCreation === 'number') {
+              const floor = Math.floor(match.info.gameCreation / 1000) + 1
+              if (floor > (run.floorTs ?? 0)) {
+                if (run.floorTs === undefined) log(`Partidas do patch anterior: pedindo só o que veio depois de ${new Date(floor * 1000).toISOString()}`)
+                run.floorTs = floor
+              }
+            }
+            break
+          }
+          if (o.holdout !== false && isHoldout(id)) {
+          // Reservada só para teste da recomendação: não entra nas contagens nem baixa a timeline.
+          if (addHoldout(run.agg, match)) sinceSave++
+          continue
         }
         let timeline: RawTimeline | null = null
-        // Só baixa a timeline de partidas que serão contadas (poupa uma requisição das rejeitadas)
-        const counts = (match.info?.queueId === 420) && match.info?.gameEndedInEarlySurrender !== true &&
-          typeof match.info?.gameVersion === 'string' && patchOf(match.info.gameVersion) === patch
-        const withinBudget = !o.timelineMatches || (run.agg.timelineMatches ?? 0) < o.timelineMatches
-        if (o.timeline && counts && withinBudget) timeline = await client.get<RawTimeline>('regional', `/lol/match/v5/matches/${encodeURIComponent(id)}/timeline`)
-        if (addMatch(run.agg, match, timeline, rules)) {
-          sinceSave++
-          if (run.agg.matches % CHECKPOINT_EVERY === 0) log(`${run.agg.matches}/${o.maxMatches} partidas`)
+          // Só baixa a timeline de partidas que serão contadas (poupa uma requisição das rejeitadas)
+          const counts = (match.info?.queueId === 420) && match.info?.gameEndedInEarlySurrender !== true &&
+            typeof match.info?.gameVersion === 'string' && patchOf(match.info.gameVersion) === patch
+          const withinBudget = !o.timelineMatches || (run.agg.timelineMatches ?? 0) < o.timelineMatches
+          if (o.timeline && counts && withinBudget) timeline = await client.get<RawTimeline>('regional', `/lol/match/v5/matches/${encodeURIComponent(id)}/timeline`)
+          if (addMatch(run.agg, match, timeline, rules)) {
+            sinceSave++
+            if (run.agg.matches % CHECKPOINT_EVERY === 0) log(`${run.agg.matches}/${o.maxMatches} partidas`)
+          }
+          if (sinceSave >= CHECKPOINT_EVERY) {
+            sinceSave = 0
+            await save()
+          }
         }
-        if (sinceSave >= CHECKPOINT_EVERY) {
-          sinceSave = 0
-          await save()
-        }
+        if (playerDone) run.cursor++
       }
-      if (playerDone) run.cursor++
+      if (aborted || o.signal?.aborted || run.agg.matches >= o.maxMatches || run.cursor < run.puuids.length) break
+      if (run.agg.matches === passStart || run.puuids.length === 0 || pass >= (o.maxPasses ?? 50)) break
+    pass++
+      log(`Lista de jogadores lida até o fim (${run.agg.matches} partidas): nova volta`)
+      run.cursor = 0
+      passStart = run.agg.matches
+      await save()
     }
   } catch (err) {
     await save() // preserva o progresso antes de propagar (chave expirada, rede...)

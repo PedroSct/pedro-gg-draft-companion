@@ -388,7 +388,7 @@ describe('buildMeta (Riot simulada)', () => {
     apiKey: KEY, platform: 'br1', tiers: ['challenger', 'grandmaster', 'master'], patch: 'auto',
     maxMatches: 100, matchesPerPlayer: 10, days: 14, rps: 1000,
     workDir: join(dir, 'work'), out: join(dir, 'meta.json'),
-    minGames: 1, minMatchupGames: 1, minBuildSamples: 1, timeline: true, seed: 1,
+    minGames: 1, minMatchupGames: 1, minBuildSamples: 1, timeline: true, seed: 1, holdout: false,
     riotBase: mock.base, ddragonBase: mock.base,
     sleep: async (ms) => void waits.push(ms),
     ...over
@@ -429,9 +429,32 @@ describe('buildMeta (Riot simulada)', () => {
     expect(mock.hits.filter((p) => p.endsWith('/timeline'))).toHaveLength(5)
   })
 
+  it('reserva 1 em cada 10 partidas para teste: ficam fora das contagens e sem timeline', async () => {
+    const { isHoldout } = await import('../tools/meta/aggregate')
+    const held = ['BR1_1', 'BR1_2', 'BR1_3', 'BR1_4', 'BR1_5'].filter(isHoldout)
+    const ds = await buildMeta(options({ holdout: true, workDir: join(dir, 'work-h'), out: join(dir, 'h.json') }))
+    const state = JSON.parse(readFileSync(join(dir, 'work-h', 'state-v3-br1-16.20.json'), 'utf8')) as { agg: { matches: number; holdout?: unknown[] } }
+    // as partidas reservadas não entram em `matches`; as outras sim
+    expect(state.agg.matches + (state.agg.holdout?.length ?? 0)).toBeLessThanOrEqual(5)
+    expect(ds.source).toMatch(/partidas/)
+    for (const id of held) expect(mock.hits).not.toContain(`/lol/match/v5/matches/${id}/timeline`)
+  })
+
+  it('dá outra volta pela lista de jogadores quando sobra espaço e para quando a volta não traz nada', async () => {
+    const logs: string[] = []
+    await buildMeta(options({ log: (m) => logs.push(m) }))
+    expect(logs.filter((l) => /nova volta/.test(l))).toHaveLength(1) // a 2ª volta não achou partida contável
+    const lists = mock.hits.filter((p) => /\/ids$/.test(p)).length
+    expect(lists % 2).toBe(0) // cada jogador listado duas vezes
+    mock.hits.length = 0
+    await buildMeta(options({ maxPasses: 1, workDir: join(dir, 'work2'), out: join(dir, 'm2.json') }))
+    expect(logs.length).toBeGreaterThan(0)
+    expect(mock.hits.filter((p) => /\/ids$/.test(p)).length).toBe(lists / 2)
+  })
+
   it('ao achar partida do patch anterior, passa a pedir só o que veio depois dela', async () => {
     const floor = 4_000_000_000 + 1
-    await buildMeta(options({ seed: 3 }))
+    await buildMeta(options({ seed: 3, maxPasses: 1 })) // a Riot simulada ignora o startTime, então uma volta só
     const state = JSON.parse(readFileSync(join(dir, 'work', 'state-v3-br1-16.20.json'), 'utf8')) as { floorTs?: number }
     expect(state.floorTs).toBe(floor)
     // a partir da partida velha (BR1_6), toda lista de ids pede só o que veio depois

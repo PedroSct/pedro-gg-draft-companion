@@ -578,7 +578,7 @@ export function SettingsDialog() {
               </Card>
               <Card title="Diagnóstico">
                 <p className="text-sm text-mist">
-                  Se algo não funcionar (o aceite automático, por exemplo), copie o relatório e mande para o Pedro. Ele não tem senha, nome de conta nem dados pessoais.
+                  Se algo não funcionar (o aceite automático, por exemplo), copie o relatório e mande para o Pedro. Ele não tem senha, nome de conta nem dados pessoais. O autoteste só lê do cliente e mostra, recurso por recurso, o que responde (itens com "--" só existem em certas fases, como dentro da seleção de campeões ou da partida).
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button type="button" className={btn} onClick={() => void copyDiagnostics()}>
@@ -588,7 +588,7 @@ export function SettingsDialog() {
                     Salvar em arquivo
                   </button>
                   <button type="button" className={btn} onClick={() => void probeClient()}>
-                    Testar conexão com o cliente
+                    Autoteste do cliente
                   </button>
                 </div>
                 {probe && (

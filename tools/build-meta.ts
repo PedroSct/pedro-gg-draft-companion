@@ -27,6 +27,7 @@ Requer a variável de ambiente RIOT_API_KEY (developer.riotgames.com).
   --timeline-matches <n>             timelines (builds) só nas n primeiras partidas; as demais contam só winrates e confrontos (padrão: todas)
   --min-build-samples <n>            vitórias mínimas para publicar uma build (padrão: 15)
   --max-minutes <n>                  para sozinho depois de n minutos e gera o arquivo com o que já coletou (padrão: 0 = sem limite)
+  --no-holdout                       usa todas as partidas no meta (padrão: 1 em cada 10 fica reservada para o pnpm meta:backtest)
   --out <arquivo>                    saída (padrão: meta.json)
   --work <pasta>                     checkpoint (padrão: meta-work)
   --finalize-only                    só refaz o meta.json a partir do checkpoint
@@ -47,6 +48,7 @@ const { values: v } = parseArgs({
     days: { type: 'string', default: '14' },
     rps: { type: 'string', default: '0.8' },
     'no-timeline': { type: 'boolean', default: false },
+    'no-holdout': { type: 'boolean', default: false },
     'min-games': { type: 'string', default: '30' },
     'min-matchup-games': { type: 'string', default: '3' },
     'min-pair-games': { type: 'string', default: '6' },
@@ -109,6 +111,7 @@ async function main(): Promise<void> {
     timelineMatches: num('timeline-matches', v['timeline-matches'], 0),
     minBuildSamples: num('min-build-samples', v['min-build-samples'], 1),
     timeline: !v['no-timeline'],
+    holdout: !v['no-holdout'],
     seed: num('seed', v.seed, 1),
     finalizeOnly: Boolean(v['finalize-only']),
     signal: controller.signal,
