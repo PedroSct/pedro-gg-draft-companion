@@ -134,6 +134,17 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Banir e escolher pelo app (0.9.0)**: na sua vez, as sugestões de banimento e o melhor pick ganham botões. **Banir** pede
+  confirmação ("Sim, banir") e então bane no cliente. Para escolher, **Selecionar no cliente** só marca o campeão (dá para
+  trocar) e **Travar** pede confirmação antes de travar, pois não desfaz. Nada é automático: o app só age quando você clica,
+  só na sua vez, só no campeão mostrado, e o main confere de novo no cliente se a vez é sua e se o campeão está liberado.
+  Os botões somem fora da sua vez.
+- **Bans mais limpos (0.9.0)**: a lista mostra as 3 melhores sugestões, uma linha cada (campeão e motivo principal); os
+  outros motivos abrem em **+N** e o resto da lista em **Ver mais**.
+- **Plano de jogo (0.9.0)**: ao travar o campeão, a tela de Draft mostra a build dividida em **Início** (níveis 1 a 5:
+  itens iniciais, botas e habilidades), **Meio** (6 a 11: primeiros itens principais e ultimate) e **Fim** (12 a 18: itens
+  restantes, situacionais e o foco de defesa contra o time inimigo). Durante a partida, a aba Draft continua mostrando esse
+  plano (em vez de "Conectado"), para quem não usa o overlay e dá alt+tab. Só usa dados de meta; não joga por você.
 - **Atalhos do overlay configuráveis (0.8.3)**: Ctrl+Shift+E e Ctrl+Shift+O são tomados pelo painel da AMD (Radeon), então os
   padrões passaram a **Ctrl+Shift+F9** (recuado ⇄ estendido) e **Ctrl+Shift+F10** (modo mover). Em Configurações > Partida,
   clique no atalho e aperte a combinação que preferir (precisa de Ctrl, Alt ou Shift e uma tecla; Esc cancela; "Padrão" volta).
@@ -311,6 +322,7 @@ downloads. Quando houver um certificado, basta configurar `CSC_LINK` e `CSC_KEY_
 electron-builder passa a assinar sozinho no workflow de build.
 
 ## Limitações conhecidas
+- **Escolher e banir pelo app (0.9.0)** usa os endpoints `/lol-champ-select/v1/session/actions/{id}` (e `/complete`) do cliente, que a Riot não suporta oficialmente e que foram testados só contra um cliente simulado. Se um botão não funcionar, rode o autoteste do cliente em Configurações e envie o resultado.
 - O Pós-jogo e o aceite automático usam endpoints do cliente do LoL (LCU) que a Riot **não** suporta oficialmente para
   apps de terceiros e podem mudar num patch. Os caminhos usados são `/lol-matchmaking/v1/ready-check/accept`,
   `/lol-end-of-game/v1/eog-stats-block`, `/lol-match-history/v1/games/{id}`, `/lol-match-history/v1/game-timelines/{id}`

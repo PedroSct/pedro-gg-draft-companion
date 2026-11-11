@@ -23,6 +23,9 @@ const LOADOUT_WRITE_PATHS: RegExp[] = [
   /^\/lol-perks\/v1\/pages\/\d{1,12}$/,
   /^\/lol-perks\/v1\/currentpage$/,
   /^\/lol-champ-select\/v1\/session\/my-selection$/,
+  // escolher/banir pelo app: só por clique, na vez do jogador, em ações com id numérico
+  /^\/lol-champ-select\/v1\/session\/actions\/\d{1,4}$/,
+  /^\/lol-champ-select\/v1\/session\/actions\/\d{1,4}\/complete$/,
   /^\/lol-item-sets\/v1\/item-sets\/\d{1,20}\/sets$/
 ]
 const RETRY_MS = 3000
@@ -175,8 +178,8 @@ export class LcuConnector extends EventEmitter {
   }
 
   /**
-   * Escrita restrita ao "carregar build" (runas, feitiços e itens da partida). Só roda quando o usuário
-   * clica em Importar, e só nestes caminhos: qualquer outro é recusado aqui, antes de sair do app.
+   * Escrita restrita ao "carregar build" (runas, feitiços e itens da partida) e a escolher/banir na seleção.
+   * Só roda quando o usuário clica, e só nestes caminhos: qualquer outro é recusado aqui, antes de sair do app.
    */
   write(method: 'POST' | 'PUT' | 'PATCH', path: string, body: unknown): Promise<{ status: number; data: unknown }> {
     if (!LOADOUT_WRITE_PATHS.some((re) => re.test(path))) return Promise.reject(new Error('Escrita não permitida'))

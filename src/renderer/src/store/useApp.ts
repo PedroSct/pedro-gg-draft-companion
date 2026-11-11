@@ -48,6 +48,10 @@ interface AppState {
   updateDismissed: string | null
   /** quando o app aceitou a última partida sozinho (para o aviso rápido no topo) */
   autoAcceptedAt: number | null
+  /** fase da partida no cliente ("ChampSelect", "InProgress"...); null até saber */
+  gameflow: string | null
+  /** o campeão que você travou na última seleção (guia o Plano de jogo durante a partida) */
+  lastPick: LastPick | null
 
   /** tela principal: seleção de campeões ou análise das partidas */
   view: 'draft' | 'postgame' | 'meta' | 'pools'
@@ -97,6 +101,34 @@ interface AppState {
 
 const CATALOG_ERROR =
   'Não foi possível carregar os ícones e dados do jogo. Conecte à internet uma vez para o app guardar uma cópia.'
+
+export interface LastPick {
+  championId: number
+  role: Role | null
+}
+
+/** Fases em que a partida está rolando (depois do draft). */
+export const IN_GAME_PHASES = ['GameStart', 'InProgress', 'Reconnect']
+const LAST_PICK_KEY = 'pgg.lastPick'
+
+function loadLastPick(): LastPick | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAST_PICK_KEY) ?? 'null') as Partial<LastPick> | null
+    if (!raw || typeof raw.championId !== 'number' || raw.championId < 1) return null
+    return { championId: raw.championId, role: typeof raw.role === 'string' ? (raw.role as Role) : null }
+  } catch {
+    return null
+  }
+}
+
+function saveLastPick(p: LastPick | null): void {
+  try {
+    if (p) localStorage.setItem(LAST_PICK_KEY, JSON.stringify(p))
+    else localStorage.removeItem(LAST_PICK_KEY)
+  } catch {
+    /* sem armazenamento: o plano só não sobrevive a reabrir o app */
+  }
+}
 
 const localChampion = (d: DraftState | null): number =>
   d?.allies.find((p) => p.cellId === d.localPlayerCellId)?.championId ?? 0
@@ -157,6 +189,8 @@ export const useApp = create<AppState>()((set, get) => ({
   update: null,
   updateDismissed: null,
   autoAcceptedAt: null,
+  gameflow: null,
+  lastPick: null,
   view: 'draft',
   postList: [],
   postSelectedId: null,
@@ -223,7 +257,10 @@ export const useApp = create<AppState>()((set, get) => ({
       api.getMetaInfo(),
       api.getIdentity()
     ])
-    set({ lcuStatus, draft, profiles, settings, metaInfo, identity, ready: true, tourOpen: settings?.tourDone === false })
+    const gameflow = await api.getGameflow().catch(() => null)
+    // Reabriu o app com a partida rolando: recupera o campeão da última seleção.
+    const lastPick = gameflow && IN_GAME_PHASES.includes(gameflow) ? loadLastPick() : null
+    set({ lcuStatus, draft, profiles, settings, metaInfo, identity, gameflow, lastPick, ready: true, tourOpen: settings?.tourDone === false })
     void get().loadCatalog()
     void get().refreshRecommendation()
 
@@ -236,7 +273,19 @@ export const useApp = create<AppState>()((set, get) => ({
       api.onDraftUpdate((next) => {
         if (!get().draft && !(get().view === 'pools' && get().poolDirty)) set({ view: 'draft' }) // começou uma seleção: volta para ela (sem perder um perfil em edição)
         const pickChanged = localChampion(get().draft) !== localChampion(next)
-        set({ draft: next, ...(pickChanged ? { previewChampionId: null } : {}) })
+        const me = next.allies.find((p) => p.cellId === next.localPlayerCellId)
+        let lastPick = get().lastPick
+        if (me && me.status === 'locked' && me.championId > 0) {
+          const role = next.localRole ?? get().roleOverride ?? get().recommendation?.role ?? lastPick?.role ?? null
+          if (!lastPick || lastPick.championId !== me.championId || lastPick.role !== role) {
+            lastPick = { championId: me.championId, role }
+            saveLastPick(lastPick)
+          }
+        } else if (lastPick && !get().draft) {
+          lastPick = null // seleção nova: o plano da partida anterior sai
+          saveLastPick(null)
+        }
+        set({ draft: next, lastPick, ...(pickChanged ? { previewChampionId: null } : {}) })
         scheduleRefresh(() => void get().refreshRecommendation())
       }),
       api.onDraftEnded(() => {
@@ -257,6 +306,7 @@ export const useApp = create<AppState>()((set, get) => ({
         void get().refreshRecommendation()
       }),
       api.onUpdateState((update) => set({ update })),
+      api.onGameflow((gameflow) => set({ gameflow })),
       api.onAutoAccepted(() => set({ autoAcceptedAt: Date.now() })),
       // Terminou uma partida: mostra a análise assim que ficar pronta.
       api.onPostGameReady(() => {

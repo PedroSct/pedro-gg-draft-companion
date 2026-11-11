@@ -53,8 +53,19 @@ export interface AccountStats {
   losses: number | null
 }
 
+/** Ação (escolher ou banir) do jogador local que está valendo agora na seleção. */
+export interface DraftTurn {
+  /** id da ação no cliente (o main confere de novo antes de agir; este número é só informativo) */
+  id: number
+  type: 'pick' | 'ban'
+  /** campeão já apontado (hover) nesta ação; 0 = nenhum */
+  championId: number
+}
+
 export interface DraftState {
   phase: DraftPhase
+  /** a vez do jogador local de escolher ou banir; ausente ou null fora da vez */
+  turn?: DraftTurn | null
   localPlayerCellId: number
   localRole: Role | null
   allies: DraftPlayer[]

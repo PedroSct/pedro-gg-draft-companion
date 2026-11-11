@@ -20,6 +20,7 @@ import { AutoAccept } from '../autoAccept'
 import { patchNotice, snapshotOf, type MetaSnapshot } from '../data/patchChanges'
 import { OverlayController } from '../overlay/controller'
 import { fetchLive } from '../overlay/live'
+import { actInDraft, parseActRequest } from '../lcu/draftAct'
 import { suggestMetaCounters } from '../data/counters'
 import { Diagnostics, formatProbe, probeClient } from '../diagnostics'
 import { applyLoadout } from '../lcu/loadout'
@@ -128,6 +129,12 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     if (readyPoll) clearInterval(readyPoll)
     readyPoll = null
   }
+  let gameflowPhase: string | null = null
+  lcu.on('gameflow', (phase) => {
+    gameflowPhase = phase
+    send(IPC.GAMEFLOW_PHASE, phase)
+  })
+  handle(IPC.GAMEFLOW_GET, () => gameflowPhase)
   lcu.on('gameflow', (phase) => {
     if (phase !== 'ReadyCheck') {
       autoAccept.reset()
@@ -314,6 +321,19 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     return meta.getBuild(req.championId, role, laneEnemy(role))
   })
   // ---- Sugestões de banimento (só enquanto os bans ainda estão abertos)
+  // ---- Escolher/banir pelo app: uma ação por clique, na vez da pessoa; o main confere tudo no cliente
+  handle(IPC.DRAFT_ACT, async (raw) => {
+    const req = parseActRequest(raw)
+    if (!req) return { ok: false, message: 'Pedido inválido.' }
+    if (lcu.getStatus() !== 'connected') return { ok: false, message: 'O cliente do LoL não está conectado.' }
+    try {
+      const res = await actInDraft({ get: (p) => lcu.get(p), write: (m, p, b) => lcu.write(m, p, b) }, req)
+      diag.log('escolha', `${req.type} ${req.kind} ${req.championId}: ${res.ok ? 'ok' : res.message}`)
+      return res
+    } catch {
+      return { ok: false, message: 'Não consegui falar com o cliente do LoL.' }
+    }
+  })
   handle(IPC.DRAFT_BANS, (raw) => {
     const req = isRecord(raw) ? raw : {}
     const draft = annotatedDraft()

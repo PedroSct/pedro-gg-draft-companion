@@ -132,6 +132,14 @@ export interface LolApi {
   getMetaTiers(role: Role): Promise<MetaTierRow[]>
   /** Sugestões de banimento para o draft atual ([] fora da fase de bans ou sem dados reais). */
   getBanSuggestions(req: { profileId?: string }): Promise<BanSuggestion[]>
+  /**
+   * Escolher ou banir no cliente, só quando a pessoa clica e só na vez dela. `hover` marca o campeão (dá para trocar);
+   * `lock` confirma (não dá para desfazer). O main confere a vez e a disponibilidade no cliente antes de escrever.
+   */
+  draftAct(req: { kind: 'hover' | 'lock'; type: 'pick' | 'ban'; championId: number }): Promise<{ ok: boolean; message: string }>
+  /** Fase atual da partida no cliente ("ChampSelect", "InProgress"...); null se ainda não se sabe. */
+  getGameflow(): Promise<string | null>
+  onGameflow(cb: (phase: string) => void): Unsubscribe
   /** Melhores picks do meta contra o inimigo da sua rota, fora da sua Pool. */
   getMetaCounters(req: { profileId?: string }): Promise<MetaCounter[]>
   getMetaDetail(req: { championId: number; role: Role }): Promise<MetaChampionDetail | null>

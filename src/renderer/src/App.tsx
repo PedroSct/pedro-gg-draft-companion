@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import { useApp } from './store/useApp'
+import { IN_GAME_PHASES, useApp } from './store/useApp'
 import { Header } from './components/Header'
 import { TeamColumn } from './components/TeamColumn'
 import { BansBar } from './components/BansBar'
@@ -9,6 +9,7 @@ import { PatchNotice } from './components/PatchNotice'
 import { PickSuggestion } from './components/PickSuggestion'
 import { BuildPanel } from './components/BuildPanel'
 import { IdleScreen } from './components/IdleScreen'
+import { GamePlan } from './components/GamePlan'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Splash } from './components/Splash'
 import { btn } from './lib/ui'
@@ -96,11 +97,27 @@ function Banners() {
   )
 }
 
+/** Sem seleção aberta: durante a partida mostra o Plano de jogo (para quem dá alt+tab); senão, a tela de espera. */
+function IdleOrGame() {
+  const gameflow = useApp((s) => s.gameflow)
+  const lastPick = useApp((s) => s.lastPick)
+  if (lastPick && gameflow && IN_GAME_PHASES.includes(gameflow)) {
+    return (
+      <div className="flex h-full flex-col gap-3 overflow-y-auto">
+        <p className="text-sm text-mist">Partida em andamento. Este é o seu plano; o app não joga por você.</p>
+        <GamePlan championId={lastPick.championId} role={lastPick.role} compact />
+      </div>
+    )
+  }
+  return <IdleScreen />
+}
+
 function DraftScreen() {
   const draft = useApp((s) => s.draft)
   const centerRef = useRef<HTMLDivElement>(null)
   const me = draft?.allies.find((p) => p.cellId === draft.localPlayerCellId)
   const lockedId = me && me.status === 'locked' ? me.championId : 0
+  const lastPick = useApp((s) => s.lastPick)
   // Ao travar o pick, volta ao topo: o campeão e a build ficam à vista, não escondidos pela rolagem.
   useEffect(() => {
     if (lockedId > 0 && centerRef.current) centerRef.current.scrollTop = 0
@@ -115,6 +132,7 @@ function DraftScreen() {
         <BanSuggestions />
         <MetaCounters />
         <PickSuggestion />
+        {lockedId > 0 && <GamePlan championId={lockedId} role={lastPick?.championId === lockedId ? lastPick.role : null} />}
         <BuildPanel />
       </div>
       <TeamColumn side="enemy" players={draft.enemies} localCellId={-1} />
@@ -169,7 +187,7 @@ export default function App() {
         <Banners />
         <PatchNotice />
         <main className="min-h-0 flex-1 p-5 max-[900px]:p-3">
-          <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : view === 'meta' ? <MetaScreen /> : view === 'pools' ? <PoolScreen /> : draft ? <DraftScreen /> : <IdleScreen />}</Suspense>
+          <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : view === 'meta' ? <MetaScreen /> : view === 'pools' ? <PoolScreen /> : draft ? <DraftScreen /> : <IdleOrGame />}</Suspense>
         </main>
         <Suspense fallback={null}>
           {settingsOpen && <SettingsDialog />}

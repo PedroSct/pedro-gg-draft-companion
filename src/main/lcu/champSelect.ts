@@ -19,6 +19,8 @@ interface RawPlayer {
 }
 
 interface RawAction {
+  id?: number
+  isInProgress?: boolean
   actorCellId: number
   championId: number
   completed: boolean
@@ -72,6 +74,17 @@ function toPlayer(p: RawPlayer, picks: RawAction[]): DraftPlayer {
   }
 }
 
+/** A ação (escolher ou banir) do jogador local que está valendo agora, ou null. Também usada pelo main antes de agir. */
+export function findTurn(data: unknown): { id: number; type: 'pick' | 'ban'; championId: number } | null {
+  if (!data || typeof data !== 'object') return null
+  const s = data as RawSession
+  const actions = (s.actions ?? []).flat()
+  const mine = actions.find(
+    (a) => a.actorCellId === s.localPlayerCellId && a.isInProgress === true && a.completed !== true && (a.type === 'pick' || a.type === 'ban') && typeof a.id === 'number'
+  )
+  return mine ? { id: mine.id as number, type: mine.type as 'pick' | 'ban', championId: isPositive(mine.championId) ? mine.championId : 0 } : null
+}
+
 export function normalizeSession(data: unknown): DraftState | null {
   if (!data || typeof data !== 'object') return null
   const s = data as RawSession
@@ -98,6 +111,7 @@ export function normalizeSession(data: unknown): DraftState | null {
 
   return {
     phase,
+    turn: findTurn(data),
     localPlayerCellId,
     localRole: allies.find((p) => p.cellId === localPlayerCellId)?.role ?? null,
     allies,

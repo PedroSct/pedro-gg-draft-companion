@@ -74,6 +74,8 @@ const draftWithZed = (): DraftState => ({
 interface Fake {
   api: LolApi
   pushUpdate(u: UpdateState): void
+  draftAct: ReturnType<typeof vi.fn>
+  pushGameflow(p: string): void
   setSituation(s: BuildSituation | null): void
   installUpdate: ReturnType<typeof vi.fn>
   decodeShare: ReturnType<typeof vi.fn>
@@ -139,6 +141,9 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
   const installUpdate = vi.fn(async () => true)
   const decodeShare = vi.fn(async (_text: string): Promise<DecodeResult> => ({ ok: false, message: 'Não reconheci isso como uma Pool do Pedro.gg.' }))
   const copyText = vi.fn(async (_text: string) => {})
+  const draftAct = vi.fn(async (_req: { kind: 'hover' | 'lock'; type: 'pick' | 'ban'; championId: number }) => ({ ok: true, message: 'Feito.' }))
+  const gameflowCbs = new Set<(p: string) => void>()
+  let gameflow: string | null = null
 
   const api: LolApi = {
     onMetaUpdated: () => () => {},
@@ -217,6 +222,9 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     getMetaDetail: async ({ championId, role }) => championDetail(dataset, championId, role),
     getBuildSituation: async () => situation,
     getBanSuggestions: async () => [],
+    draftAct,
+    getGameflow: async () => gameflow,
+    onGameflow: (cb) => (gameflowCbs.add(cb), () => gameflowCbs.delete(cb)),
     getBuild: async ({ championId, role }) => dataset.champions[String(championId)]?.roles[role]?.build ?? null,
     importMeta: async () => ({ ok: false, reason: 'canceled' }),
     updateMeta: async () => ({ ok: false, reason: 'no-url' })
@@ -229,6 +237,11 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     installUpdate,
     decodeShare,
     copyText,
+    draftAct,
+    pushGameflow: (p: string) => {
+      gameflow = p
+      gameflowCbs.forEach((cb) => cb(p))
+    },
     pushUpdate: (u) => act(() => void setUpdate(u)),
     setSituation: (s) => {
       situation = s
@@ -253,6 +266,8 @@ beforeEach(() => {
     ready: false,
     lcuStatus: 'searching',
     draft: null,
+    gameflow: null,
+    lastPick: null,
     profiles: [],
     settings: null,
     catalog: null,
@@ -525,6 +540,98 @@ describe('Companion App', () => {
     expect(within(panel).getByText(/tier S/)).toBeInTheDocument()
     await user.click(within(panel).getByRole('button', { name: /Sugestões de banimento/ }))
     expect(within(panel).queryByText(/Atrapalha Ahri/)).not.toBeInTheDocument()
+  })
+
+  it('enxuga os bans: mostra 3 sugestões de uma linha e abre o resto sob demanda', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    ;(fake.api as { getBanSuggestions: LolApi['getBanSuggestions'] }).getBanSuggestions = async () =>
+      [238, 86, 157, 64, 103].map((id) => ({
+        championId: id,
+        score: 1,
+        reasons: [
+          { kind: 'meta' as const, role: 'TOP' as const, tier: 'S' as const, winrate: 0.54, games: 900 },
+          { kind: 'counter' as const, championId: 103, nickname: 'Pedro', role: 'MIDDLE' as const, winrate: 0.6, games: 30 }
+        ]
+      }))
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+    const panel = await screen.findByRole('region', { name: 'Sugestões de banimento' })
+    expect(within(panel).getAllByText(/Meta de Top: tier S/)).toHaveLength(3)
+    expect(within(panel).queryByText(/vence 60,0%/)).not.toBeInTheDocument()
+    await user.click(within(panel).getByRole('button', { name: 'Ver mais 2' }))
+    expect(within(panel).getAllByText(/Meta de Top: tier S/)).toHaveLength(5)
+    await user.click(within(panel).getAllByRole('button', { name: /^Detalhes de/ })[0])
+    expect(within(panel).getByText(/vence 60,0%/)).toBeInTheDocument()
+  })
+
+  it('só oferece banir e escolher na vez da pessoa', async () => {
+    const fake = installApi()
+    ;(fake.api as { getBanSuggestions: LolApi['getBanSuggestions'] }).getBanSuggestions = async () => [
+      { championId: 238, score: 3, reasons: [{ kind: 'meta', role: 'TOP', tier: 'S', winrate: 0.54, games: 900 }] }
+    ]
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+    await screen.findByRole('region', { name: 'Sugestões de banimento' })
+    expect(screen.queryByRole('button', { name: /^Banir/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Travar/ })).not.toBeInTheDocument()
+  })
+
+  it('bane pelo app só depois de confirmar', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    ;(fake.api as { getBanSuggestions: LolApi['getBanSuggestions'] }).getBanSuggestions = async () => [
+      { championId: 238, score: 3, reasons: [{ kind: 'meta', role: 'TOP', tier: 'S', winrate: 0.54, games: 900 }] }
+    ]
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft({ ...draftWithZed(), turn: { id: 3, type: 'ban', championId: 0 } }))
+    await user.click(await screen.findByRole('button', { name: /^Banir/ }))
+    expect(fake.draftAct).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(fake.draftAct).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: /^Banir/ }))
+    await user.click(screen.getByRole('button', { name: 'Sim, banir' }))
+    expect(fake.draftAct).toHaveBeenCalledWith({ kind: 'lock', type: 'ban', championId: 238 })
+    expect(await screen.findByText('Feito.')).toBeInTheDocument()
+  })
+
+  it('escolhe pelo app: seleciona e só trava depois de confirmar', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft({ ...draftWithZed(), turn: { id: 7, type: 'pick', championId: 0 } }))
+    await screen.findByTestId('verdict')
+    await user.click(await screen.findByRole('button', { name: /^Selecionar Orianna/ }))
+    expect(fake.draftAct).toHaveBeenLastCalledWith({ kind: 'hover', type: 'pick', championId: 61 })
+    await user.click(screen.getByRole('button', { name: 'Travar Orianna' }))
+    expect(fake.draftAct).toHaveBeenCalledTimes(1) // ainda pediu confirmação
+    await user.click(screen.getByRole('button', { name: 'Sim, travar' }))
+    expect(fake.draftAct).toHaveBeenLastCalledWith({ kind: 'lock', type: 'pick', championId: 61 })
+  })
+
+  it('mostra o Plano de jogo ao travar e depois, com a partida rolando, na tela principal', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft({ ...draftWithZed(), allies: [player(0, 0, 'none', 'TOP'), player(1, 103, 'locked', 'MIDDLE')] }))
+    const plan = await screen.findByRole('region', { name: 'Plano de jogo' })
+    expect(within(plan).getByRole('listitem', { name: 'Início' })).toBeInTheDocument()
+    expect(within(plan).getByRole('listitem', { name: 'Meio' })).toBeInTheDocument()
+    expect(within(plan).getByRole('listitem', { name: 'Fim' })).toBeInTheDocument()
+
+    act(() => fake.endDraft())
+    expect(await screen.findByText('Conectado. Entre em uma fila.')).toBeInTheDocument()
+    act(() => fake.pushGameflow('InProgress'))
+    const inGame = await screen.findByRole('region', { name: 'Plano de jogo' })
+    expect(inGame).toHaveTextContent('Ahri')
+    expect(screen.queryByText('Conectado. Entre em uma fila.')).not.toBeInTheDocument()
+
+    act(() => fake.pushGameflow('EndOfGame'))
+    expect(await screen.findByText('Conectado. Entre em uma fila.')).toBeInTheDocument()
   })
 
   it('o fim do draft volta para a tela de espera', async () => {
