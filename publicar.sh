@@ -41,7 +41,11 @@ if [ -d node_modules ] && command -v pnpm >/dev/null 2>&1; then
   pnpm typecheck || { echo; echo "Há erro de tipos: nada foi enviado. Corrija (ou me mande a mensagem) e rode de novo."; exit 1; }
   echo
   echo "Rodando os testes (pnpm test)..."
-  pnpm test || { echo; echo "Algum teste falhou: nada foi enviado. É o mesmo teste que o GitHub roda antes de gerar o instalador; me mande a mensagem."; exit 1; }
+  if ! pnpm test; then
+    echo
+    echo "Os testes falharam. Tentando mais uma vez (às vezes um processo de teste demora a abrir em PC lento)..."
+    pnpm test || { echo; echo "Algum teste falhou de novo: nada foi enviado. É o mesmo teste que o GitHub roda antes de gerar o instalador; me mande a mensagem."; exit 1; }
+  fi
   echo
 fi
 

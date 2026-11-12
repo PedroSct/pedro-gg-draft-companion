@@ -11,7 +11,7 @@ const build = (over: Partial<ChampionBuild> = {}): ChampionBuild => ({
 
 describe('plano de jogo', () => {
   it('divide a build em início, meio e fim', () => {
-    const plan = buildGamePlan(build())!
+    const plan = buildGamePlan(build(), null, 'MIDDLE')!
     expect(plan.phases.map((p) => p.id)).toEqual(['early', 'mid', 'late'])
     const [early, mid, late] = plan.phases
     expect(early.items).toEqual([1055, 2003, 3020])
@@ -24,6 +24,14 @@ describe('plano de jogo', () => {
     expect(late.situational).toEqual([{ itemId: 3165, when: 'contra cura' }])
     expect(plan.priority).toEqual(['Q', 'E', 'W'])
     expect(plan.ultLevels).toEqual([6, 11, 16])
+    expect(plan.spells).toBeNull()
+    expect(early.tips).toHaveLength(2)
+    expect(late.tips).toHaveLength(2)
+  })
+
+  it('sem rota conhecida, não mostra dicas de rota', () => {
+    const plan = buildGamePlan(build(), null, null)!
+    expect(plan.phases.every((p) => p.tips.length === 0)).toBe(true)
   })
 
   it('sem ordem por nível, usa só a prioridade', () => {

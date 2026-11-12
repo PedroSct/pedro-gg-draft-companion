@@ -13,18 +13,24 @@ const session = (actions: unknown[][], local = 1) => ({
 const myPick = (extra: Record<string, unknown> = {}) => ({ id: 7, actorCellId: 1, type: 'pick', championId: 0, completed: false, isInProgress: true, ...extra })
 const myBan = (extra: Record<string, unknown> = {}) => ({ id: 3, actorCellId: 1, type: 'ban', championId: 0, completed: false, isInProgress: true, ...extra })
 
-function fakeIo(sess: unknown, lists: { ban?: number[]; pick?: number[] } = {}, failComplete = false) {
+/** Cliente falso: PATCH com completed:true e POST /complete concluem a ação, a menos que `ignore` diga o contrário. */
+function fakeIo(sess: ReturnType<typeof session> | null, opts: { ignorePatchComplete?: boolean; ignoreAll?: boolean; patchStatus?: number } = {}) {
   const calls: { method: string; path: string; body: unknown }[] = []
+  const find = (id: number) => sess?.actions.flat().find((a) => (a as { id: number }).id === id) as Record<string, unknown> | undefined
   const io: ActIO = {
-    get: async (path) => {
-      if (path.endsWith('/session')) return { status: sess ? 200 : 404, data: sess }
-      if (path.endsWith('bannable-champion-ids')) return { status: lists.ban ? 200 : 404, data: lists.ban }
-      if (path.endsWith('pickable-champion-ids')) return { status: lists.pick ? 200 : 404, data: lists.pick }
-      return { status: 404, data: null }
-    },
+    wait: async () => {},
+    get: async (path) => ({ status: sess && path.endsWith('/session') ? 200 : 404, data: sess }),
     write: async (method, path, body) => {
       calls.push({ method, path, body })
-      if (failComplete && path.endsWith('/complete')) return { status: 500, data: null }
+      const id = Number(/actions\/(\d+)/.exec(path)?.[1])
+      const act = find(id)
+      const b = body as { championId?: number; completed?: boolean }
+      if (opts.patchStatus && method === 'PATCH') return { status: opts.patchStatus, data: null }
+      if (act && b.championId) act.championId = b.championId
+      if (act && !opts.ignoreAll) {
+        if (method === 'PATCH' && b.completed && !opts.ignorePatchComplete) act.completed = true
+        if (method === 'POST' && path.endsWith('/complete')) act.completed = true
+      }
       return { status: 204, data: null }
     }
   }
@@ -74,34 +80,52 @@ describe('actInDraft', () => {
     expect(a.calls.length + b.calls.length).toBe(0)
   })
 
-  it('recusa campeão que o cliente não libera', async () => {
-    const a = fakeIo(session([[myPick()]]), { pick: [1, 2] })
-    const r = await actInDraft(a.io, { kind: 'hover', type: 'pick', championId: 61 })
+  it('recusa campeão que já foi banido ou escolhido (pela própria seleção), sem depender das listas do cliente', async () => {
+    const a = fakeIo(session([[{ id: 1, actorCellId: 0, type: 'ban', championId: 61, completed: true, isInProgress: false }], [myBan()]]))
+    const r = await actInDraft(a.io, { kind: 'lock', type: 'ban', championId: 61 })
     expect(r.ok).toBe(false)
     expect(a.calls).toHaveLength(0)
-    const b = fakeIo(session([[myBan()]]), { ban: [238] })
-    expect((await actInDraft(b.io, { kind: 'lock', type: 'ban', championId: 61 })).ok).toBe(false)
+  })
+
+  it('campeão livre é aceito mesmo que o cliente não tenha lista de liberados', async () => {
+    const a = fakeIo(session([[myBan()]]))
+    expect((await actInDraft(a.io, { kind: 'lock', type: 'ban', championId: 238 })).ok).toBe(true)
   })
 
   it('selecionar só marca o campeão (não trava)', async () => {
-    const a = fakeIo(session([[myPick()]]), { pick: [61] })
+    const a = fakeIo(session([[myPick()]]))
     const r = await actInDraft(a.io, { kind: 'hover', type: 'pick', championId: 61 })
     expect(r.ok).toBe(true)
     expect(a.calls).toEqual([{ method: 'PATCH', path: '/lol-champ-select/v1/session/actions/7', body: { championId: 61 } }])
   })
 
-  it('travar marca e completa a ação do jogador', async () => {
-    const a = fakeIo(session([[myPick()]]), { pick: [61] })
+  it('travar marca e completa a ação, e só diz que travou depois que o cliente confirma', async () => {
+    const a = fakeIo(session([[myPick()]]))
     const r = await actInDraft(a.io, { kind: 'lock', type: 'pick', championId: 61 })
     expect(r).toEqual({ ok: true, message: 'Campeão travado.' })
-    expect(a.calls.map((c) => `${c.method} ${c.path}`)).toEqual(['PATCH /lol-champ-select/v1/session/actions/7', 'POST /lol-champ-select/v1/session/actions/7/complete'])
+    expect(a.calls.map((c) => `${c.method} ${c.path}`)).toEqual(['PATCH /lol-champ-select/v1/session/actions/7', 'PATCH /lol-champ-select/v1/session/actions/7'])
+    expect(a.calls[1].body).toEqual({ championId: 61, completed: true })
   })
 
-  it('se o campeão já está marcado, só completa; se o complete falha, tenta o plano B', async () => {
-    const a = fakeIo(session([[myBan({ championId: 238 })]]), { ban: [238] }, true)
+  it('se o PATCH não conclui, tenta o /complete e confirma', async () => {
+    const a = fakeIo(session([[myBan({ championId: 238 })]]), { ignorePatchComplete: true })
     const r = await actInDraft(a.io, { kind: 'lock', type: 'ban', championId: 238 })
     expect(r).toEqual({ ok: true, message: 'Banimento confirmado.' })
-    expect(a.calls.map((c) => `${c.method} ${c.path}`)).toEqual(['POST /lol-champ-select/v1/session/actions/3/complete', 'PATCH /lol-champ-select/v1/session/actions/3'])
-    expect(a.calls[1].body).toEqual({ championId: 238, completed: true })
+    expect(a.calls.map((c) => `${c.method} ${c.path}`)).toEqual(['PATCH /lol-champ-select/v1/session/actions/3', 'POST /lol-champ-select/v1/session/actions/3/complete'])
+  })
+
+  it('um 2xx que o cliente não confirma NÃO vira "travado"', async () => {
+    const a = fakeIo(session([[myPick()]]), { ignoreAll: true })
+    const r = await actInDraft(a.io, { kind: 'lock', type: 'pick', championId: 61 })
+    expect(r.ok).toBe(false)
+    expect(r.message).toMatch(/não confirmou/)
+    expect(r.message).toMatch(/PATCH 204, POST 204/)
+  })
+
+  it('cliente recusando a seleção (erro HTTP) é relatado', async () => {
+    const a = fakeIo(session([[myPick()]]), { patchStatus: 500 })
+    const r = await actInDraft(a.io, { kind: 'lock', type: 'pick', championId: 61 })
+    expect(r).toMatchObject({ ok: false })
+    expect(r.message).toMatch(/HTTP 500/)
   })
 })

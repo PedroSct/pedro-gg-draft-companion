@@ -9,22 +9,9 @@ import { btnGold } from '../lib/ui'
 import { ROLES } from '../../../shared/dataTypes'
 import { ChampionIcon, useChampionName } from './Icons'
 import { ItemRow, SituationalItem } from './BuildParts'
+import { SPELL_NAME } from '../lib/spells'
 import { BuildOptionsView } from './BuildOptionsView'
 import { ZERO_SELECTION, type BuildSelection } from '../../../shared/buildSelection'
-
-const SPELL_NAME: Record<number, string> = {
-  1: 'Limpar',
-  3: 'Exaustão',
-  4: 'Flash',
-  6: 'Fantasma',
-  7: 'Curar',
-  11: 'Golpear',
-  12: 'Teleporte',
-  13: 'Clareza',
-  14: 'Ignição',
-  21: 'Barreira',
-  32: 'Marca'
-}
 
 const PART_LABEL: Record<keyof LoadoutParts, string> = { runes: 'Runas', spells: 'Feitiços', items: 'Itens (opcional)' }
 

@@ -134,6 +134,17 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Testes mais estáveis em PCs lentos (0.9.2)**: no `publicar.sh`, dois arquivos de teste não chegaram a rodar ("Timeout waiting
+  for worker to respond") porque dezenas de ambientes jsdom abriam ao mesmo tempo. O `vitest.config.ts` agora limita a 3
+  processos por vez fora do GitHub. Nenhuma funcionalidade mudou em relação à 0.9.1 (que não chegou a ser publicada).
+- **Correção do escolher/banir (0.9.1)**: no cliente real o app dizia "travado" só porque o cliente respondia OK, sem de fato
+  travar, e bloqueava o banimento por uma lista de "campeões banidos/liberados" do cliente que vinha diferente. Agora o app
+  só confirma depois de **reler a seleção no cliente** (tenta completar a ação por dois caminhos) e, se o cliente não
+  confirmar, mostra o que aconteceu (códigos HTTP) em vez de dizer que deu certo. A checagem de "já banido ou escolhido"
+  usa a própria seleção.
+- **Plano de jogo redesenhado (0.9.1)**: cabeçalho com o campeão e os feitiços, **grade de habilidades por nível** (como na
+  aba Meta) com faixas de Início, Meio e Fim, e três cartões com a ordem de compra (nome e ícone), itens conforme a
+  partida e **Como agir**: dicas gerais da rota para cada momento (não vêm dos dados de meta, e o app avisa isso).
 - **Banir e escolher pelo app (0.9.0)**: na sua vez, as sugestões de banimento e o melhor pick ganham botões. **Banir** pede
   confirmação ("Sim, banir") e então bane no cliente. Para escolher, **Selecionar no cliente** só marca o campeão (dá para
   trocar) e **Travar** pede confirmação antes de travar, pois não desfaz. Nada é automático: o app só age quando você clica,
