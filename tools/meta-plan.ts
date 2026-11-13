@@ -2,7 +2,7 @@
 // Agrupa os servidores pedidos por "cluster" da Riot e imprime a matriz do workflow (JSON numa linha).
 // A chave tem limite por cluster (americas, europe, asia, sea), então servidores do mesmo cluster rodam
 // em sequência no mesmo job e clusters diferentes rodam em paralelo.
-//   pnpm -s meta:plan --platforms br1,euw1,kr
+//   pnpm -s meta:plan --platforms br1,na1,euw1,kr
 import { parseArgs } from 'node:util'
 import { REGION_OF_PLATFORM } from './meta/riot'
 

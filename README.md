@@ -134,6 +134,23 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Aba Treino (0.10.0)**: lê as partidas recentes e a maestria da conta logada (só leitura, pelo cliente) e mostra o **jeito de
+  jogar** (classes e rotas), se a Pool está **concentrada demais** (aviso de one-trick a partir de 8 partidas e metade delas no
+  mesmo campeão), **campeões para experimentar** (parecidos com o seu estilo, fortes no meta e, para quem está começando ou
+  voltando, de preferência fáceis; cada um explica o porquê, mostra o plano de jogo e entra na Pool com um clique), lembra de
+  campeões com maestria alta que você não joga mais e traz as observações do Pós-jogo sobre o que melhorar. Também mostra
+  **fundamentos da sua rota** por momento da partida (orientações gerais, não vêm do meta). As sugestões precisam dos dados
+  reais do meta.
+- **Mais regiões na coleta (0.10.0)**: o padrão agora são 15 servidores (BR, NA, LAN, LAS, EUW, EUNE, TR, KR, JP, OCE, PH, SG,
+  TH, TW, VN). O ganho é de variedade; servidores do mesmo cluster dividem o tempo do job. O seletor de região do app lista todos.
+- **Vez de banir/escolher em destaque (0.10.0)**: um aviso grande e animado no topo ("Sua vez de banir" / "Sua vez de
+  escolher") com o campeão em foco e os botões (com confirmação). As sugestões de banimento sobem para logo abaixo dele.
+- **Draft e partida (0.10.0)**: o Plano de jogo agora vem depois da build e do "Enviar para o LoL"; a tela de partida em andamento
+  rola normalmente (antes o conteúdo ficava cortado).
+- **Meta (0.10.0)**: botão X para limpar a busca. Habilidades de Jayce, Udyr, Aphelios e Zeri: o coletor agora conserta eventos
+  duplicados que essas habilidades geram, completa os 18 níveis de campeões fora do padrão e **anota no log do workflow**
+  (`Habilidades recusadas: campeão ...`) as sequências que continuam recusadas, para eu ajustar com dados reais. Quando um
+  campeão ainda não tem a ordem, o Meta avisa em vez de deixar o espaço vazio. O efeito aparece nas partidas coletadas depois da atualização.
 - **Testes mais estáveis em PCs lentos (0.9.2)**: no `publicar.sh`, dois arquivos de teste não chegaram a rodar ("Timeout waiting
   for worker to respond") porque dezenas de ambientes jsdom abriam ao mesmo tempo. O `vitest.config.ts` agora limita a 3
   processos por vez fora do GitHub. Nenhuma funcionalidade mudou em relação à 0.9.1 (que não chegou a ser publicada).
@@ -288,7 +305,7 @@ vem apontando para ela (`DEFAULT_META_URL` em `src/shared/config.ts`). Configura
 1. No GitHub: **Settings > Secrets and variables > Actions > New repository secret**, nome `RIOT_API_KEY`, valor a chave
    `RGAPI-...` de developer.riotgames.com (chave de desenvolvimento vale 24 h; para ficar permanente, peça uma chave
    pessoal no portal da Riot).
-2. **Actions > Atualizar dados de meta > Run workflow**. Em "Servidores" escolha um ou mais (padrão `br1,euw1,kr`) e,
+2. **Actions > Atualizar dados de meta > Run workflow**. Em "Servidores" escolha um ou mais (padrão: os 15 servidores `br1,na1,la1,la2,euw1,eun1,tr1,kr,jp1,oc1,ph2,sg2,th2,tw2,vn2`) e,
    em "Partidas por servidor", o teto no patch (padrão 200 mil; o tempo do job acaba antes) e, em "Partidas com timeline", quantas baixam a timeline
    (builds, habilidades e itens; padrão 100 mil, 0 = todas). O workflow também roda sozinho a cada 8 horas. Cada **cluster** da Riot (americas, europe, asia, sea)
    tem o próprio limite da chave, então servidores de clusters diferentes rodam **em paralelo** (cada um leva de 2 a
@@ -309,8 +326,10 @@ Por isso o padrão do gerador é 0,8 e não adianta subir o campo **rps** (só g
 (league-v4, etc.) são maiores, mas o limite do app vale para todas as chamadas somadas.
 
 O que realmente aumenta a quantidade de dados:
-- **Mais servidores**: cada cluster da Riot tem o próprio limite, então `br1,euw1,kr` coletam em paralelo e somam. Adicionar
-  `na1`, `la1` etc. multiplica as partidas sem aumentar o tempo (só o do mesmo cluster, ex. `br1` e `na1`, soma tempo).
+- **Mais servidores**: cada cluster da Riot tem o próprio limite, então clusters diferentes coletam em paralelo e somam. Desde a 0.10.0 o padrão
+  coleta 15 servidores (americas: BR, NA, LAN, LAS; europe: EUW, EUNE, TR; asia: KR, JP; sea: OCE, PH, SG, TH, TW, VN). Servidores do mesmo
+  cluster **dividem** as ~5,6 h do job (cada um para no seu tempo e continua na execução seguinte), então o ganho é de **variedade**
+  (mais regiões, estilos de jogo e picks), não de volume por servidor; BR, EUW e KR vão crescer mais devagar. `ru` também funciona se você o pedir à mão.
 - **Menos timelines**: cada partida custa 1 requisição e a timeline (builds) custa outra. Baixar `timeline_matches`
   libera requisições para mais partidas de winrate e confrontos.
 - **Tempo do job**: ele tem 350 min e agora cada servidor para sozinho no seu tempo (`--max-minutes`), gera o arquivo com o que já coletou e o job termina bem, publicando os dados; a próxima execução continua de onde parou. Em 350 min cabem cerca de 16 mil requisições por servidor. Algo como 7000 partidas com 5000 timelines

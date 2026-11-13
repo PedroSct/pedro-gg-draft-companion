@@ -256,7 +256,13 @@ export function BuildOptionsView({
           <Choice label="Opções de habilidades" options={o.skills} total={o.timeline} index={skillIdx} onIndex={setSkillIdx} render={(v) => <SkillOrder build={skillBuild(v)} spells={spells} hideTitle />} />
         </div>
       ) : (
-        build.skillOrder && <SkillOrder build={build} spells={spells} />
+        build.skillOrder ? (
+          <SkillOrder build={build} spells={spells} />
+        ) : (
+          <p role="note" className="rounded-xl border border-line bg-panel/50 px-3 py-2 text-sm text-mist">
+            Ainda sem ordem de habilidades para este campeão: a Riot entrega a sequência de um jeito que o coletor não conseguiu ler.
+          </p>
+        )
       )}
 
       <div className="flex flex-col gap-3">

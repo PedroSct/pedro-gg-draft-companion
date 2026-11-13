@@ -12,7 +12,8 @@ import { buildSituation } from '../data/situation'
 import { banPhaseOpen, suggestBans } from '../data/bans'
 import { applyBuildSelection, sanitizeSelection, type BuildSelection } from '../../shared/buildSelection'
 import { championDetail, rolesOf, tierRows } from '../data/metaStats'
-import { suggestPoolFromAccount } from '../lcu/accountPool'
+import { readAccount, suggestPoolFromAccount } from '../lcu/accountPool'
+import { analyzeCoach, type CoachResult } from '../../shared/coach'
 import { ROLES, type ChampionInfo, type ItemInfo } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO, regionUrl } from '../../shared/config'
 import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
@@ -422,6 +423,22 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   handle(IPC.POOL_FROM_ACCOUNT, async () => {
     const ds = meta.get()
     return suggestPoolFromAccount((p) => lcu.get(p), (id) => (ds && !ds.isSample ? (rolesOf(ds, id)[0] ?? null) : null))
+  })
+  // ---- Aba Treino: estilo de jogo da conta, concentração da Pool e campeões novos para experimentar (só leitura)
+  handle(IPC.COACH_ANALYZE, async (): Promise<CoachResult> => {
+    await warmChampionKeys()
+    const read = await readAccount((p) => lcu.get(p))
+    if (!read.ok) return read
+    const ds = meta.get()
+    const tiers = ds && !ds.isSample ? Object.fromEntries(ROLES.map((r) => [r, tierRows(ds, r)])) : {}
+    const report = analyzeCoach({
+      games: read.games,
+      mastery: read.mastery,
+      champions: champInfos,
+      tiers,
+      nameOf: (id) => champNames.get(id) ?? `Campeão ${id}`
+    })
+    return { ok: true, account: read.account, report }
   })
   // ---- Melhor pick do meta contra o inimigo da rota, fora da Pool
   handle(IPC.DRAFT_COUNTERS, (raw) => {

@@ -252,7 +252,24 @@ export function MetaScreen() {
         <label htmlFor="meta-search" className="sr-only">
           Buscar campeão no ranking
         </label>
-        <input id="meta-search" className={`${input} w-48 max-w-full`} placeholder="Buscar campeão" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div className="relative w-48 max-w-full">
+          <input id="meta-search" className={`${input} w-full pr-8`} placeholder="Buscar campeão" value={query} onChange={(e) => setQuery(e.target.value)} />
+          {query !== '' && (
+            <button
+              type="button"
+              aria-label="Limpar busca"
+              onClick={() => {
+                setQuery('')
+                document.getElementById('meta-search')?.focus()
+              }}
+              className="absolute right-1 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-sm text-mist hover:bg-raised hover:text-snow"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+              </svg>
+            </button>
+          )}
+        </div>
         {metaInfo && (
           <p className="ml-auto text-xs text-mist">
             {metaInfo.isSample ? 'Dados de amostra' : `Patch ${metaInfo.patch}`} · {metaInfo.champions} campeões

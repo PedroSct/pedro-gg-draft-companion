@@ -235,7 +235,7 @@ export function validateDataset(raw: unknown): MetaDataset {
     patch: raw.patch,
     generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt : '',
     ...(Array.isArray(raw.regions)
-      ? { regions: raw.regions.filter((x): x is string => typeof x === 'string' && /^[a-z0-9]{2,8}$/.test(x)).slice(0, 12) }
+      ? { regions: raw.regions.filter((x): x is string => typeof x === 'string' && /^[a-z0-9]{2,8}$/.test(x)).slice(0, 24) }
       : {}),
     champions
   }

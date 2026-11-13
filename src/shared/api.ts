@@ -2,6 +2,7 @@
 // Contrato do `window.api` exposto pelo preload. Main, Preload e Renderer usam estes tipos.
 import type { OverlayState } from './overlay'
 import type { PoolSuggestResult } from './poolImport'
+import type { CoachResult } from './coach'
 import type { BuildSelection } from './buildSelection'
 import type { AccountStats, DraftState, LcuIdentity, LcuStatus, Role } from './types'
 import type {
@@ -83,6 +84,8 @@ export interface LolApi {
   previewOverlay(): Promise<boolean>
   /** Lê do cliente do LoL (só leitura) as partidas recentes e a maestria da conta logada e sugere uma Pool. */
   suggestPoolFromAccount(): Promise<PoolSuggestResult>
+  /** Aba Treino: lê (só leitura) as partidas e a maestria da conta e devolve a análise de estilo, Pool e sugestões. */
+  analyzeCoach(): Promise<CoachResult>
   /** Liga o modo mover (arrastar o painel); false = sem dados para mostrar o painel. */
   startOverlayMove(): Promise<boolean>
   /** Salva a posição atual do painel e volta ao modo normal. */

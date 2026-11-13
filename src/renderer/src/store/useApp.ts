@@ -54,14 +54,14 @@ interface AppState {
   lastPick: LastPick | null
 
   /** tela principal: seleção de campeões ou análise das partidas */
-  view: 'draft' | 'postgame' | 'meta' | 'pools'
+  view: 'draft' | 'postgame' | 'meta' | 'pools' | 'coach'
   postList: PgSummary[]
   postSelectedId: number | null
   postDetail: PgDetail | null
   postBusy: boolean
   postMessage: { ok: boolean; text: string } | null
 
-  setView: (view: 'draft' | 'postgame' | 'meta' | 'pools') => void
+  setView: (view: 'draft' | 'postgame' | 'meta' | 'pools' | 'coach') => void
   setPoolDirty: (dirty: boolean) => void
   openTour: () => void
   finishTour: () => Promise<void>

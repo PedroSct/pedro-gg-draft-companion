@@ -164,6 +164,8 @@ export async function buildMeta(o: BuildMetaOptions): Promise<MetaDataset> {
       })
     )
     await writeJsonAtomic(o.out, dataset)
+    const rejects = Object.entries(run.agg.skillRejects ?? {}).filter(([, v]) => v.n >= 20).sort((x, y) => y[1].n - x[1].n).slice(0, 12)
+    for (const [cid, v] of rejects) log(`Habilidades recusadas: campeão ${cid} (${v.n}x), exemplos: ${v.samples.join(' | ')}`)
     log(`Gerado ${o.out}: ${Object.keys(dataset.champions).length} campeões, ${run.agg.matches} partidas`)
     return dataset
   }

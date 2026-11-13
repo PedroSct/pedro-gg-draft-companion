@@ -10,6 +10,7 @@ import { PickSuggestion } from './components/PickSuggestion'
 import { BuildPanel } from './components/BuildPanel'
 import { IdleScreen } from './components/IdleScreen'
 import { GamePlan } from './components/GamePlan'
+import { TurnBanner } from './components/TurnBanner'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Splash } from './components/Splash'
 import { btn } from './lib/ui'
@@ -19,6 +20,7 @@ const Tour = lazy(() => import('./components/Tour').then((m) => ({ default: m.To
 const PoolScreen = lazy(() => import('./components/PoolScreen').then((m) => ({ default: m.PoolScreen })))
 const SettingsDialog = lazy(() => import('./components/SettingsDialog').then((m) => ({ default: m.SettingsDialog })))
 const MetaScreen = lazy(() => import('./components/MetaScreen').then((m) => ({ default: m.MetaScreen })))
+const CoachScreen = lazy(() => import('./components/CoachScreen').then((m) => ({ default: m.CoachScreen })))
 const PostGameScreen = lazy(() => import('./components/PostGame').then((m) => ({ default: m.PostGameScreen })))
 
 /** "15.20.1" e "15.20" são o mesmo patch: compara só os dois primeiros números. */
@@ -103,7 +105,7 @@ function IdleOrGame() {
   const lastPick = useApp((s) => s.lastPick)
   if (lastPick && gameflow && IN_GAME_PHASES.includes(gameflow)) {
     return (
-      <div className="flex h-full flex-col gap-3 overflow-y-auto">
+      <div className="flex h-full flex-col gap-3 overflow-y-auto pr-1 [&>*]:shrink-0">
         <p className="text-sm text-mist">Partida em andamento. Este é o seu plano; o app não joga por você.</p>
         <GamePlan championId={lastPick.championId} role={lastPick.role} compact />
       </div>
@@ -114,6 +116,7 @@ function IdleOrGame() {
 
 function DraftScreen() {
   const draft = useApp((s) => s.draft)
+  const banning = draft?.turn?.type === 'ban'
   const centerRef = useRef<HTMLDivElement>(null)
   const me = draft?.allies.find((p) => p.cellId === draft.localPlayerCellId)
   const lockedId = me && me.status === 'locked' ? me.championId : 0
@@ -128,12 +131,14 @@ function DraftScreen() {
     <div className="grid h-full grid-cols-[minmax(210px,1fr)_minmax(0,1.7fr)_minmax(210px,1fr)] gap-5 max-[1000px]:grid-cols-2 max-[1000px]:content-start max-[1000px]:gap-3 max-[1000px]:overflow-y-auto">
       <TeamColumn side="ally" players={draft.allies} localCellId={draft.localPlayerCellId} />
       <div ref={centerRef} className="flex min-w-0 flex-col gap-3 pr-1 [&>*]:shrink-0 min-[1001px]:min-h-0 min-[1001px]:overflow-y-auto max-[1000px]:order-last max-[1000px]:col-span-2 max-[1000px]:pr-0">
+        <TurnBanner />
+        {banning && <BanSuggestions />}
         <BansBar allies={draft.bans.allies} enemies={draft.bans.enemies} />
-        <BanSuggestions />
+        {!banning && <BanSuggestions />}
         <MetaCounters />
         <PickSuggestion />
-        {lockedId > 0 && <GamePlan championId={lockedId} role={lastPick?.championId === lockedId ? lastPick.role : null} />}
         <BuildPanel />
+        {lockedId > 0 && <GamePlan championId={lockedId} role={lastPick?.championId === lockedId ? lastPick.role : null} />}
       </div>
       <TeamColumn side="enemy" players={draft.enemies} localCellId={-1} />
     </div>
@@ -187,7 +192,7 @@ export default function App() {
         <Banners />
         <PatchNotice />
         <main className="min-h-0 flex-1 p-5 max-[900px]:p-3">
-          <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : view === 'meta' ? <MetaScreen /> : view === 'pools' ? <PoolScreen /> : draft ? <DraftScreen /> : <IdleOrGame />}</Suspense>
+          <Suspense fallback={null}>{!ready ? null : view === 'postgame' ? <PostGameScreen /> : view === 'meta' ? <MetaScreen /> : view === 'pools' ? <PoolScreen /> : view === 'coach' ? <CoachScreen /> : draft ? <DraftScreen /> : <IdleOrGame />}</Suspense>
         </main>
         <Suspense fallback={null}>
           {settingsOpen && <SettingsDialog />}

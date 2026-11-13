@@ -136,6 +136,8 @@ export interface AggState {
   holdout?: HoldoutMatch[]
   /** partidas com timeline baixada (ausente em checkpoints antigos) */
   timelineMatches?: number
+  /** sequências de habilidades que a timeline entregou e foram recusadas, por campeão (para diagnosticar) */
+  skillRejects?: Record<string, { n: number; samples: string[] }>
   champions: Record<string, Partial<Record<Role, RoleAgg>>>
 }
 export interface ItemRules {
@@ -285,10 +287,24 @@ export function isPlausibleSkillSequence(seq: string): boolean {
   return count.Q <= 5 && count.W <= 5 && count.E <= 5 && count.R <= 5
 }
 
-/** Sequência de letras (ex.: "QWEQQR…") do jogador, ou null se a timeline não for confiável. */
-export function extractSkillSequence(events: RawEvent[], participantId: number): string | null {
+const accepted = (seq: string): boolean => isValidSkillSequence(seq) || isPlausibleSkillSequence(seq)
+
+/** Anota uma sequência recusada (no máximo 3 exemplos diferentes por campeão) para entender o que a Riot entrega. */
+export function noteSkillReject(state: AggState, championId: number, raw: string): void {
+  const rejects = (state.skillRejects ??= {})
+  const entry = (rejects[String(championId)] ??= { n: 0, samples: [] })
+  entry.n++
+  if (entry.samples.length < 3 && !entry.samples.includes(raw)) entry.samples.push(raw.slice(0, 60))
+}
+
+/**
+ * Sequência de letras (ex.: "QWEQQR…") do jogador, ou null se a timeline não for confiável.
+ * Algumas habilidades que trocam de forma (Jayce, Udyr, Aphelios…) podem chegar em dobro: tenta consertar só o que é
+ * inequívoco (cópias a menos de 1 s uma da outra, ou todos os níveis em pares idênticos); o resto é descartado.
+ */
+export function extractSkillSequence(events: RawEvent[], participantId: number, onReject?: (raw: string) => void): string | null {
   const seen = new Set<string>()
-  let seq = ''
+  const ups: { slot: number; t: number }[] = []
   for (const ev of events) {
     if (ev.type !== 'SKILL_LEVEL_UP' || ev.participantId !== participantId || ev.levelUpType !== 'NORMAL') continue
     const slot = ev.skillSlot
@@ -296,9 +312,30 @@ export function extractSkillSequence(events: RawEvent[], participantId: number):
     const key = `${slot}|${ev.timestamp}`
     if (seen.has(key)) continue // cópia idêntica no mesmo instante
     seen.add(key)
-    seq += SKILL_LETTERS[slot - 1]
+    ups.push({ slot, t: ev.timestamp ?? 0 })
   }
-  return isValidSkillSequence(seq) || isPlausibleSkillSequence(seq) ? seq : null
+  const raw = ups.map((u) => SKILL_LETTERS[u.slot - 1]).join('')
+  if (accepted(raw)) return raw
+
+  // Conserto 1: a mesma habilidade duas vezes em menos de 1 s (evento duplicado com instante levemente diferente)
+  const lastT: Record<number, number> = {}
+  let collapsed = ''
+  for (const u of ups) {
+    const prev = lastT[u.slot]
+    lastT[u.slot] = u.t
+    if (prev !== undefined && u.t - prev < 1000) continue
+    collapsed += SKILL_LETTERS[u.slot - 1]
+  }
+  if (collapsed !== raw && accepted(collapsed)) return collapsed
+
+  // Conserto 2: todos os níveis chegaram em pares idênticos ("QQWWEE…")
+  if (raw.length >= 4 && raw.length % 2 === 0 && [...raw].every((k, i) => i % 2 === 1 || k === raw[i + 1])) {
+    const halved = [...raw].filter((_, i) => i % 2 === 0).join('')
+    if (accepted(halved)) return halved
+  }
+
+  if (raw.length > 0) onReject?.(raw)
+  return null
 }
 
 /** "RQEW": R primeiro; depois Q/W/E na ordem em que chegam ao nível máximo. */
@@ -321,21 +358,34 @@ export function priorityOf(seq: string): string {
   return `R${order.join('')}`
 }
 
-/** Completa os níveis até 18 seguindo a prioridade, sem quebrar nenhuma regra do jogo. */
+/**
+ * Completa os níveis até 18 seguindo a prioridade, sem quebrar nenhuma regra do jogo. Se o começo já foge do padrão
+ * (campeão com habilidades fora do comum), só respeita o limite de 5 pontos por habilidade.
+ */
 export function fillLevels(prefix: string, priority: string): string {
+  const relaxed = !isValidSkillSequence(prefix)
   const count: Record<string, number> = { Q: 0, W: 0, E: 0, R: 0 }
   for (const k of prefix) count[k]++
+  const room = (k: string, level: number): boolean => count[k] < 5 && (relaxed || count[k] < Math.ceil(level / 2))
   let seq = prefix
   for (let level = prefix.length + 1; level <= 18; level++) {
     let pick: string | undefined
-    if (count.R < allowedUltimates(level)) pick = 'R'
-    else pick = [...priority].filter((k) => k !== 'R').find((k) => count[k] < 5 && count[k] < Math.ceil(level / 2))
-    pick ??= 'QWE'.split('').find((k) => count[k] < 5 && count[k] < Math.ceil(level / 2))
+    if (count.R < allowedUltimates(level) && (!relaxed || count.R < 5)) pick = 'R'
+    else pick = [...priority].filter((k) => k !== 'R').find((k) => room(k, level))
+    pick ??= 'QWE'.split('').find((k) => room(k, level))
     if (!pick) return prefix // não deveria acontecer; devolve só o que é confiável
     count[pick]++
     seq += pick
   }
   return seq
+}
+
+/** Os 18 níveis completos, ou undefined se não der para montar (a ordem de prioridade continua valendo sozinha). */
+export function completeLevels(prefix: string, priority: string): SkillKey[] | undefined {
+  const full = fillLevels(prefix, priority)
+  if (full.length !== 18) return undefined
+  if (!(isValidSkillSequence(full) || (!isValidSkillSequence(prefix) && isPlausibleSkillSequence(full)))) return undefined
+  return [...full] as SkillKey[]
 }
 
 // ------------------------------------------------------------------------------- itens
@@ -488,7 +538,7 @@ export function addMatch(state: AggState, match: RawMatch, timeline: RawTimeline
     const opts = (build.opts ??= newOpts())
     opts.timeline++
 
-    const seq = extractSkillSequence(events, p.participantId)
+    const seq = extractSkillSequence(events, p.participantId, (r) => noteSkillReject(state, p.championId, r))
     const purchases = extractPurchases(events, p.participantId)
     const starting = purchases.filter((x) => x.t <= STARTING_WINDOW_MS).map((x) => x.itemId).sort((x, y) => x - y)
     const firstBoots = purchases.find((x) => rules.boots.has(x.itemId))
@@ -637,8 +687,7 @@ function optionsFrom(opts: BuildOpts | undefined, games: number, buyPos: Record<
   for (const [priority, v] of byPriority) skillTable[priority] = { games: v.games, wins: v.wins }
   const skills = topOptions<{ priority: SkillKey[]; levels?: SkillKey[] }>(skillTable, 3, (priority) => {
     const prefix = byPriority.get(priority)?.prefix ?? ''
-    const full = fillLevels(prefix, priority)
-    const levels = full.length === 18 && isValidSkillSequence(full) ? ([...full] as SkillKey[]) : undefined
+    const levels = completeLevels(prefix, priority)
     return { priority: [...priority] as SkillKey[], ...(levels ? { levels } : {}) }
   })
 
@@ -666,14 +715,10 @@ function buildFrom(b: BuildAgg, minSamples: number, games: number): ChampionBuil
     const prefixes: Counter = {}
     for (const [k, v] of Object.entries(b.skillPrefix)) if (k.startsWith(`${priorityKey}|`)) prefixes[k.slice(priorityKey.length + 1)] = v
     const prefix = top(prefixes)
-    let levels: string | undefined
-    if (prefix) {
-      const full = fillLevels(prefix, priorityKey)
-      if (full.length === 18 && isValidSkillSequence(full)) levels = full
-    }
+    const levels = prefix ? completeLevels(prefix, priorityKey) : undefined
     skillOrder = {
       priority: [...priorityKey] as NonNullable<ChampionBuild['skillOrder']>['priority'],
-      ...(levels ? { levels: [...levels] as NonNullable<NonNullable<ChampionBuild['skillOrder']>['levels']> } : {})
+      ...(levels ? { levels } : {})
     }
   }
 
@@ -801,6 +846,11 @@ export function mergeStates(states: AggState[]): { merged: AggState; used: numbe
     used.push(i)
     merged.matches += s.matches
     merged.timelineMatches = (merged.timelineMatches ?? 0) + (s.timelineMatches ?? 0)
+    for (const [cid, v] of Object.entries(s.skillRejects ?? {})) {
+      const t = ((merged.skillRejects ??= {})[cid] ??= { n: 0, samples: [] })
+      t.n += v.n
+      for (const x of v.samples) if (t.samples.length < 3 && !t.samples.includes(x)) t.samples.push(x)
+    }
     if (s.holdout?.length) (merged.holdout ??= []).push(...s.holdout)
     for (const [champId, roles] of Object.entries(s.champions)) {
       for (const [role, agg] of Object.entries(roles) as [Role, RoleAgg][]) {

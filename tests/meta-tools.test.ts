@@ -11,6 +11,7 @@ import {
   finalize,
   extractSkillSequence,
   fillLevels,
+  completeLevels,
   isValidSkillSequence,
   itemRulesFrom,
   newState,
@@ -58,6 +59,35 @@ describe('habilidades', () => {
     expect(extractSkillSequence(withGhost, 3)).toBeNull()
 
     expect(extractSkillSequence(events, 4)).toBeNull() // outro jogador: nada
+  })
+
+  it('conserta eventos de habilidade em dobro (campeões que trocam de forma) e anota o que continua recusado', () => {
+    const ev = (slot: number, t: number): RawEvent => ({ type: 'SKILL_LEVEL_UP', participantId: 3, skillSlot: slot, levelUpType: 'NORMAL', timestamp: t })
+    const slots = [...FULL].map((k) => 'QWER'.indexOf(k) + 1)
+    // cada nível aparece duas vezes, a 0,5 s de distância
+    const close = slots.flatMap((sl, i) => [ev(sl, 10_000 * (i + 1)), ev(sl, 10_000 * (i + 1) + 500)])
+    expect(extractSkillSequence(close, 3)).toBe(FULL)
+    // em pares, mas bem afastados no tempo: o conserto dos pares idênticos resolve
+    const far = slots.flatMap((sl, i) => [ev(sl, 10_000 * (i + 1)), ev(sl, 10_000 * (i + 1) + 5000)])
+    expect(extractSkillSequence(far, 3)).toBe(FULL)
+    // lixo de verdade continua recusado, e é anotado
+    const rejected: string[] = []
+    const junk = [...'QQQQQQQ'].map((_, i) => ev(1, 10_000 * (i + 1)))
+    expect(extractSkillSequence(junk, 3, (r) => rejected.push(r))).toBeNull()
+    expect(rejected).toEqual(['QQQQQQQ'])
+  })
+
+  it('campeão fora do padrão: completa os 18 níveis só com o limite de 5 pontos', () => {
+    // Zeri/Udyr: começo que a regra normal não aceita (3 pontos em Q no nível 3)
+    expect(isValidSkillSequence('QQQ')).toBe(false)
+    const levels = completeLevels('QQQWEWQEW', 'RQWE')
+    expect(levels).toHaveLength(18)
+    const count = (k: string) => levels!.filter((x) => x === k).length
+    expect(count('Q')).toBeLessThanOrEqual(5)
+    expect(count('W')).toBeLessThanOrEqual(5)
+    expect(count('E')).toBeLessThanOrEqual(5)
+    // campeão normal continua exigindo a regra completa
+    expect(completeLevels('QWEQQRQEQ', 'RQEW')?.join('')).toBe(FULL)
   })
 
   it('completa os níveis finais respeitando as regras', () => {

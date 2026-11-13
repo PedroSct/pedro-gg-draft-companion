@@ -21,8 +21,8 @@ on:
   workflow_dispatch:
     inputs:
       platforms:
-        description: Servidores separados por vírgula (br1, na1, euw1, eun1, kr, la1...). Um por cluster roda em paralelo.
-        default: br1,euw1,kr
+        description: Servidores separados por vírgula (br1, na1, la1, la2, euw1, eun1, tr1, kr, jp1, oc1, ph2, sg2, th2, tw2, vn2; ru também funciona, mas não vem no padrão). Um cluster da Riot roda em paralelo; servidores do mesmo cluster dividem o tempo do job.
+        default: br1,na1,la1,la2,euw1,eun1,tr1,kr,jp1,oc1,ph2,sg2,th2,tw2,vn2
       max_matches:
         description: Teto de partidas por servidor no patch (winrates, confrontos, sinergias). O tempo do job (cerca de 7 mil partidas por execução) costuma acabar antes do teto.
         default: '200000'
@@ -66,7 +66,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Montar a lista de servidores
         id: plan
-        run: echo "matrix=$(pnpm -s meta:plan --platforms "${{ inputs.platforms || 'br1,euw1,kr' }}")" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(pnpm -s meta:plan --platforms "${{ inputs.platforms || 'br1,na1,la1,la2,euw1,eun1,tr1,kr,jp1,oc1,ph2,sg2,th2,tw2,vn2' }}")" >> "$GITHUB_OUTPUT"
 
   collect:
     needs: plan

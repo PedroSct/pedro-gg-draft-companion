@@ -44,10 +44,11 @@ function AutoAcceptToggle() {
   )
 }
 
-const NAV: { id: 'draft' | 'postgame' | 'meta' | 'pools'; label: string }[] = [
+const NAV: { id: 'draft' | 'postgame' | 'meta' | 'pools' | 'coach'; label: string }[] = [
   { id: 'draft', label: 'Draft' },
   { id: 'meta', label: 'Meta' },
   { id: 'postgame', label: 'Pós-jogo' },
+  { id: 'coach', label: 'Treino' },
   { id: 'pools', label: 'Pools' }
 ]
 

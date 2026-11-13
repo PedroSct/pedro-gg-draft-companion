@@ -5,7 +5,6 @@ import type { ExclusionReason } from '../../../shared/dataTypes'
 import { selectActiveProfile, selectFocusPlayer, selectFocusProfile, useApp } from '../store/useApp'
 import { pct, ROLE_LABEL, ROLE_SHORT, signed } from '../lib/format'
 import { btnGold } from '../lib/ui'
-import { DraftActButton } from './DraftActButton'
 import { ChampionIcon, Stars, useChampionName } from './Icons'
 
 const CONFIDENCE: Record<Confidence, { label: string; bars: number }> = {
@@ -370,19 +369,6 @@ function FocusStrip({ onlyWithFriends = false }: { onlyWithFriends?: boolean } =
   )
 }
 
-/** Escolher pelo app: vale para a opção que está em foco (a melhor, ou a alternativa clicada). */
-function PickAct({ championId }: { championId: number }) {
-  const name = useChampionName(championId)
-  return (
-    <div className="border border-line bg-panel/70 px-3 py-2" aria-label="Escolher pelo app">
-      <p className="text-xs text-mist">
-        É a sua vez. Escolher <span className="text-snow">{name}</span> pelo app (só acontece quando você clica; para outra opção, clique nela na lista).
-      </p>
-      <DraftActButton championId={championId} type="pick" />
-    </div>
-  )
-}
-
 function LockedPick({ player, isLocal, nickname }: { player: DraftPlayer; isLocal: boolean; nickname: string | null }) {
   const name = useChampionName(player.championId)
   return (
@@ -476,9 +462,6 @@ export function PickSuggestion() {
       {ranking[0] ? (
         <>
           <Verdict pick={ranking[0]} owner={isLocal ? null : (profile?.nickname ?? null)} />
-          {isLocal && draft?.turn?.type === 'pick' && (
-            <PickAct championId={preview !== null && ranking.some((r) => r.championId === preview) ? preview : ranking[0].championId} />
-          )}
           {visibleAlts.length > 0 && (
             <ul className="flex flex-col gap-1.5" aria-label="Outras opções da Pool">
               {visibleAlts.map((p) => (

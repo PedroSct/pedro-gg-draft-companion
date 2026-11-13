@@ -51,7 +51,10 @@ export function parseMastery(data: unknown): MasteryEntry[] {
   return out
 }
 
-export async function suggestPoolFromAccount(get: Get, roleHint: (championId: number) => Role | null): Promise<PoolSuggestResult> {
+export type AccountRead = { ok: true; account: string | null; games: AccountGame[]; mastery: MasteryEntry[]; pages: number } | { ok: false; message: string }
+
+/** Lê (só leitura) a conta logada: nome, partidas recentes e maestria. */
+export async function readAccount(get: Get): Promise<AccountRead> {
   const me = await get('/lol-summoner/v1/current-summoner').catch(() => null)
   if (!me || me.status !== 200 || !isObj(me.data)) return { ok: false, message: 'Abra o League of Legends e entre na sua conta para importar.' }
   const d = me.data
@@ -75,5 +78,11 @@ export async function suggestPoolFromAccount(get: Get, roleHint: (championId: nu
   if (games.length === 0 && mastery.length === 0) {
     return { ok: false, message: pages === 0 ? 'O cliente não liberou o histórico nem a maestria agora. Espere o cliente terminar de carregar e tente de novo.' : 'Não encontrei partidas normais ou ranqueadas recentes nem maestria nesta conta.' }
   }
-  return { ok: true, account, suggestion: buildPoolSuggestion(games, mastery, roleHint) }
+  return { ok: true, account, games, mastery, pages }
+}
+
+export async function suggestPoolFromAccount(get: Get, roleHint: (championId: number) => Role | null): Promise<PoolSuggestResult> {
+  const read = await readAccount(get)
+  if (!read.ok) return read
+  return { ok: true, account: read.account, suggestion: buildPoolSuggestion(read.games, read.mastery, roleHint) }
 }

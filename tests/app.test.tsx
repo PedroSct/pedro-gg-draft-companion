@@ -12,6 +12,7 @@ import type { DraftPlayer, DraftState, LcuStatus } from '../src/shared/types'
 import type { AppSettings, BuildSituation, Catalog, FriendProfile, UpdateState } from '../src/shared/dataTypes'
 import type { DecodeResult } from '../src/shared/poolShare'
 import type { IdentityState, LolApi, ProfileInput } from '../src/shared/api'
+import type { CoachResult } from '../src/shared/coach'
 import { analyzeMatch, summarize, type PgDetail, type PgSummary } from '../src/shared/postgame'
 import { normalizeMatch } from '../src/main/postgame/normalize'
 import { makeLcuMatch } from './fixtures/match'
@@ -92,7 +93,7 @@ function postGameFixture(): { summary: PgSummary; detail: PgDetail } {
   return { summary: summarize(report, analysis, 1_761_700_000_000), detail: { report, analysis } }
 }
 
-function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: PgSummary; detail: PgDetail }[]; metaPatch?: string; tourDone?: boolean } = {}): Fake {
+function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: PgSummary; detail: PgDetail }[]; metaPatch?: string; tourDone?: boolean; coach?: CoachResult } = {}): Fake {
   let profiles = opts.profiles ?? [makeProfile()]
   let draft: DraftState | null = null
   let status: LcuStatus = 'connected'
@@ -155,6 +156,7 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     onOverlayState: () => () => {},
     previewOverlay: async () => false,
     suggestPoolFromAccount: async () => ({ ok: false as const, message: 'sem cliente' }),
+    analyzeCoach: async () => opts.coach ?? { ok: false as const, message: 'sem cliente' },
     startOverlayMove: async () => false,
     finishOverlayMove: async () => undefined,
     exportBackup: async () => ({ ok: false, reason: 'canceled' }),
@@ -632,6 +634,83 @@ describe('Companion App', () => {
 
     act(() => fake.pushGameflow('EndOfGame'))
     expect(await screen.findByText('Conectado. Entre em uma fila.')).toBeInTheDocument()
+  })
+
+  it('a busca do Meta tem um X que limpa o texto e volta o foco para o campo', async () => {
+    const user = userEvent.setup()
+    installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Meta' }))
+    const search = await screen.findByRole('textbox', { name: 'Buscar campeão no ranking' })
+    expect(screen.queryByRole('button', { name: 'Limpar busca' })).not.toBeInTheDocument()
+    await user.type(search, 'zed')
+    await user.click(screen.getByRole('button', { name: 'Limpar busca' }))
+    expect(search).toHaveValue('')
+    expect(search).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Limpar busca' })).not.toBeInTheDocument()
+  })
+
+  it('aba Treino: mostra o alerta de one-trick, as sugestões e deixa adicionar à Pool', async () => {
+    const user = userEvent.setup()
+    const coach: CoachResult = {
+      ok: true,
+      account: 'Amigo#BR1',
+      report: {
+        gamesUsed: 20,
+        distinct: 2,
+        top: [{ championId: 103, games: 16, wins: 7, share: 0.8 }],
+        oneTrick: { championId: 103, games: 16, wins: 7, share: 0.8 },
+        concentration: 'high',
+        roles: [{ role: 'MIDDLE', games: 20, share: 1 }],
+        mainRole: 'MIDDLE',
+        style: { label: 'Mago: dano e controle à distância com habilidades', tags: [{ tag: 'Mage', share: 1 }] },
+        level: 'regular',
+        suggestions: [{ championId: 134, role: 'MIDDLE', tier: 'S', winrate: 0.53, metaGames: 5000, difficulty: 6, similarity: 0.9, similarTo: 103, sharedTags: ['Mage'], reasons: ['Joga parecido com Ahri: mesma classe (Mago).', '53% de vitórias na rota, tier S.'] }],
+        tips: [{ level: 'warn', title: '80% das suas partidas foram de Ahri', detail: 'Treine 2 ou 3 campeões parecidos.', championId: 103 }]
+      }
+    }
+    installApi({ coach })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Treino' }))
+    expect(await screen.findByText('Pool muito concentrada')).toBeInTheDocument()
+    expect(screen.getByText('80% das suas partidas foram de Ahri')).toBeInTheDocument()
+    const section = screen.getByRole('region', { name: 'Campeões para experimentar' })
+    expect(within(section).getByText('Joga parecido com Ahri: mesma classe (Mago).')).toBeInTheDocument()
+    await user.click(within(section).getByRole('button', { name: 'Adicionar Syndra à Pool' }))
+    expect(await within(section).findByRole('button', { name: 'Adicionar Syndra à Pool' })).toHaveTextContent('Na Pool')
+    expect(screen.getByRole('region', { name: 'Fundamentos de Meio' })).toBeInTheDocument()
+  })
+
+  it('destaca a vez de banir e de escolher com um aviso próprio, que some quando a vez passa', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(draftWithZed()))
+    await screen.findByTestId('verdict')
+    expect(screen.queryByRole('region', { name: /^Sua vez de/ })).not.toBeInTheDocument()
+
+    act(() => fake.pushDraft({ ...draftWithZed(), turn: { id: 3, type: 'ban', championId: 0 } }))
+    expect(await screen.findByRole('region', { name: 'Sua vez de banir' })).toBeInTheDocument()
+
+    act(() => fake.pushDraft({ ...draftWithZed(), turn: { id: 7, type: 'pick', championId: 0 } }))
+    const pick = await screen.findByRole('region', { name: 'Sua vez de escolher' })
+    expect(pick).toHaveTextContent('Orianna')
+    expect(screen.queryByRole('region', { name: 'Sua vez de banir' })).not.toBeInTheDocument()
+
+    act(() => fake.pushDraft(draftWithZed()))
+    await waitFor(() => expect(screen.queryByRole('region', { name: /^Sua vez de/ })).not.toBeInTheDocument())
+  })
+
+  it('o Plano de jogo vem depois da build e do envio para o LoL', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft({ ...draftWithZed(), allies: [player(0, 0, 'none', 'TOP'), player(1, 103, 'locked', 'MIDDLE')] }))
+    const build = await screen.findByRole('region', { name: 'Build' })
+    const plan = await screen.findByRole('region', { name: 'Plano de jogo' })
+    expect(build.compareDocumentPosition(plan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('o fim do draft volta para a tela de espera', async () => {
