@@ -37,6 +37,8 @@ interface AppState {
   roleOverride: Role | null
   /** Campeão da lista de alternativas que o usuário clicou para ver a build. */
   previewChampionId: number | null
+  /** oponente de rota simulado pela busca (Caitlyn no ADC, por exemplo); vale só até o draft acabar */
+  simEnemyId: number | null
   /** o editor de Pools tem alterações ainda não salvas (para avisar antes de sair da tela) */
   poolDirty: boolean
   /** tutorial de primeira vez aberto */
@@ -81,6 +83,7 @@ interface AppState {
   setFriendRole: (cellId: number, role: Role | null) => void
   claimProfile: (profileId: string) => Promise<void>
   setPreview: (championId: number | null) => void
+  setSimEnemy: (championId: number | null) => void
   saveProfile: (input: ProfileInput) => Promise<FriendProfile>
   deleteProfile: (id: string) => Promise<void>
   pickGameDir: () => Promise<PickDirResult>
@@ -183,6 +186,7 @@ export const useApp = create<AppState>()((set, get) => ({
   friendRoles: {},
   roleOverride: null,
   previewChampionId: null,
+  simEnemyId: null,
   poolDirty: false,
   tourOpen: false,
   settingsOpen: false,
@@ -268,7 +272,18 @@ export const useApp = create<AppState>()((set, get) => ({
       api.onLcuStatus((status) => {
         set({ lcuStatus: status })
         // Conectou: a versão do patch do cliente já é conhecida, então revalida o catálogo (cache local).
-        if (status === 'connected') void get().loadCatalog()
+        if (status === 'connected') {
+          void get().loadCatalog()
+          // Reconectou (ex.: o cliente caiu no meio da partida): ressincroniza a fase e o plano em vez de confiar no que ficou.
+          void api
+            .getGameflow()
+            .then((gf) => {
+              const keep = gf && IN_GAME_PHASES.includes(gf) ? (get().lastPick ?? loadLastPick()) : get().lastPick
+              set({ gameflow: gf, lastPick: keep })
+            })
+            .catch(() => undefined)
+          void get().refreshRecommendation()
+        }
       }),
       api.onDraftUpdate((next) => {
         if (!get().draft && !(get().view === 'pools' && get().poolDirty)) set({ view: 'draft' }) // começou uma seleção: volta para ela (sem perder um perfil em edição)
@@ -281,7 +296,8 @@ export const useApp = create<AppState>()((set, get) => ({
             lastPick = { championId: me.championId, role }
             saveLastPick(lastPick)
           }
-        } else if (lastPick && !get().draft) {
+        } else if (lastPick && !get().draft && !(get().gameflow && IN_GAME_PHASES.includes(get().gameflow as string))) {
+          // (durante a partida, uma sessão antiga que reaparece ao reconectar não apaga o plano)
           lastPick = null // seleção nova: o plano da partida anterior sai
           saveLastPick(null)
         }
@@ -290,7 +306,7 @@ export const useApp = create<AppState>()((set, get) => ({
       }),
       api.onDraftEnded(() => {
         recSeq++
-        set({ draft: null, recommendation: null, recs: {}, previewChampionId: null, roleOverride: null, focusCellId: null, friendRoles: {} })
+        set({ draft: null, recommendation: null, recs: {}, previewChampionId: null, simEnemyId: null, roleOverride: null, focusCellId: null, friendRoles: {} })
       }),
       // Conta detectada ou perfil reconhecido: recarrega os perfis (o main pode ter aprendido o puuid).
       api.onIdentity((identity) => {
@@ -306,7 +322,11 @@ export const useApp = create<AppState>()((set, get) => ({
         void get().refreshRecommendation()
       }),
       api.onUpdateState((update) => set({ update })),
-      api.onGameflow((gameflow) => set({ gameflow })),
+      api.onGameflow((gameflow) => {
+        // Entrou na partida sem o plano em memória (app reaberto ou reconexão): recupera o último pick guardado.
+        const lastPick = IN_GAME_PHASES.includes(gameflow) && !get().lastPick ? loadLastPick() : get().lastPick
+        set({ gameflow, lastPick })
+      }),
       api.onAutoAccepted(() => set({ autoAcceptedAt: Date.now() })),
       // Terminou uma partida: mostra a análise assim que ficar pronta.
       api.onPostGameReady(() => {
@@ -377,6 +397,7 @@ export const useApp = create<AppState>()((set, get) => ({
   },
 
   setPreview: (previewChampionId) => set({ previewChampionId }),
+  setSimEnemy: (simEnemyId) => set({ simEnemyId }),
 
   setFocus: (focusCellId) => {
     const d = get().draft

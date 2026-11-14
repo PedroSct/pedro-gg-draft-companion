@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { BrowserWindow, globalShortcut, screen } from 'electron'
 import { applyBuildSelection, ZERO_SELECTION, type BuildSelection } from '../../shared/buildSelection'
 import type { AppSettings, ChampionBuild, MetaDataset } from '../../shared/dataTypes'
-import { computeOverlay, type LiveSnapshot, type MatchSituation, type OverlayCorner, type OverlayState } from '../../shared/overlay'
+import { computeOverlay, type LiveSnapshot, type RecipeBook, type MatchSituation, type OverlayCorner, type OverlayState } from '../../shared/overlay'
 import type { Role } from '../../shared/types'
 import { rolesOf } from '../data/metaStats'
 import { ForegroundWatcher, isGameProcess } from './foreground'
@@ -13,14 +13,17 @@ import { fetchLive, parseLive } from './live'
 import { formatAccelerator } from '../../shared/shortcuts'
 
 export type PanelSize = { width: number; height: number }
-const FULL: PanelSize = { width: 320, height: 520 }
+const FULL: PanelSize = { width: 320, height: 620 }
 /** O recuado é bem menor; a folga em cima do banner do modo mover cabe na altura. */
-const COMPACT: PanelSize = { width: 300, height: 150 }
+const COMPACT: PanelSize = { width: 300, height: 220 }
 const sizeOf = (compact: boolean): PanelSize => (compact ? COMPACT : FULL)
 const MARGIN = 16
 const FAST_MS = 2500
 const IDLE_MS = 6000
 const PREVIEW_MS = 12_000
+const WARM_TIMEOUT_MS = 8000
+/** Falhas curtas da API da partida (reconexão, travada) não escondem o painel: mantém o último estado por até este tempo. */
+const GRACE_MS = 30_000
 
 export interface OverlayDeps {
   getSettings: () => AppSettings
@@ -41,6 +44,8 @@ export interface OverlayDeps {
   lastDraftPick: () => { championId: number; role: Role } | null
   /** abre o catálogo (ids de campeão) antes da primeira leitura */
   warm: () => Promise<void>
+  /** receitas dos itens (Data Dragon), para dizer qual peça comprar com o ouro atual; vazio sem catálogo */
+  recipes?: () => RecipeBook
   send: (channel: string, payload: unknown) => void
   channel: string
   log: (message: string) => void
@@ -283,6 +288,7 @@ export class OverlayController {
   }
 
   private live: OverlayState | null = null
+  private liveAt = 0
 
   private async tick(): Promise<void> {
     if (!this.running || this.stopped) return
@@ -292,7 +298,11 @@ export class OverlayController {
       const snap = parseLive(raw)
       if (raw === null) this.setStatus('ligado, aguardando uma partida (a API da partida não respondeu)')
       else if (!snap) this.setStatus('partida detectada, mas não é o Summoner\'s Rift clássico ou os dados vieram incompletos')
-      this.live = snap ? await this.stateFor(snap) : null
+      const fresh = snap ? await this.stateFor(snap) : null
+      if (fresh) this.liveAt = Date.now()
+      // A API não respondeu (jogador reconectando, jogo travou um instante): segura o último painel por um tempo.
+      const transient = !fresh && raw === null && this.live !== null && Date.now() - this.liveAt < GRACE_MS
+      if (!transient) this.live = fresh
       if (this.live) next = this.gameFocused ? FAST_MS : IDLE_MS
       if (this.editing) {
         if (this.live) this.setState(this.live)
@@ -304,7 +314,8 @@ export class OverlayController {
   }
 
   private async stateFor(snap: LiveSnapshot): Promise<OverlayState | null> {
-    await this.deps.warm()
+    // Sem internet o catálogo pode demorar: não deixa o painel esperando para sempre (ele tenta de novo no próximo ciclo).
+    await Promise.race([this.deps.warm().catch(() => undefined), new Promise<void>((r) => setTimeout(r, WARM_TIMEOUT_MS))])
     const id = snap.championKey ? this.deps.idOfKey(snap.championKey) : null
     if (id === null) {
       this.setStatus(`partida detectada (${snap.championName || snap.championKey || '?'}), mas o catálogo de campeões não carregou (precisa de internet na 1ª vez)`)
@@ -326,7 +337,7 @@ export class OverlayController {
     this.setStatus(`mostrando o painel: ${this.deps.nameOf(id)} (${role})`)
     const enemyIds = (snap.enemyKeys ?? []).map((k) => this.deps.idOfKey(k)).filter((x): x is number => x !== null)
     const situation = enemyIds.length > 0 ? this.deps.situation(id, role, enemyIds) : null
-    return computeOverlay({ championId: id, role, build, situation, live: { ...snap, championName: snap.championName || this.deps.nameOf(id) } })
+    return computeOverlay({ championId: id, role, build, situation, recipes: this.deps.recipes?.(), live: { ...snap, championName: snap.championName || this.deps.nameOf(id) } })
   }
 
   private setState(raw: OverlayState | null): void {

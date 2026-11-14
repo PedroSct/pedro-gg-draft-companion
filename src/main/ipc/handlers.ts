@@ -1,5 +1,5 @@
 // src/main/ipc/handlers.ts  (substitui a versão do Módulo 2)
-import { promises as fs } from 'node:fs'
+import { promises as fs, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { app, dialog, type BrowserWindow } from 'electron'
 import { LcuConnector } from '../lcu/connector'
@@ -90,13 +90,38 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     return res.draft
   }
   // Rota e campeão do último draft: o overlay usa quando o jogo não informa a rota.
-  let lastPick: { championId: number; role: Role } | null = null
+  const lastPickFile = path.join(userData, 'lastpick.json')
+  const readLastPick = (): { championId: number; role: Role } | null => {
+    try {
+      const raw = JSON.parse(readFileSync(lastPickFile, 'utf8')) as { championId?: unknown; role?: unknown; at?: unknown }
+      const fresh = typeof raw.at === 'number' && Date.now() - raw.at < 6 * 3600_000 // partida de mais de 6 h atrás não vale
+      if (fresh && typeof raw.championId === 'number' && raw.championId > 0 && (ROLES as readonly string[]).includes(String(raw.role))) {
+        return { championId: raw.championId, role: raw.role as Role }
+      }
+    } catch {
+      /* sem arquivo ou ilegível */
+    }
+    return null
+  }
+  // Sobrevive ao app fechar e reabrir no meio da partida (o overlay precisa da rota quando o jogo não informa).
+  let lastPick: { championId: number; role: Role } | null = readLastPick()
+  const saveLastPickFile = (): void => {
+    try {
+      mkdirSync(path.dirname(lastPickFile), { recursive: true })
+      writeFileSync(lastPickFile, JSON.stringify({ ...lastPick, at: Date.now() }))
+    } catch {
+      /* só conveniência */
+    }
+  }
   const pushDraft = (): void => {
     const d = annotatedDraft()
     if (d) {
       send(IPC.DRAFT_UPDATE, d)
       const me = d.allies.find((a) => a.cellId === d.localPlayerCellId)
-      if (me && me.championId > 0 && d.localRole) lastPick = { championId: me.championId, role: d.localRole }
+      if (me && me.championId > 0 && d.localRole && (lastPick?.championId !== me.championId || lastPick.role !== d.localRole)) {
+        lastPick = { championId: me.championId, role: d.localRole }
+        saveLastPickFile()
+      }
     }
   }
   lcu.on('draft', pushDraft)
@@ -319,7 +344,20 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     const req = isRecord(raw) ? raw : {}
     const role = req.role as Role
     if (typeof req.championId !== 'number' || !ROLES.includes(role)) return null
-    return meta.getBuild(req.championId, role, laneEnemy(role))
+    const sim = typeof req.enemyId === 'number' && req.enemyId > 0 ? req.enemyId : null
+    return meta.getBuild(req.championId, role, sim ?? laneEnemy(role))
+  })
+  // ---- Confronto de rota (oponente do draft, ou o simulado pela busca) e quanto você vence dele
+  handle(IPC.DRAFT_MATCHUP, (raw) => {
+    const req = isRecord(raw) ? raw : {}
+    const role = req.role as Role
+    const empty = { enemyId: null, simulated: false, winrate: null, games: 0 }
+    if (typeof req.championId !== 'number' || !ROLES.includes(role)) return empty
+    const sim = typeof req.enemyId === 'number' && req.enemyId > 0 ? req.enemyId : null
+    const enemyId = sim ?? laneEnemy(role) // a simulação escolhida na busca vale mais que o palpite do draft
+    if (!enemyId) return empty
+    const st = meta.get()?.champions[String(req.championId)]?.roles[role]?.matchups[String(enemyId)]
+    return { enemyId, simulated: sim !== null, winrate: st && st.games >= 5 ? st.wins / st.games : null, games: st?.games ?? 0 }
   })
   // ---- Sugestões de banimento (só enquanto os bans ainda estão abertos)
   // ---- Escolher/banir pelo app: uma ação por clique, na vez da pessoa; o main confere tudo no cliente
@@ -343,7 +381,8 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
       draft,
       dataset: meta.get(),
       profiles: profiles.list(),
-      fallbackProfileId: typeof req.profileId === 'string' ? req.profileId : undefined
+      fallbackProfileId: typeof req.profileId === 'string' ? req.profileId : undefined,
+      focusChampionId: typeof req.focusChampionId === 'number' && req.focusChampionId > 0 ? req.focusChampionId : undefined
     })
   })
   // ---- Aviso de mudança de patch (só para campeões das suas Pools)
@@ -400,6 +439,7 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
       lastSelection: (id, role) => lastSelections.get(`${id}|${role}`) ?? null,
       lastDraftPick: () => lastPick,
       warm: warmChampionKeys,
+      recipes: () => itemInfos,
       send,
       channel: IPC.OVERLAY_STATE,
       log: (m) => diag.log('overlay', m)

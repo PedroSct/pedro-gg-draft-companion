@@ -10,6 +10,20 @@ const STATUS: Record<LcuStatus, { label: string; dot: string; pulse: boolean }> 
   disconnected: { label: 'Cliente fechado', dot: 'bg-enemy', pulse: false }
 }
 
+/** Foto de perfil do LoL (a do cliente); sem ela ou sem internet, a inicial do nome. */
+function Avatar({ name, iconId, version }: { name: string; iconId?: number; version?: string }) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [iconId, version])
+  const src = iconId !== undefined && version ? `https://ddragon.leagueoflegends.com/cdn/${version}/img/profileicon/${iconId}.png` : null
+  return src && !failed ? (
+    <img src={src} alt="" width={32} height={32} onError={() => setFailed(true)} draggable={false} className="h-8 w-8 shrink-0 rounded-full border border-gold/60 object-cover" />
+  ) : (
+    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-gold/30 bg-gold/15 font-display text-sm font-semibold text-gold" aria-hidden="true">
+      {name.slice(0, 1).toUpperCase() || '?'}
+    </span>
+  )
+}
+
 /** Liga/desliga o "aceitar partida automaticamente" e avisa quando aceitou uma. */
 function AutoAcceptToggle() {
   const on = useApp((s) => s.settings?.autoAccept ?? false)
@@ -32,11 +46,11 @@ function AutoAcceptToggle() {
       onClick={() => void saveSettings({ autoAccept: !on })}
       data-tour="autoaccept"
       title="Quando a partida for encontrada, o Pedro.gg clica em Aceitar por você (pelo cliente do LoL, sem usar o mouse)."
-      className={`app-no-drag flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-full border py-1 pl-3 pr-1.5 text-sm transition-colors max-[1100px]:gap-1.5 max-[1100px]:pl-2 ${
+      className={`app-no-drag flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border py-1 pl-3 pr-1.5 text-sm transition-colors max-[1180px]:pl-1.5 ${
         flash ? 'border-ally/60 bg-ally/10 text-ally' : on ? 'border-gold/50 bg-gold/10 text-gold' : 'border-line bg-panel/80 text-mist hover:border-mist/50 hover:text-snow'
       }`}
     >
-      <span className="max-[900px]:sr-only">{flash ? 'Partida aceita!' : on ? 'Aceitar: automático' : 'Aceitar: manual'}</span>
+      <span className="max-[1180px]:sr-only">{flash ? 'Partida aceita!' : on ? 'Aceite automático' : 'Aceite manual'}</span>
       <span className={`relative h-5 w-9 rounded-full transition-colors ${on || flash ? 'bg-gold/70' : 'bg-line'}`} aria-hidden="true">
         <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-snow shadow transition-all ${on || flash ? 'left-[18px]' : 'left-0.5'}`} />
       </span>
@@ -58,25 +72,29 @@ export function Header() {
   const active = useApp(selectActiveProfile)
   const account = useApp((s) => s.identity?.account)
   const linked = useApp((s) => s.identity?.profileId ?? null)
+  const version = useApp((s) => s.catalog?.version)
   const openPool = useApp((s) => s.openPool)
   const openSettings = useApp((s) => s.openSettings)
   const view = useApp((s) => s.view)
   const setView = useApp((s) => s.setView)
   const draft = useApp((s) => s.draft)
   const st = STATUS[status]
+  const shownName = account ? account.gameName : (active?.nickname ?? 'Escolher perfil')
 
   return (
     <header
-      className="app-drag relative z-20 flex h-[52px] shrink-0 items-center gap-4 border-b border-line/70 bg-deck/95 pl-4 max-[1000px]:gap-2 max-[1000px]:pl-3"
+      className="app-drag relative z-20 grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line/70 bg-deck/95 pl-4"
       style={{ paddingRight: 'max(16px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px))' }}
     >
-      <div className="flex shrink-0 items-center gap-2.5">
-        <img src={appIcon} alt="" width={30} height={30} className="h-[30px] w-[30px]" draggable={false} />
-        <span className="font-display text-xl font-semibold tracking-wide">Pedro.gg</span>
-        <span className="hidden text-sm text-mist xl:inline">Draft Companion</span>
+      {/* esquerda: marca */}
+      <div className="flex min-w-0 items-center gap-2.5">
+        <img src={appIcon} alt="" width={30} height={30} className="h-[30px] w-[30px] shrink-0" draggable={false} />
+        <span className="truncate font-display text-xl font-semibold tracking-wide max-[760px]:sr-only">Pedro.gg</span>
+        <span className="hidden whitespace-nowrap text-sm text-mist min-[1500px]:inline">Draft Companion</span>
       </div>
 
-      <nav className="app-no-drag flex shrink-0 items-center gap-1 whitespace-nowrap rounded-xl border border-line/70 bg-panel/70 p-1" role="tablist" aria-label="Telas">
+      {/* centro: telas */}
+      <nav className="app-no-drag flex items-center gap-0.5 whitespace-nowrap rounded-xl border border-line/70 bg-panel/70 p-1" role="tablist" aria-label="Telas">
         {NAV.map((n) => (
           <button
             key={n.id}
@@ -85,7 +103,7 @@ export function Header() {
             role="tab"
             aria-selected={view === n.id}
             onClick={() => setView(n.id)}
-            className={`relative rounded-lg px-3.5 py-1 max-[1000px]:px-2.5 font-display text-base font-semibold tracking-wide transition-colors ${
+            className={`relative rounded-lg px-3.5 py-1 font-display text-base font-semibold tracking-wide transition-colors max-[900px]:px-2.5 max-[900px]:text-[15px] ${
               view === n.id ? 'bg-raised text-snow shadow-[0_0_0_1px_rgb(220_184_112/0.35)]' : 'text-mist hover:text-snow'
             }`}
           >
@@ -97,9 +115,8 @@ export function Header() {
         ))}
       </nav>
 
-      <div className="flex-1" />
-
-      <div className="app-no-drag flex min-w-0 items-center gap-3 max-[1000px]:gap-2">
+      {/* direita: conta, estado, aceite e configurações */}
+      <div className="app-no-drag flex min-w-0 items-center justify-end gap-2.5">
         {profiles.length === 0 && !account ? (
           <button type="button" className={btnGold} onClick={openPool}>
             Criar o primeiro perfil
@@ -109,13 +126,11 @@ export function Header() {
             type="button"
             onClick={openPool}
             title={account ? (linked ? 'Conta detectada no cliente. Abrir perfis e Pools' : 'Conta detectada, mas sem perfil. Clique para vincular a um perfil') : 'Abrir seus perfis e Pools'}
-            className="flex min-w-0 items-center gap-2 rounded-full border border-line bg-panel/80 py-1 pl-1 pr-3 text-sm transition-colors hover:border-mist/50 max-[900px]:pr-1"
+            className="flex min-w-0 items-center gap-2 rounded-full border border-line bg-panel/80 py-0.5 pl-0.5 pr-3 text-sm transition-colors hover:border-mist/50 max-[1180px]:pr-0.5"
           >
-            <span className="grid h-6 w-6 place-items-center rounded-full bg-gold/15 font-display text-sm font-semibold text-gold" aria-hidden="true">
-              {(account?.gameName ?? active?.nickname ?? '?').slice(0, 1).toUpperCase()}
-            </span>
-            <span className="flex max-w-48 flex-col text-left leading-tight max-[900px]:sr-only">
-              <span className="truncate font-medium">{account ? account.gameName : (active?.nickname ?? 'Escolher perfil')}</span>
+            <Avatar name={shownName} iconId={account?.profileIconId} version={version} />
+            <span className="flex max-w-40 flex-col text-left leading-tight max-[1180px]:sr-only">
+              <span className="truncate font-medium">{shownName}</span>
               {account && !linked && <span className="text-[11px] text-gold">sem perfil · vincular</span>}
             </span>
           </button>
@@ -125,7 +140,7 @@ export function Header() {
             {st.pulse && <span className={`radar absolute inline-flex h-full w-full rounded-full ${st.dot}`} />}
             <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${st.dot}`} />
           </span>
-          <span className="max-[1100px]:sr-only">{st.label}</span>
+          <span className="max-[1350px]:sr-only">{st.label}</span>
         </div>
         <AutoAcceptToggle />
         <button

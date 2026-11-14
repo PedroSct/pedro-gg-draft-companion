@@ -40,6 +40,8 @@ export interface LcuIdentity {
   puuid: string
   gameName: string
   tagLine: string
+  /** ícone de perfil escolhido no cliente (Data Dragon: profileicon/<id>.png); ausente se o cliente não informar */
+  profileIconId?: number
 }
 
 /** Nível e classificação da conta logada (leitura do cliente; qualquer campo pode faltar). */

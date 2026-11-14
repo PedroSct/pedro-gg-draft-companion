@@ -29,6 +29,12 @@ const LOADOUT_WRITE_PATHS: RegExp[] = [
   /^\/lol-item-sets\/v1\/item-sets\/\d{1,20}\/sets$/
 ]
 const RETRY_MS = 3000
+/** Vigia da conexão: se o cliente parar de responder sem fechar o socket, reconecta. */
+const WATCHDOG_MS = 8000
+const WATCHDOG_MAX_FAILS = 2
+/** Fases em que não existe seleção de campeões aberta: qualquer rascunho guardado é velho. */
+const IN_GAME_PHASES = new Set(['InProgress', 'Reconnect', 'WaitingForStats', 'PreEndOfGame', 'EndOfGame'])
+const NO_DRAFT_PHASES = new Set(['None', 'Lobby', 'Matchmaking', 'ReadyCheck', 'GameStart', 'InProgress', 'Reconnect', 'WaitingForStats', 'PreEndOfGame', 'EndOfGame', 'TerminatedInError'])
 const REQUEST_TIMEOUT_MS = 5000
 
 // O cliente usa certificado autoassinado da Riot. Aceitamos isso SOMENTE neste
@@ -64,6 +70,8 @@ export class LcuConnector extends EventEmitter {
   /** puuid → "Nome#TAG" (só aliados da seleção atual; vale até desconectar) */
   private names = new Map<string, string>()
   private resolving = new Set<string>()
+  private watchdog: NodeJS.Timeout | null = null
+  private watchdogFails = 0
 
   constructor(private readonly getLockfileOverride: () => string | null = () => null) {
     super()
@@ -81,6 +89,7 @@ export class LcuConnector extends EventEmitter {
     this.running = false
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
+    this.stopWatchdog()
     this.closeSocket()
     this.creds = null
     this.clearDraft()
@@ -109,8 +118,15 @@ export class LcuConnector extends EventEmitter {
       const gameName = typeof d.gameName === 'string' && d.gameName ? d.gameName : typeof d.displayName === 'string' ? d.displayName : ''
       const tagLine = typeof d.tagLine === 'string' ? d.tagLine : ''
       if (!puuid || !gameName) return this.identity
-      const next = { puuid, gameName, tagLine }
-      if (!this.identity || this.identity.puuid !== puuid || this.identity.gameName !== gameName || this.identity.tagLine !== tagLine) {
+      const icon = typeof d.profileIconId === 'number' && Number.isInteger(d.profileIconId) && d.profileIconId >= 0 ? d.profileIconId : undefined
+      const next: LcuIdentity = { puuid, gameName, tagLine, ...(icon !== undefined ? { profileIconId: icon } : {}) }
+      if (
+        !this.identity ||
+        this.identity.puuid !== puuid ||
+        this.identity.gameName !== gameName ||
+        this.identity.tagLine !== tagLine ||
+        this.identity.profileIconId !== icon
+      ) {
         this.identity = next
         this.names.set(puuid, tagLine ? `${gameName}#${tagLine}` : gameName)
         this.logger?.('identity', 'conta detectada')
@@ -263,6 +279,7 @@ export class LcuConnector extends EventEmitter {
       await this.openSocket(this.creds)
       await this.fetchInitialSession()
       this.setStatus('connected')
+      this.startWatchdog()
     } catch {
       // Lockfile obsoleto, cliente ainda iniciando, porta recusando etc.
       this.closeSocket()
@@ -317,7 +334,48 @@ export class LcuConnector extends EventEmitter {
     }
   }
 
+  private startWatchdog(): void {
+    this.stopWatchdog()
+    this.watchdogFails = 0
+    this.watchdog = setInterval(() => void this.checkAlive(), WATCHDOG_MS)
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdog) clearInterval(this.watchdog)
+    this.watchdog = null
+  }
+
+  /** O socket pode ficar "meio aberto" (PC dormiu, cliente reiniciou): confere com uma leitura simples. */
+  private async checkAlive(): Promise<void> {
+    if (!this.running || !this.creds) return
+    try {
+      const gf = await this.get(GAMEFLOW_PATH)
+      if (gf.status === 200) {
+        this.watchdogFails = 0
+        if (typeof gf.data === 'string') this.syncPhase(gf.data)
+        return
+      }
+      throw new Error(`HTTP ${gf.status}`)
+    } catch {
+      if (++this.watchdogFails < WATCHDOG_MAX_FAILS) return
+      this.logger?.('ws', 'cliente parou de responder: reconectando')
+      this.closeSocket()
+      this.onDisconnect()
+    }
+  }
+
+  private phase: string | null = null
+  /** Guarda a fase e descarta o rascunho velho quando ela diz que não há seleção aberta (ex.: o evento de fim foi perdido). */
+  private syncPhase(phase: string): void {
+    if (phase !== this.phase) {
+      this.phase = phase
+      this.emit('gameflow', phase)
+    }
+    if (NO_DRAFT_PHASES.has(phase)) this.clearDraft()
+  }
+
   private onDisconnect(): void {
+    this.stopWatchdog()
     this.creds = null
     this.names.clear()
     this.clearDraft()
@@ -328,20 +386,27 @@ export class LcuConnector extends EventEmitter {
   // ---------- Dados ----------
 
   private async fetchInitialSession(): Promise<void> {
+    // A fase vem primeiro: ao reconectar no meio da partida o cliente ainda pode entregar a seleção velha, que não vale.
+    let phase: string | null = null
+    try {
+      const gf = await this.get(GAMEFLOW_PATH)
+      if (gf.status === 200 && typeof gf.data === 'string') phase = gf.data
+    } catch {
+      /* sem a fase: confia na sessão */
+    }
+    this.phase = null
+    if (phase) this.syncPhase(phase)
+
     // Se o app abrir no meio de uma Champ Select, pegamos o estado atual.
-    const res = await this.get(SESSION_PATH)
-    if (res.status === 200) this.publish(res.data)
-    else if (res.status !== 404) throw new Error(`LCU respondeu ${res.status}`) // 404 = fora da seleção
+    if (!phase || !NO_DRAFT_PHASES.has(phase)) {
+      const res = await this.get(SESSION_PATH)
+      if (res.status === 200) this.publish(res.data)
+      else if (res.status !== 404) throw new Error(`LCU respondeu ${res.status}`) // 404 = fora da seleção
+    }
 
     await this.refreshIdentity()
 
     // Se o app abrir com a janela "partida encontrada" já aberta. Falha aqui nunca derruba a conexão.
-    try {
-      const gf = await this.get(GAMEFLOW_PATH)
-      if (gf.status === 200 && typeof gf.data === 'string') this.emit('gameflow', gf.data)
-    } catch {
-      /* só informativo */
-    }
     try {
       const rc = await this.get(READY_PATH)
       if (rc.status === 200) this.publishReadyCheck(rc.data)
@@ -364,7 +429,9 @@ export class LcuConnector extends EventEmitter {
     if (msg[1] === GAMEFLOW_EVENT) {
       if (typeof payload?.data === 'string') {
         this.logger?.('gameflow', payload.data)
+        this.phase = payload.data
         this.emit('gameflow', payload.data)
+        if (NO_DRAFT_PHASES.has(payload.data)) this.clearDraft()
       }
       return
     }
@@ -378,6 +445,7 @@ export class LcuConnector extends EventEmitter {
     }
     if (msg[1] !== SESSION_EVENT) return
     if (payload?.eventType === 'Delete') return this.clearDraft()
+    if (this.phase && IN_GAME_PHASES.has(this.phase)) return // sessão velha reaparecendo depois da reconexão
     this.publish(payload?.data)
   }
 

@@ -3,6 +3,7 @@ import type { MetaCounter } from '../../../shared/dataTypes'
 import { selectActiveProfile, useApp } from '../store/useApp'
 import { pct, ROLE_SHORT } from '../lib/format'
 import { btn } from '../lib/ui'
+import { DraftActButton } from './DraftActButton'
 import { ChampionIcon, useChampionName } from './Icons'
 
 function Row({ c, canAdd }: { c: MetaCounter; canAdd: boolean }) {
@@ -11,6 +12,8 @@ function Row({ c, canAdd }: { c: MetaCounter; canAdd: boolean }) {
   const key = useApp((s) => s.champById.get(c.championId)?.key)
   const owner = useApp(selectActiveProfile)
   const saveProfile = useApp((s) => s.saveProfile)
+  const setPreview = useApp((s) => s.setPreview)
+  const turn = useApp((s) => s.draft?.turn ?? null)
   const [added, setAdded] = useState(false)
 
   async function add(): Promise<void> {
@@ -33,12 +36,27 @@ function Row({ c, canAdd }: { c: MetaCounter; canAdd: boolean }) {
           Vence {pct(c.winrate)} contra {enemy} ({c.games} jogos)
         </div>
       </div>
-      {canAdd && (
-        <button type="button" className={btn} disabled={added || !key} onClick={() => void add()} aria-label={`Adicionar ${name} à Pool`}>
-          {added ? 'Na Pool' : 'Adicionar à Pool'}
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <button type="button" className={btn} onClick={() => setPreview(c.championId)} aria-label={`Ver build de ${name}`}>
+          Ver build
         </button>
-      )}
+        {turn?.type === 'pick' && <DraftActButton championId={c.championId} type="pick" compact />}
+        {canAdd && (
+          <button type="button" className={btn} disabled={added || !key} onClick={() => void add()} aria-label={`Adicionar ${name} à Pool`}>
+            {added ? 'Na Pool' : 'Adicionar à Pool'}
+          </button>
+        )}
+      </div>
     </li>
+  )
+}
+
+function EnemyTitle({ enemyId, role }: { enemyId: number; role: string }) {
+  const enemy = useChampionName(enemyId)
+  return (
+    <span>
+      Melhores picks contra {enemy} em {role} <span className="text-xs text-mist">(fora da sua Pool)</span>
+    </span>
   )
 }
 
@@ -77,6 +95,7 @@ export function MetaCounters() {
     }
   }, [signature, profileId, poolSize])
 
+  const enemyId = items[0]?.enemyId ?? 0
   if (items.length === 0 || !draft?.localRole) return null
 
   return (
@@ -87,8 +106,9 @@ export function MetaCounters() {
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between gap-2 text-left text-sm text-snow"
       >
-        <span>
-          Counters do meta em {ROLE_SHORT[draft.localRole]} <span className="text-xs text-mist">(fora da sua Pool)</span>
+        <span className="flex items-center gap-2">
+          <ChampionIcon id={enemyId} size={24} />
+          <EnemyTitle enemyId={enemyId} role={ROLE_SHORT[draft.localRole]} />
         </span>
         <span className="text-xs text-mist">{open ? 'Ocultar' : `Mostrar (${items.length})`}</span>
       </button>

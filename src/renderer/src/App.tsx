@@ -11,6 +11,8 @@ import { BuildPanel } from './components/BuildPanel'
 import { IdleScreen } from './components/IdleScreen'
 import { GamePlan } from './components/GamePlan'
 import { TurnBanner } from './components/TurnBanner'
+import { MatchupSpotlight } from './components/MatchupSpotlight'
+import { ChampionSearch } from './components/ChampionSearch'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Splash } from './components/Splash'
 import { btn } from './lib/ui'
@@ -132,7 +134,9 @@ function DraftScreen() {
       <TeamColumn side="ally" players={draft.allies} localCellId={draft.localPlayerCellId} />
       <div ref={centerRef} className="flex min-w-0 flex-col gap-3 pr-1 [&>*]:shrink-0 min-[1001px]:min-h-0 min-[1001px]:overflow-y-auto max-[1000px]:order-last max-[1000px]:col-span-2 max-[1000px]:pr-0">
         <TurnBanner />
+        <MatchupSpotlight />
         {banning && <BanSuggestions />}
+        <ChampionSearch />
         <BansBar allies={draft.bans.allies} enemies={draft.bans.enemies} />
         {!banning && <BanSuggestions />}
         <MetaCounters />

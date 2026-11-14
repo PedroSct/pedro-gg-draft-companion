@@ -193,6 +193,15 @@ describe('sugestões de banimento', () => {
     expect(r[0].reasons[0]).toMatchObject({ kind: 'counter', nickname: 'Amigo' })
   })
 
+  it('o campeão que você quer jogar (em foco) também pede ban de quem o atrapalha, mesmo fora da Pool', () => {
+    const noPool: FriendProfile = { ...mid(3), pool: emptyPool() } as FriendProfile
+    const without = suggestBans({ draft: draft(), dataset: DS, profiles: [noPool] })
+    expect(without.some((x) => x.reasons.some((y) => y.kind === 'counter'))).toBe(false)
+    const r = suggestBans({ draft: draft(), dataset: DS, profiles: [noPool], focusChampionId: 10 })
+    expect(r[0].championId).toBe(20)
+    expect(r[0].reasons[0]).toMatchObject({ kind: 'counter', championId: 10, nickname: 'você', self: true })
+  })
+
   it('sem dados reais não sugere nada', () => {
     expect(suggestBans({ draft: draft(), dataset: null, profiles: [mid(5)] })).toEqual([])
     expect(suggestBans({ draft: draft(), dataset: { ...DS, isSample: true }, profiles: [mid(5)] })).toEqual([])

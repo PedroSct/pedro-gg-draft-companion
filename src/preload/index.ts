@@ -63,6 +63,7 @@ const api: LolApi = {
   getPatchChanges: () => ipcRenderer.invoke(IPC.META_PATCH_CHANGES),
   ackPatchChanges: () => ipcRenderer.invoke(IPC.META_PATCH_ACK),
   getBanSuggestions: (req) => ipcRenderer.invoke(IPC.DRAFT_BANS, req),
+  getLaneMatchup: (req) => ipcRenderer.invoke(IPC.DRAFT_MATCHUP, req),
   draftAct: (req) => ipcRenderer.invoke(IPC.DRAFT_ACT, req),
   getGameflow: () => ipcRenderer.invoke(IPC.GAMEFLOW_GET),
   onGameflow: (cb) => subscribe<string>(IPC.GAMEFLOW_PHASE, cb),

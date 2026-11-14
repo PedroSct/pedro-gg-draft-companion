@@ -27,6 +27,8 @@ export interface BanInput {
   profiles: readonly FriendProfile[]
   /** perfil usado para o seu lugar caso o app não tenha reconhecido você pelo Riot ID */
   fallbackProfileId?: string
+  /** campeão que o jogador local quer jogar agora (pick em foco): quem o atrapalha também entra, com peso alto */
+  focusChampionId?: number
 }
 
 /** O draft já passou da fase de banimentos? (com picks travados não faz mais sentido sugerir ban) */
@@ -51,6 +53,7 @@ export function suggestBans(input: BanInput): BanSuggestion[] {
     role: Role
     weight: number
     nickname: string
+    self?: boolean
   }
   const guards: Guard[] = []
   for (const a of draft.allies) {
@@ -63,6 +66,11 @@ export function suggestBans(input: BanInput): BanSuggestion[] {
       if (e.comfort < MIN_COMFORT) continue
       guards.push({ championId: e.championId, role, weight: (e.comfort - 3) / 2, nickname: profile.nickname })
     }
+  }
+
+  // O campeão em foco (o que você quer jogar): ban de quem mais o atrapalha na sua rota.
+  if (input.focusChampionId && draft.localRole && !guards.some((g) => g.championId === input.focusChampionId && g.role === draft.localRole)) {
+    guards.push({ championId: input.focusChampionId, role: draft.localRole, weight: 1.2, nickname: 'você', self: true })
   }
 
   const scores = new Map<number, { score: number; reasons: BanReason[] }>()
@@ -99,7 +107,8 @@ export function suggestBans(input: BanInput): BanSuggestion[] {
         nickname: g.nickname,
         role: g.role,
         winrate: vs.wins / vs.games,
-        games: vs.games
+        games: vs.games,
+        ...(g.self ? { self: true } : {})
       })
     }
   }

@@ -152,6 +152,7 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
     getDiagnostics: async () => 'diagnóstico de teste',
     getLastAccept: async () => null,
     getMetaCounters: async () => [],
+    getLaneMatchup: async () => ({ enemyId: null, simulated: false, winrate: null, games: 0 }),
     getOverlayState: async () => null,
     onOverlayState: () => () => {},
     previewOverlay: async () => false,
@@ -283,6 +284,7 @@ beforeEach(() => {
     friendRoles: {},
     roleOverride: null,
     previewChampionId: null,
+    simEnemyId: null,
     poolDirty: false,
     tourOpen: false,
     settingsOpen: false,
@@ -1183,5 +1185,82 @@ describe('0.6: counters do meta, evolução e aviso de patch', () => {
     await user.click(within(note).getByRole('button', { name: 'Entendi' }))
     expect(ack).toHaveBeenCalled()
     expect(screen.queryByRole('status', { name: 'Mudanças do patch' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Draft: confronto, busca e bans pelo campeão em foco', () => {
+  const lockedAhri = (): DraftState => ({ ...draftWithZed(), allies: [player(0, 0, 'none', 'TOP'), player(1, 103, 'locked', 'MIDDLE')] })
+
+  it('destaca você contra o oponente de rota e diz se há vantagem', async () => {
+    const fake = installApi()
+    ;(fake.api as { getLaneMatchup: LolApi['getLaneMatchup'] }).getLaneMatchup = async () => ({ enemyId: 238, simulated: false, winrate: 0.56, games: 120 })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(lockedAhri()))
+    const spot = await screen.findByRole('region', { name: 'Seu confronto de rota' })
+    expect(await within(spot).findByText('Vantagem')).toBeInTheDocument()
+    expect(spot).toHaveTextContent('Zed')
+    expect(spot).toHaveTextContent('56,0%')
+  })
+
+  it('reconectou no meio da partida: recupera o plano guardado quando a fase chega', async () => {
+    localStorage.setItem('pgg.lastPick', JSON.stringify({ championId: 103, role: 'MIDDLE' }))
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    expect(screen.queryByText(/Partida em andamento/)).not.toBeInTheDocument()
+    act(() => fake.pushGameflow('Reconnect'))
+    expect(await screen.findByText(/Partida em andamento/)).toBeInTheDocument()
+    localStorage.removeItem('pgg.lastPick')
+  })
+
+  it('sem oponente claro, explica como simular um pela busca', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(lockedAhri()))
+    const spot = await screen.findByRole('region', { name: 'Seu confronto de rota' })
+    expect(spot).toHaveTextContent('Buscar campeão')
+  })
+
+  it('a busca acha o campeão sem acento ou maiúscula, marca os já escolhidos e simula o oponente', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    const matchup = vi.fn(async (_req: { championId: number; role: string; enemyId?: number | null }) => ({ enemyId: null as number | null, simulated: false, winrate: null as number | null, games: 0 }))
+    ;(fake.api as { getLaneMatchup: LolApi['getLaneMatchup'] }).getLaneMatchup = matchup as unknown as LolApi['getLaneMatchup']
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(lockedAhri()))
+    const box = await screen.findByRole('searchbox', { name: 'Buscar campeão' })
+    await user.type(box, 'ZED')
+    const list = await screen.findByRole('list', { name: 'Resultados da busca' })
+    expect(list).toHaveTextContent('Já escolhido') // Zed já está travado no inimigo
+    await user.clear(box)
+    await user.type(box, 'orian')
+    await user.click(await screen.findByRole('button', { name: 'Simular Orianna como oponente de rota' }))
+    await waitFor(() => expect(matchup).toHaveBeenLastCalledWith(expect.objectContaining({ enemyId: 61 })))
+  })
+
+  it('na vez de banir, bane o campeão achado na busca só depois de confirmar', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft({ ...lockedAhri(), turn: { id: 3, type: 'ban', championId: 0 } }))
+    await user.type(await screen.findByRole('searchbox', { name: 'Buscar campeão' }), 'orian')
+    await user.click(await screen.findByRole('button', { name: 'Banir Orianna' }))
+    expect(fake.draftAct).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Sim, banir' }))
+    expect(fake.draftAct).toHaveBeenCalledWith({ kind: 'lock', type: 'ban', championId: 61 })
+  })
+
+  it('pede os bans pensando no campeão que você quer jogar', async () => {
+    const fake = installApi()
+    const bans = vi.fn(async (_req: { profileId?: string; focusChampionId?: number }) => [])
+    ;(fake.api as { getBanSuggestions: LolApi['getBanSuggestions'] }).getBanSuggestions = bans as unknown as LolApi['getBanSuggestions']
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(lockedAhri()))
+    await waitFor(() => expect(bans).toHaveBeenCalledWith(expect.objectContaining({ focusChampionId: 103 })))
   })
 })

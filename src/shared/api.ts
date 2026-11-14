@@ -17,6 +17,7 @@ import type {
   MetaChampionDetail,
   MetaInfo,
   MetaTierRow,
+  LaneMatchup,
   Recommendation,
   SpellInfo,
   UpdateState
@@ -134,7 +135,9 @@ export interface LolApi {
   /** Ranking de campeões da rota (tela Meta). */
   getMetaTiers(role: Role): Promise<MetaTierRow[]>
   /** Sugestões de banimento para o draft atual ([] fora da fase de bans ou sem dados reais). */
-  getBanSuggestions(req: { profileId?: string }): Promise<BanSuggestion[]>
+  getBanSuggestions(req: { profileId?: string; focusChampionId?: number }): Promise<BanSuggestion[]>
+  /** Confronto de rota do campeão em foco: oponente do draft (ou o simulado em `enemyId`) e o winrate contra ele. */
+  getLaneMatchup(req: { championId: number; role: Role; enemyId?: number | null }): Promise<LaneMatchup>
   /**
    * Escolher ou banir no cliente, só quando a pessoa clica e só na vez dela. `hover` marca o campeão (dá para trocar);
    * `lock` confirma (não dá para desfazer). O main confere a vez e a disponibilidade no cliente antes de escrever.
@@ -146,7 +149,7 @@ export interface LolApi {
   /** Melhores picks do meta contra o inimigo da sua rota, fora da sua Pool. */
   getMetaCounters(req: { profileId?: string }): Promise<MetaCounter[]>
   getMetaDetail(req: { championId: number; role: Role }): Promise<MetaChampionDetail | null>
-  getBuild(req: { championId: number; role: Role }): Promise<ChampionBuild | null>
+  getBuild(req: { championId: number; role: Role; enemyId?: number | null }): Promise<ChampionBuild | null>
   /** Ajustes da build para o time inimigo atual; null fora do draft. */
   getBuildSituation(req: { championId: number; role: Role }): Promise<BuildSituation | null>
   importMeta(): Promise<ImportMetaResult>

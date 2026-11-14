@@ -227,6 +227,8 @@ export interface ItemInfo {
   name: string
   iconUrl: string
   goldTotal: number
+  /** peças da receita (ids dos componentes diretos); ausente em itens básicos e em caches antigos */
+  from?: number[]
   /** categorias do Data Dragon (ex.: 'Armor', 'SpellBlock', 'ArmorPenetration'); ausente em caches antigos */
   tags?: string[]
 }
@@ -347,6 +349,8 @@ export type BanReason =
       /** vitórias do campeão sugerido contra aquele (na rota) */
       winrate: number
       games: number
+      /** o campeão protegido é o que VOCÊ quer jogar agora (em foco), não um da Pool */
+      self?: boolean
     }
   | { kind: 'meta'; role: Role; tier: Tier; winrate: number; games: number }
 
@@ -466,4 +470,14 @@ export interface MetaChampionDetail {
   /** aliados com quem ele rende mais */
   allies: { championId: number; delta: number; games: number }[]
   build: ChampionBuild | null
+}
+
+/** Confronto de rota: o seu campeão contra o oponente (real ou simulado pela busca). */
+export interface LaneMatchup {
+  enemyId: number | null
+  /** o oponente veio da busca (simulação), não do draft */
+  simulated: boolean
+  /** vitórias do seu campeão contra ele na rota (0..1); null sem dados suficientes */
+  winrate: number | null
+  games: number
 }

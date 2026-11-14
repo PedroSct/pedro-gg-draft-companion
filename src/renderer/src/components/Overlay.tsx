@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Catalog } from '../../../shared/dataTypes'
-import type { OverlayItemStep, OverlayState } from '../../../shared/overlay'
+import type { OverlayItemStep, OverlayState, PurchaseAdvice } from '../../../shared/overlay'
 import { ROLE_SHORT } from '../lib/format'
 
 const KEYS = ['Q', 'W', 'E', 'R'] as const
@@ -42,6 +42,40 @@ function Tile({ step, catalog, next, size }: { step: OverlayItemStep; catalog: C
       </span>
       <span className={`text-[9px] leading-none ${next ? 'font-semibold text-gold' : 'text-dim'}`}>{step.label === 'Situacional' ? (step.reason ? REASON_SHORT[step.reason] : 'Situ.') : step.label}</span>
     </li>
+  )
+}
+
+function MiniIcon({ id, catalog }: { id: number; catalog: Catalog | null }) {
+  const info = catalog?.items[String(id)]
+  return info ? (
+    <img src={info.iconUrl} alt={info.name} title={info.name} className="h-6 w-6 shrink-0 rounded-md border border-white/15 object-cover" draggable={false} />
+  ) : (
+    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/5 text-[9px] text-mist">{id}</span>
+  )
+}
+
+/** Qual peça comprar com o ouro de agora (ex.: 1200 g → Capítulo Perdido; 750 g → Tomo + Cristal). */
+function AdviceLine({ advice, gold, catalog }: { advice: PurchaseAdvice; gold: number | undefined; catalog: Catalog | null }) {
+  const name = (id: number): string => catalog?.items[String(id)]?.name ?? `Item ${id}`
+  let headline: string
+  if (advice.mode === 'full') headline = `Dá para fechar: ${name(advice.targetId)}`
+  else if (advice.mode === 'parts') headline = `Compre agora: ${advice.buy.map((b) => name(b.itemId)).join(' + ')}`
+  else {
+    const part = advice.buy[0]
+    headline = part ? `Junte ouro: faltam ${fmtGold(Math.max(0, part.cost - (gold ?? 0)))} g para ${name(part.itemId)}` : `Faltam ${fmtGold(advice.missing)} g`
+  }
+  return (
+    <div role="note" aria-label="Conselho de compra" className="flex items-center gap-2 rounded-lg border border-gold/40 bg-gold/10 px-2 py-1.5">
+      <span className="flex shrink-0 gap-1">
+        {advice.buy.map((b) => (
+          <MiniIcon key={b.itemId} id={b.itemId} catalog={catalog} />
+        ))}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[11px] font-semibold leading-tight text-gold">{headline}</span>
+        {advice.mode !== 'full' && <span className="block text-[10px] leading-tight text-mist">Item completo: faltam {fmtGold(advice.missing)} g</span>}
+      </span>
+    </div>
   )
 }
 
@@ -88,8 +122,20 @@ export default function Overlay() {
     </div>
   )
 
+  const startPending = state.starting === true && starting.some((i) => !i.owned)
   if (state.compact) {
     return frame(
+      <>
+      {startPending && (
+        <div className="flex items-center gap-2" aria-label="Itens iniciais">
+          <span className="text-[10px] uppercase tracking-wide text-gold">Inicial</span>
+          <ul className="flex gap-1">
+            {starting.map((it, i) => (
+              <Tile key={`cs${it.itemId}-${i}`} step={it} catalog={catalog} next={false} size="sm" />
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="flex items-center gap-2.5">
         {nextStep ? (
           <>
@@ -117,7 +163,9 @@ export default function Overlay() {
             {sk.next}
           </div>
         )}
-      </div>,
+      </div>
+      {state.advice && !startPending && <AdviceLine advice={state.advice} gold={state.gold} catalog={catalog} />}
+      </>,
       'w-[292px]'
     )
   }
@@ -217,11 +265,19 @@ export default function Overlay() {
             )}
           </div>
           {starting.length > 0 && (
-            <ul className="mb-1.5 flex gap-1" aria-label="Itens iniciais">
-              {starting.map((it, i) => (
-                <Tile key={`s${it.itemId}-${i}`} step={it} catalog={catalog} next={false} size="sm" />
-              ))}
-            </ul>
+            <div className="mb-1.5">
+              <div className="mb-1 text-[10px] uppercase tracking-wide text-gold">Comece com</div>
+              <ul className="flex gap-1" aria-label="Itens iniciais">
+                {starting.map((it, i) => (
+                  <Tile key={`s${it.itemId}-${i}`} step={it} catalog={catalog} next={startPending && !it.owned} size="sm" />
+                ))}
+              </ul>
+            </div>
+          )}
+          {state.advice && !startPending && (
+            <div className="mb-2">
+              <AdviceLine advice={state.advice} gold={state.gold} catalog={catalog} />
+            </div>
           )}
           <ul className="flex items-start gap-0.5" aria-label="Ordem de compra">
             {path.map((it, i) => (

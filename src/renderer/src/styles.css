@@ -305,3 +305,20 @@ html.overlay-mode #root {
     turn-in 360ms cubic-bezier(0.2, 0.7, 0.2, 1),
     turn-glow 1.8s ease-in-out 360ms infinite;
 }
+
+/* Confronto de rota: os dois lados brilham nas cores do time e o "VS" respira */
+@keyframes spot-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes spot-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent, 0 0 16px -4px color-mix(in srgb, var(--spot-color) 45%, transparent); }
+  50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--spot-color) 40%, transparent), 0 0 26px -2px color-mix(in srgb, var(--spot-color) 65%, transparent); }
+}
+@keyframes spot-vs {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.12); opacity: 1; }
+}
+.spot-card { animation: spot-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+.spot-side { animation: spot-glow 2.4s ease-in-out infinite; }
+.spot-vs { animation: spot-vs 2.4s ease-in-out infinite; }

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { canLevel, computeOverlay, nextSkill, type LiveSnapshot } from '../src/shared/overlay'
+import { canLevel, computeOverlay, nextSkill, purchaseAdvice, type LiveSnapshot, type RecipeBook } from '../src/shared/overlay'
 import { isSummonersRift, parseLive } from '../src/main/overlay/live'
 import { cornerPosition, demoState, resolvePosition } from '../src/main/overlay/controller'
 import { sanitizeSettingsPatch } from '../src/main/store/profiles'
@@ -245,5 +245,55 @@ describe('overlay recuado e itens para a partida', () => {
     expect(cornerPosition('br', area, small).y).toBeGreaterThan(cornerPosition('br', area).y)
     expect(sanitizeSettingsPatch({ overlayCompact: true }).overlayCompact).toBe(true)
     expect(() => sanitizeSettingsPatch({ overlayCompact: 'sim' })).toThrow()
+  })
+})
+
+// Luden's (6655) = Capítulo Perdido (3802, 1100) + Varinha Explosiva (1026, 850) + 400 de fusão; Capítulo = Tomo (1052, 435) + Cristal (1027, 350) + 315
+const book: RecipeBook = {
+  '6655': { goldTotal: 2350, from: [3802, 1026] },
+  '3802': { goldTotal: 1100, from: [1052, 1027] },
+  '1052': { goldTotal: 435 },
+  '1027': { goldTotal: 350 },
+  '1026': { goldTotal: 850 }
+}
+
+describe('conselho de compra pelo ouro', () => {
+  it('com ouro para o item inteiro, manda comprar completo', () => {
+    const a = purchaseAdvice(6655, book, [], 2400)
+    expect(a).toMatchObject({ mode: 'full', missing: 0 })
+    expect(a?.buy.map((b) => b.itemId)).toEqual([6655])
+  })
+  it('1200 g: a maior peça que cabe (Varinha 850 ou Capítulo 1100 → o Capítulo)', () => {
+    const a = purchaseAdvice(6655, book, [], 1200)
+    expect(a?.mode).toBe('parts')
+    expect(a?.buy[0].itemId).toBe(3802)
+  })
+  it('750 g: não cabe o Capítulo inteiro, desce para as peças dele', () => {
+    const a = purchaseAdvice(6655, book, [], 750)
+    expect(a?.mode).toBe('parts')
+    expect(a?.buy.map((b) => b.itemId)).toContain(1052)
+    expect(a?.buy.reduce((n, b) => n + b.cost, 0)).toBeLessThanOrEqual(750)
+  })
+  it('sem ouro para nenhuma peça, manda juntar ouro; peça que já tem desconta do custo', () => {
+    const none = purchaseAdvice(6655, book, [], 200)
+    expect(none).toMatchObject({ mode: 'save' })
+    expect(none?.missing).toBe(2350 - 200)
+    expect(none?.buy[0].itemId).toBe(1027) // a peça mais barata para juntar ouro
+    const own = purchaseAdvice(6655, book, [1026], 1200)
+    expect(own?.remaining).toBeLessThan(2350 - 800)
+    expect(own?.parts.find((p) => p.itemId === 1026)?.owned).toBe(true)
+  })
+  it('sem receita ou sem ouro conhecido: nada', () => {
+    expect(purchaseAdvice(1056, book, [], 500)).toBeNull()
+    expect(purchaseAdvice(6655, book, [], undefined)).toBeNull()
+    expect(purchaseAdvice(null, book, [], 500)).toBeNull()
+  })
+  it('o estado do overlay traz o conselho e a fase inicial até comprar o primeiro item', () => {
+    const early = computeOverlay({ championId: 103, role: 'MIDDLE', build, recipes: book, live: live({ gameTime: 20, gold: 500, items: [1056] }) })
+    expect(early.starting).toBe(true)
+    expect(early.items.filter((i) => i.label === 'Inicial').map((i) => i.owned)).toEqual([true, false])
+    const mid = computeOverlay({ championId: 103, role: 'MIDDLE', build, recipes: book, live: live({ gameTime: 400, gold: 1200, items: [] }) })
+    expect(mid.starting).toBeUndefined()
+    expect(mid.advice?.buy[0].itemId).toBe(3802)
   })
 })

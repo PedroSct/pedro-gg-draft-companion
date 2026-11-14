@@ -188,6 +188,7 @@ export function BuildPanel() {
   const [selection, setSelection] = useState<BuildSelection>(ZERO_SELECTION)
   // Muda quando um inimigo é escolhido, trocado ou travado: refaz os ajustes da build.
   const enemySignature = useApp((s) => (s.draft ? s.draft.enemies.map((e) => `${e.championId}${e.status}`).join(',') : ''))
+  const simEnemyId = useApp((s) => s.simEnemyId)
 
   const championId = focus?.championId
   const role = focus?.role
@@ -198,7 +199,7 @@ export function BuildPanel() {
     let cancelled = false
     setStatus('loading')
     Promise.all([
-      role ? window.api.getBuild({ championId, role }) : Promise.resolve(null),
+      role ? window.api.getBuild({ championId, role, enemyId: simEnemyId }) : Promise.resolve(null),
       key ? window.api.getSpells(key).catch(() => [] as SpellInfo[]) : Promise.resolve([] as SpellInfo[])
     ])
       .then(([build, spells]) => {
@@ -212,7 +213,7 @@ export function BuildPanel() {
     return () => {
       cancelled = true
     }
-  }, [championId, role, key, enemySignature])
+  }, [championId, role, key, enemySignature, simEnemyId])
 
   // A lista de opções muda quando o confronto entra: volta para a primeira (a do confronto, se houver)
   useEffect(() => {

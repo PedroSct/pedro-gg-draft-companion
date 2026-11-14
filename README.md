@@ -134,6 +134,25 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Reconexão no meio da partida (0.11.0)**: se o cliente cair e voltar durante a partida, o app agora confere a fase do jogo
+  **antes** de aceitar a seleção de campeões (o cliente às vezes devolve a seleção velha, que virava um draft "fantasma" e
+  apagava a build e o plano), descarta o rascunho velho quando a fase mostra que não há seleção aberta, vigia a conexão (se o
+  cliente parar de responder sem fechar, reconecta sozinho), guarda o último pick em disco (sobrevive a fechar e abrir o app) e
+  ressincroniza a fase e o plano ao reconectar. O **overlay** segura o último painel por até 30 s quando a API da partida some
+  um instante e não fica esperando o catálogo para sempre.
+- **Overlay: itens iniciais e peça certa pelo ouro (0.11.0)**: no começo da partida o painel mostra os **itens iniciais**
+  (poção, Escudo/Lâmina de Doran...) com ✓ nos que você já comprou, também no modo recuado, e só passa para o item principal
+  depois da primeira compra. Para o próximo item principal ele diz **o que comprar agora conforme o seu ouro**: com ouro para o
+  item inteiro, "Dá para fechar"; senão, a maior peça da receita que cabe (ex.: 1200 g → Capítulo Perdido para o Ludens; descendo
+  para as sub-peças quando a peça inteira não cabe); sem ouro para nenhuma, "Junte ouro: faltam X g". As peças que você já tem
+  entram na conta. Usa só o ouro do próprio jogador, que a API oficial da partida já expõe.
+- **Menu superior (0.11.0)**: refeito em três blocos (marca, telas centralizadas e conta/estado/aceite/configurações), sem
+  texto espremido em janelas estreitas, e agora mostra a **foto de perfil do LoL** da conta logada (com a inicial como reserva).
+- **Draft (0.11.0)**: card **"Seu confronto de rota"** com você e o oponente brilhando nas cores de cada time, o veredito
+  (Vantagem/Equilibrado/Desvantagem) e o quanto você vence dele; **bans pensando no campeão que você quer jogar** (quem mais o
+  atrapalha entra na lista, mesmo fora da Pool); **"Melhores picks contra X"** com Ver build e, na sua vez, Selecionar/Travar;
+  e a **busca de campeões** (sem precisar de acento ou maiúscula): Ver build, Banir/Escolher na sua vez (com confirmação) e
+  **Oponente**, que simula contra quem você vai jogar (ex.: Caitlyn no ADC) e ajusta a build e as runas ao confronto.
 - **Aba Treino (0.10.0)**: lê as partidas recentes e a maestria da conta logada (só leitura, pelo cliente) e mostra o **jeito de
   jogar** (classes e rotas), se a Pool está **concentrada demais** (aviso de one-trick a partir de 8 partidas e metade delas no
   mesmo campeão), **campeões para experimentar** (parecidos com o seu estilo, fortes no meta e, para quem está começando ou

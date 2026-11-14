@@ -37,6 +37,7 @@ export const IPC = {
   META_GET_BUILD: 'meta:getBuild',
   META_BUILD_SITUATION: 'meta:buildSituation',
   DRAFT_BANS: 'draft:bans',
+  DRAFT_MATCHUP: 'draft:matchup',
   COACH_ANALYZE: 'coach:analyze',
   DRAFT_ACT: 'draft:act',
   GAMEFLOW_GET: 'flow:get',

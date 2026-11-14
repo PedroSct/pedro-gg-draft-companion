@@ -160,6 +160,9 @@ export class DataDragon {
         name: it.name,
         iconUrl: this.imgUrl(version, 'item', String(it.image.full)),
         goldTotal: gold,
+        ...(Array.isArray(it.from) && it.from.length > 0
+          ? { from: it.from.map((x) => Number(x)).filter((x) => Number.isInteger(x) && x > 0) }
+          : {}),
         ...(Array.isArray(it.tags) ? { tags: it.tags.filter((t): t is string => typeof t === 'string') } : {})
       }
     }

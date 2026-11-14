@@ -4,9 +4,21 @@ import { selectActiveProfile, useApp } from '../store/useApp'
 import { pct, ROLE_SHORT } from '../lib/format'
 import { ChampionIcon, useChampionName } from './Icons'
 import { DraftActButton } from './DraftActButton'
+import { useFocus } from '../lib/useFocus'
 
 function ReasonText({ reason, short = false }: { reason: BanReason; short?: boolean }) {
   const champ = useChampionName(reason.kind === 'counter' ? reason.championId : 0)
+  if (reason.kind === 'counter' && reason.self) {
+    return short ? (
+      <>
+        Atrapalha {champ}, o que você quer jogar ({pct(reason.winrate)})
+      </>
+    ) : (
+      <>
+        Atrapalha {champ}, o campeão que você quer jogar: vence {pct(reason.winrate)} do confronto ({reason.games} jogos)
+      </>
+    )
+  }
   if (reason.kind === 'counter') {
     return short ? (
       <>
@@ -70,6 +82,9 @@ const TOP = 3
 export function BanSuggestions() {
   const draft = useApp((s) => s.draft)
   const owner = useApp(selectActiveProfile)
+  const focus = useFocus()
+  const focusId = focus?.forLocal ? focus.championId : undefined
+  const focusName = useChampionName(focusId ?? 0)
   const [items, setItems] = useState<BanSuggestion[]>([])
   const [open, setOpen] = useState(true)
   const [showAll, setShowAll] = useState(false)
@@ -81,7 +96,7 @@ export function BanSuggestions() {
         draft.bans.enemies.join(','),
         draft.allies.map((p) => `${p.cellId}:${p.championId}:${p.status}:${p.role ?? ''}:${p.profileId ?? ''}`).join('|'),
         draft.enemies.map((p) => `${p.championId}:${p.status}`).join('|')
-      ].join('#')
+      ].join('#') + `#f${focusId ?? 0}`
     : ''
   const profileId = owner?.id
 
@@ -92,13 +107,13 @@ export function BanSuggestions() {
     }
     let cancelled = false
     window.api
-      .getBanSuggestions({ profileId })
+      .getBanSuggestions({ profileId, focusChampionId: focusId })
       .then((r) => !cancelled && setItems(r))
       .catch(() => !cancelled && setItems([]))
     return () => {
       cancelled = true
     }
-  }, [signature, profileId])
+  }, [signature, profileId, focusId])
 
   if (items.length === 0) return null
 
@@ -113,7 +128,10 @@ export function BanSuggestions() {
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between gap-2 text-left text-sm text-snow"
       >
-        <span>{banning ? 'É a sua vez de banir' : 'Sugestões de banimento'}</span>
+        <span>
+          {banning ? 'É a sua vez de banir' : 'Sugestões de banimento'}
+          {focusId ? <span className="text-xs text-mist"> · pensando em {focusName}</span> : null}
+        </span>
         <span className="text-xs text-mist">{open ? 'Ocultar' : `Mostrar (${items.length})`}</span>
       </button>
       {open && (
