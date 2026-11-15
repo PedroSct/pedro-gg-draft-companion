@@ -1,3 +1,4 @@
+import { DEFAULT_REGIONS, REGION_NAMES } from '../lib/regions'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useApp } from '../store/useApp'
 import { DEFAULT_META_URL } from '../../../shared/config'
@@ -26,26 +27,6 @@ const TABS: { id: TabId; label: string; hint: string }[] = [
   { id: 'data', label: 'Dados', hint: 'Meta, patch e ícones' },
   { id: 'app', label: 'Aplicativo', hint: 'Versão e diagnóstico' }
 ]
-
-const DEFAULT_REGIONS = ['br1', 'na1', 'la1', 'la2', 'euw1', 'eun1', 'tr1', 'kr', 'jp1', 'oc1', 'ph2', 'sg2', 'th2', 'tw2', 'vn2']
-const REGION_NAMES: Record<string, string> = {
-  br1: 'Brasil (BR)',
-  na1: 'América do Norte (NA)',
-  la1: 'América Latina Norte (LAN)',
-  la2: 'América Latina Sul (LAS)',
-  euw1: 'Europa Oeste (EUW)',
-  eun1: 'Europa Nordeste (EUNE)',
-  tr1: 'Turquia (TR)',
-  ru: 'Rússia (RU)',
-  kr: 'Coreia (KR)',
-  jp1: 'Japão (JP)',
-  oc1: 'Oceania (OCE)',
-  ph2: 'Filipinas (PH)',
-  sg2: 'Singapura (SG)',
-  th2: 'Tailândia (TH)',
-  tw2: 'Taiwan (TW)',
-  vn2: 'Vietnã (VN)'
-}
 
 /** Campo que grava a combinação de teclas apertada. Esc cancela; precisa de Ctrl, Alt ou Shift e uma tecla. */
 function ShortcutField({ label, value, fallback, other, onChange }: { label: string; value: string; fallback: string; other: string; onChange: (acc: string) => void }) {

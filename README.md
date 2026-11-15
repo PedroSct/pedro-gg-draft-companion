@@ -134,6 +134,30 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Draft em etapas (0.12.0)**: a tela deixou de mostrar tudo de uma vez. **1 · Bans**: só os banimentos, com o porquê de cada
+  um, o seu confronto de rota em destaque com **pontos fortes e fracos** tirados dos dados e, se você joga de **suporte ou
+  atirador, o combo da dupla** (você + seu parceiro contra o atirador e o suporte inimigos, com o quanto cada dupla vence).
+  **2 · Picks**: a tela de bans some por completo e entram os counters, as sugestões da Pool e a busca, com outra animação.
+  **3 · Build**: só depois de travar o campeão entram runas, itens, ordem de habilidades e o plano de jogo. A etapa muda
+  sozinha conforme o draft anda, e dá para espiar outra pelas abas "Bans / Picks / Build" no topo (ela volta a acompanhar o
+  draft quando a etapa seguinte começa). Clicar em uma alternativa da Pool durante os picks continua mostrando a build dela.
+- **Bans pelo seu gosto (0.12.0)**: na tela de espera (conectado, fora de seleção) o app pergunta **2 a 3 campeões que você
+  não gosta de enfrentar** e **quais você mais bane**. Eles entram nas sugestões de ban (os que você não gosta pesam mais) e
+  aparecem com o motivo "você não gosta de enfrentar" / "você costuma banir". Interpretei "não gosta de jogar" como "não gosta
+  de enfrentar"; se era outra coisa, é só avisar.
+- **Pós-jogo: aba Pontuação (0.12.0)**: nota de 0 a 100 e conceito para **farm, rota, lutas (abates), visão, objetivos e
+  sobrevivência**, cada uma com os números que a geraram, **o que fazer para melhorar** (ou "continue assim") e a marcação
+  **"Foque aqui"** nas duas áreas mais fracas, resumidas no card "Foco da próxima partida". As referências são aproximadas por
+  função, não a meta oficial.
+- **Meta por servidor (0.12.0)**: a tela Meta tem um seletor de **servidor** (BR, NA, EUW, KR... os 13 publicados); se um
+  servidor ainda não tem dados, o app avisa e volta ao anterior.
+- **Menu superior (0.12.0)**: o chip do perfil não sobrepõe mais o estado da conexão (layout em flex; o texto do estado vira só
+  o ponto colorido em janelas mais estreitas). Testado de 1000 a 1920 px.
+- **Ordem de habilidades (0.12.0)**: o **Aphelios não tem ordem de habilidades** (a arma dele é que evolui, nenhum ponto é
+  gasto); agora o app diz isso em vez de mostrar uma ordem vazia e o coletor o ignora. Para **Jayce, Udyr e Zeri** a causa ainda
+  não está confirmada: o coletor agora publica `skill-diagnostics.json` na branch `data` com amostras das partidas rejeitadas.
+  Depois de rodar o workflow, é só me mandar esse arquivo que eu ajusto a leitura.
+- **Ainda não feito**: a busca mostrar o mesmo campeão em todas as rotas ao mesmo tempo (ex.: Pantheon top/mid/sup/selva).
 - **Reconexão no meio da partida (0.11.0)**: se o cliente cair e voltar durante a partida, o app agora confere a fase do jogo
   **antes** de aceitar a seleção de campeões (o cliente às vezes devolve a seleção velha, que virava um draft "fantasma" e
   apagava a build e o plano), descarta o rascunho velho quando a fase mostra que não há seleção aberta, vigia a conexão (se o

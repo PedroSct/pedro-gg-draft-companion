@@ -83,6 +83,13 @@ export function sanitizePool(raw: unknown): Pool {
   return pool
 }
 
+/** Lista curta de ids de campeão (únicos, inteiros positivos). */
+function sanitizeIds(raw: unknown, max: number): number[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const ids = [...new Set(raw.filter((x): x is number => typeof x === 'number' && Number.isInteger(x) && x > 0 && x < 100000))].slice(0, max)
+  return ids.length > 0 ? ids : undefined
+}
+
 /** Perfil recebido de um amigo (código ou arquivo): só os campos que viajam, tudo validado. */
 export function sanitizeShared(raw: unknown): SharedProfile {
   if (!isRecord(raw)) throw new Error('Pool inválida')
@@ -122,6 +129,8 @@ export function sanitizeProfile(
     mainRoles,
     notes: str(raw.notes, 2000),
     pool: sanitizePool(raw.pool),
+    avoid: sanitizeIds(raw.avoid, 5),
+    usualBans: sanitizeIds(raw.usualBans, 3),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now
   }

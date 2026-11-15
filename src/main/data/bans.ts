@@ -4,6 +4,7 @@
 import type { DraftState, Role } from '../../shared/types'
 import { ROLES, type BanReason, type BanSuggestion, type FriendProfile, type MetaDataset, type WinStats } from '../../shared/dataTypes'
 import { tierOf } from './metaStats'
+import { banPhaseOpen } from '../../shared/draftStage'
 
 /** Só campeões com conforto 4 ou 5 pesam: não vale gastar ban para proteger um pick inseguro. */
 const MIN_COMFORT = 4
@@ -17,6 +18,10 @@ const MIN_ROLE_SHARE = 0.15
 /** Pontuação mínima para entrar na lista. */
 const MIN_SCORE = 0.6
 const MAX_SUGGESTIONS = 5
+/** Pesos das preferências: "não gosto de enfrentar" pesa mais que o hábito de banir. */
+const AVOID_SCORE = 1.6
+const HABIT_SCORE = 1.0
+const KIND_ORDER: Record<BanReason['kind'], number> = { counter: 0, avoid: 1, habit: 2, meta: 3 }
 
 const smooth = (s: WinStats, prior: number): number => (s.wins + prior / 2) / (s.games + prior)
 
@@ -31,14 +36,7 @@ export interface BanInput {
   focusChampionId?: number
 }
 
-/** O draft já passou da fase de banimentos? (com picks travados não faz mais sentido sugerir ban) */
-export function banPhaseOpen(draft: DraftState): boolean {
-  if (draft.phase === 'PLANNING') return true
-  if (draft.phase !== 'BAN_PICK') return false
-  const bans = draft.bans.allies.length + draft.bans.enemies.length
-  const locked = [...draft.allies, ...draft.enemies].some((p) => p.status === 'locked')
-  return bans < 10 && !locked
-}
+export { banPhaseOpen }
 
 export function suggestBans(input: BanInput): BanSuggestion[] {
   const { draft, dataset } = input
@@ -67,6 +65,13 @@ export function suggestBans(input: BanInput): BanSuggestion[] {
       guards.push({ championId: e.championId, role, weight: (e.comfort - 3) / 2, nickname: profile.nickname })
     }
   }
+
+  // Preferências do jogador local: quem ele não gosta de enfrentar e quem costuma banir.
+  const meCell = draft.allies.find((a) => a.cellId === draft.localPlayerCellId)
+  const meProfile = profileById.get(meCell?.profileId ?? input.fallbackProfileId ?? '')
+  const prefs: { id: number; reason: BanReason; delta: number }[] = []
+  for (const id of meProfile?.avoid ?? []) prefs.push({ id, reason: { kind: 'avoid' }, delta: AVOID_SCORE })
+  for (const id of meProfile?.usualBans ?? []) prefs.push({ id, reason: { kind: 'habit' }, delta: HABIT_SCORE })
 
   // O campeão em foco (o que você quer jogar): ban de quem mais o atrapalha na sua rota.
   if (input.focusChampionId && draft.localRole && !guards.some((g) => g.championId === input.focusChampionId && g.role === draft.localRole)) {
@@ -113,6 +118,8 @@ export function suggestBans(input: BanInput): BanSuggestion[] {
     }
   }
 
+  for (const pf of prefs) if (!taken.has(pf.id)) bump(pf.id, pf.delta, pf.reason)
+
   // Força no meta: o mais forte de cada rota também merece ban, mesmo sem ligação com o seu pool.
   for (const [xid, x] of Object.entries(dataset.champions)) {
     const idNum = Number(xid)
@@ -136,7 +143,7 @@ export function suggestBans(input: BanInput): BanSuggestion[] {
       score: Math.round(v.score * 100) / 100,
       // motivos mais fortes primeiro: counters ao seu pool, depois o meta; no máximo 3
       reasons: v.reasons
-        .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'counter' ? -1 : 1) || (b.winrate - a.winrate))
+        .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || ('winrate' in b ? b.winrate : 0) - ('winrate' in a ? a.winrate : 0))
         .slice(0, 3)
     }))
     .sort((a, b) => b.score - a.score || a.championId - b.championId)

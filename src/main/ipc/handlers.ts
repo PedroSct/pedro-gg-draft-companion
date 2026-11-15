@@ -23,6 +23,7 @@ import { OverlayController } from '../overlay/controller'
 import { fetchLive } from '../overlay/live'
 import { actInDraft, parseActRequest } from '../lcu/draftAct'
 import { suggestMetaCounters } from '../data/counters'
+import { buildInsights, ROLE_NAMES } from '../data/insights'
 import { Diagnostics, formatProbe, probeClient } from '../diagnostics'
 import { applyLoadout } from '../lcu/loadout'
 import { PostGameStore } from '../postgame/store'
@@ -347,17 +348,27 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     const sim = typeof req.enemyId === 'number' && req.enemyId > 0 ? req.enemyId : null
     return meta.getBuild(req.championId, role, sim ?? laneEnemy(role))
   })
-  // ---- Confronto de rota (oponente do draft, ou o simulado pela busca) e quanto você vence dele
-  handle(IPC.DRAFT_MATCHUP, (raw) => {
+  // ---- Confronto de rota: oponente (do draft, ou o simulado pela busca), dupla da bot lane e pontos fortes/fracos
+  handle(IPC.DRAFT_MATCHUP, async (raw) => {
     const req = isRecord(raw) ? raw : {}
     const role = req.role as Role
-    const empty = { enemyId: null, simulated: false, winrate: null, games: 0 }
-    if (typeof req.championId !== 'number' || !ROLES.includes(role)) return empty
+    const empty = { enemyId: null, simulated: false, winrate: null, games: 0, strengths: [], weaknesses: [] }
+    const draft = annotatedDraft()
+    if (!draft || typeof req.championId !== 'number' || !ROLES.includes(role)) return empty
+    await warmChampionKeys()
     const sim = typeof req.enemyId === 'number' && req.enemyId > 0 ? req.enemyId : null
-    const enemyId = sim ?? laneEnemy(role) // a simulação escolhida na busca vale mais que o palpite do draft
-    if (!enemyId) return empty
-    const st = meta.get()?.champions[String(req.championId)]?.roles[role]?.matchups[String(enemyId)]
-    return { enemyId, simulated: sim !== null, winrate: st && st.games >= 5 ? st.wins / st.games : null, games: st?.games ?? 0 }
+    const me = draft.allies.find((a) => a.cellId === draft.localPlayerCellId)
+    return buildInsights({
+      dataset: meta.get(),
+      draft,
+      championId: req.championId,
+      role,
+      simEnemyId: sim,
+      draftEnemyId: laneEnemy(role),
+      profile: me?.profileId ? profiles.get(me.profileId) : typeof req.profileId === 'string' ? profiles.get(req.profileId) : undefined,
+      nameOf: (id) => champNames.get(id) ?? `Campeão ${id}`,
+      roleLabel: (r) => ROLE_NAMES[r]
+    })
   })
   // ---- Sugestões de banimento (só enquanto os bans ainda estão abertos)
   // ---- Escolher/banir pelo app: uma ação por clique, na vez da pessoa; o main confere tudo no cliente

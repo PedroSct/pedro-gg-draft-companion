@@ -80,6 +80,9 @@ function main(): void {
     writes.push(writeJsonAtomic(path.join(path.dirname(out), 'holdout.json'), { patch: merged.patch, matches: merged.holdout }))
     console.error(`Gerado holdout.json: ${merged.holdout.length} partidas reservadas para teste`)
   }
+  // Diagnóstico das habilidades recusadas/curtas (amostras reais da Riot): fica público na branch data para ajustar o leitor.
+  const rejects = Object.entries(merged.skillRejects ?? {}).filter(([, r]) => r.n >= 20).sort((a, b) => b[1].n - a[1].n).slice(0, 60)
+  writes.push(writeJsonAtomic(path.join(path.dirname(out), 'skill-diagnostics.json'), { patch: merged.patch, generatedAt: new Date().toISOString(), rejects: Object.fromEntries(rejects) }))
   console.error(`Gerado ${out}: ${Object.keys(dataset.champions).length} campeões, ${merged.matches} partidas, servidores: ${regions.join(', ')}`)
 
   // Um arquivo por servidor (meta-br1.json...), para o app poder escolher entre "Global" e um servidor.

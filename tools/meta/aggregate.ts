@@ -1,6 +1,7 @@
 // tools/meta/aggregate.ts
 // Transforma partidas do Match-v5 (e suas timelines) em estatísticas e builds.
 // Tudo aqui é função pura sobre um estado serializável, então dá para retomar uma coleta interrompida.
+import { NO_SKILL_POINTS } from '../../src/shared/skills'
 import type { Role } from '../../src/shared/types'
 import { ROLES } from '../../src/shared/dataTypes'
 import type { BuildOption, BuildOptions, BuildVariant, ChampionBuild, ChampionProfile, MatchupBuild, RunePage, SkillKey, MetaDataset, RoleMeta, SituationalItem, WinStats } from '../../src/shared/dataTypes'
@@ -290,11 +291,12 @@ export function isPlausibleSkillSequence(seq: string): boolean {
 const accepted = (seq: string): boolean => isValidSkillSequence(seq) || isPlausibleSkillSequence(seq)
 
 /** Anota uma sequência recusada (no máximo 3 exemplos diferentes por campeão) para entender o que a Riot entrega. */
-export function noteSkillReject(state: AggState, championId: number, raw: string): void {
+export function noteSkillReject(state: AggState, championId: number, raw: string, detail?: string, kind: 'recusada' | 'curta' = 'recusada'): void {
   const rejects = (state.skillRejects ??= {})
-  const entry = (rejects[String(championId)] ??= { n: 0, samples: [] })
+  const entry = (rejects[kind === 'curta' ? `${championId}:curta` : String(championId)] ??= { n: 0, samples: [] })
   entry.n++
-  if (entry.samples.length < 3 && !entry.samples.includes(raw)) entry.samples.push(raw.slice(0, 60))
+  const sample = detail ? `${raw.slice(0, 40)} [${detail}]` : raw.slice(0, 60)
+  if (entry.samples.length < 3 && !entry.samples.includes(sample)) entry.samples.push(sample.slice(0, 260))
 }
 
 /**
@@ -302,7 +304,7 @@ export function noteSkillReject(state: AggState, championId: number, raw: string
  * Algumas habilidades que trocam de forma (Jayce, Udyr, Aphelios…) podem chegar em dobro: tenta consertar só o que é
  * inequívoco (cópias a menos de 1 s uma da outra, ou todos os níveis em pares idênticos); o resto é descartado.
  */
-export function extractSkillSequence(events: RawEvent[], participantId: number, onReject?: (raw: string) => void): string | null {
+export function extractSkillSequence(events: RawEvent[], participantId: number, onReject?: (raw: string, detail: string) => void): string | null {
   const seen = new Set<string>()
   const ups: { slot: number; t: number }[] = []
   for (const ev of events) {
@@ -334,7 +336,8 @@ export function extractSkillSequence(events: RawEvent[], participantId: number, 
     if (accepted(halved)) return halved
   }
 
-  if (raw.length > 0) onReject?.(raw)
+  // detalhe cru (habilidade@segundos) dos primeiros eventos: mostra duplicatas, atrasos e ordem real no diagnóstico
+  if (raw.length > 0) onReject?.(raw, ups.slice(0, 24).map((u) => `${SKILL_LETTERS[u.slot - 1]}@${Math.round(u.t / 1000)}`).join(' '))
   return null
 }
 
@@ -538,7 +541,10 @@ export function addMatch(state: AggState, match: RawMatch, timeline: RawTimeline
     const opts = (build.opts ??= newOpts())
     opts.timeline++
 
-    const seq = extractSkillSequence(events, p.participantId, (r) => noteSkillReject(state, p.championId, r))
+    // Aphelios não sobe habilidades com pontos: não há ordem a coletar (e os eventos que existem são ruído)
+    const seq = NO_SKILL_POINTS.has(p.championId) ? null : extractSkillSequence(events, p.participantId, (r, d) => noteSkillReject(state, p.championId, r, d))
+    // Aceita, mas curta demais para virar ordem de habilidades: também vai para o diagnóstico
+    if (seq && seq.length < MIN_LEVELS_FOR_BUILD) noteSkillReject(state, p.championId, seq, undefined, 'curta')
     const purchases = extractPurchases(events, p.participantId)
     const starting = purchases.filter((x) => x.t <= STARTING_WINDOW_MS).map((x) => x.itemId).sort((x, y) => x - y)
     const firstBoots = purchases.find((x) => rules.boots.has(x.itemId))

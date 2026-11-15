@@ -6,6 +6,7 @@ import { normalize, pct, ROLE_LABEL, signed, splashUrl } from '../lib/format'
 import { input } from '../lib/ui'
 import { ChampionIcon, useChampionName } from './Icons'
 import { BuildOptionsView } from './BuildOptionsView'
+import { DEFAULT_REGIONS, REGION_NAMES } from '../lib/regions'
 
 const TIER_STYLE: Record<Tier, string> = {
   S: 'bg-gold/20 text-gold border-gold/50',
@@ -158,7 +159,7 @@ function Detail({ championId, role }: { championId: number; role: Role }) {
               </div>
             </div>
             {!build && <p className="text-mist">Ainda não há build de {name} em {ROLE_LABEL[role]} nos dados: foram poucas partidas com timeline ({detail.games} partidas no total). Uma coleta maior preenche isso.</p>}
-            {build && <BuildOptionsView build={build} spells={spells} />}
+            {build && <BuildOptionsView championId={championId} build={build} spells={spells} />}
           </>
         )}
       </div>
@@ -190,6 +191,64 @@ function HeaderCell({ label, sortKey, current, dir, onSort, className = '' }: { 
       {label}
       <span aria-hidden="true">{active ? (dir === 'desc' ? '▾' : '▴') : ''}</span>
     </button>
+  )
+}
+
+/** Servidor dos dados: Global (todos juntos) ou um só (BR, NA, EUW...). Troca baixa o arquivo daquele servidor. */
+function RegionSelect() {
+  const metaInfo = useApp((s) => s.metaInfo)
+  const region = useApp((s) => s.settings?.metaRegion ?? 'global')
+  const saveSettings = useApp((s) => s.saveSettings)
+  const updateMeta = useApp((s) => s.updateMeta)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const options = [...new Set([...DEFAULT_REGIONS, ...(metaInfo?.regions ?? []), ...(region !== 'global' ? [region] : [])])]
+
+  async function change(next: string): Promise<void> {
+    const previous = region
+    setBusy(true)
+    setError(null)
+    try {
+      await saveSettings({ metaRegion: next })
+      const r = await updateMeta()
+      if (!r.ok) {
+        // sem arquivo para esse servidor (ou sem internet): volta para o anterior e avisa
+        await saveSettings({ metaRegion: previous })
+        setError(r.reason === 'network' ? 'Sem internet para baixar os dados desse servidor.' : 'Ainda não há dados publicados para esse servidor.')
+      }
+    } catch {
+      setError('Não consegui trocar o servidor.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <label htmlFor="meta-region" className="text-xs text-mist">
+        Servidor
+      </label>
+      <select
+        id="meta-region"
+        value={region}
+        disabled={busy}
+        onChange={(e) => void change(e.target.value)}
+        className="rounded-sm border border-line bg-night px-2 py-1 text-sm text-snow hover:border-mist/40 disabled:opacity-60"
+      >
+        <option value="global">Global (todos)</option>
+        {options.map((r) => (
+          <option key={r} value={r}>
+            {REGION_NAMES[r] ?? r.toUpperCase()}
+          </option>
+        ))}
+      </select>
+      {busy && <span className="text-xs text-mist">Baixando…</span>}
+      {error && (
+        <span role="alert" className="text-xs text-enemy">
+          {error}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -249,6 +308,7 @@ export function MetaScreen() {
             </button>
           ))}
         </div>
+        <RegionSelect />
         <label htmlFor="meta-search" className="sr-only">
           Buscar campeão no ranking
         </label>

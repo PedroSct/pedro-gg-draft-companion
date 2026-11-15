@@ -15,6 +15,7 @@ import {
   isValidSkillSequence,
   itemRulesFrom,
   newState,
+  noteSkillReject,
   priorityOf,
   runeKeyOf,
   spellKeyOf,
@@ -41,6 +42,19 @@ describe('habilidades', () => {
     expect(isValidSkillSequence(FULL + 'Q')).toBe(false) // 19 níveis
     expect(isValidSkillSequence('QWEQQRQEQEREEWWRWWR')).toBe(false)
     expect(isValidSkillSequence('QWEX')).toBe(false)
+  })
+
+  it('o diagnóstico guarda a sequência e os instantes dos eventos recusados, e separa as curtas', () => {
+    const ev = (slot: number, t: number): RawEvent => ({ type: 'SKILL_LEVEL_UP', participantId: 3, skillSlot: slot, levelUpType: 'NORMAL', timestamp: t })
+    const events = [...'QQQQQQQ'].map((_, i) => ev(1, 60_000 * (i + 1))) // 7 pontos no Q: impossível
+    let seen = ''
+    expect(extractSkillSequence(events, 3, (raw, detail) => (seen = `${raw}|${detail}`))).toBeNull()
+    expect(seen).toContain('QQQQQQQ|Q@60 Q@120')
+    const st = newState('16.22')
+    noteSkillReject(st, 126, 'QQQQQQQ', 'Q@60 Q@120')
+    noteSkillReject(st, 126, 'QW', undefined, 'curta')
+    expect(st.skillRejects?.['126']?.samples[0]).toContain('[Q@60 Q@120]')
+    expect(st.skillRejects?.['126:curta']?.n).toBe(1)
   })
 
   it('colapsa cópias idênticas da timeline e descarta o jogador se sobrar evento fantasma', () => {

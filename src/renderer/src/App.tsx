@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Fragment, Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { draftStage, type DraftStage } from '../../shared/draftStage'
 import { IN_GAME_PHASES, useApp } from './store/useApp'
 import { Header } from './components/Header'
 import { TeamColumn } from './components/TeamColumn'
@@ -116,33 +117,92 @@ function IdleOrGame() {
   return <IdleScreen />
 }
 
+const STAGES: { id: DraftStage; label: string }[] = [
+  { id: 'ban', label: 'Bans' },
+  { id: 'pick', label: 'Picks' },
+  { id: 'build', label: 'Build' }
+]
+
+/** Etapas da seleção: o passo atual aparece em destaque e os outros ficam um clique de distância. */
+function StageStepper({ auto, current, onPick }: { auto: DraftStage; current: DraftStage; onPick: (s: DraftStage) => void }) {
+  return (
+    <nav aria-label="Etapas da seleção" className="flex items-center gap-2">
+      {STAGES.map((st, i) => (
+        <Fragment key={st.id}>
+          {i > 0 && <span className="h-px w-6 bg-line" aria-hidden="true" />}
+          <button
+            type="button"
+            aria-current={current === st.id ? 'step' : undefined}
+            onClick={() => onPick(st.id)}
+            className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide transition-colors ${
+              current === st.id ? 'border-gold bg-gold/15 text-gold' : auto === st.id ? 'border-ally/60 text-ally hover:bg-ally/10' : 'border-line text-mist hover:text-snow'
+            }`}
+          >
+            <span className="num">{i + 1}</span>
+            {st.label}
+          </button>
+        </Fragment>
+      ))}
+    </nav>
+  )
+}
+
 function DraftScreen() {
   const draft = useApp((s) => s.draft)
-  const banning = draft?.turn?.type === 'ban'
   const centerRef = useRef<HTMLDivElement>(null)
   const me = draft?.allies.find((p) => p.cellId === draft.localPlayerCellId)
   const lockedId = me && me.status === 'locked' ? me.championId : 0
   const lastPick = useApp((s) => s.lastPick)
-  // Ao travar o pick, volta ao topo: o campeão e a build ficam à vista, não escondidos pela rolagem.
+  const preview = useApp((s) => s.previewChampionId)
+  const auto: DraftStage = draft ? draftStage(draft) : 'ban'
+  // O usuário pode espiar outra etapa; quando a etapa automática muda, volta a acompanhá-la.
+  const [manual, setManual] = useState<DraftStage | null>(null)
+  useEffect(() => setManual(null), [auto])
+  const stage = manual ?? auto
+  // Ao mudar de etapa, volta ao topo: o que é novo fica à vista, não escondido pela rolagem.
   useEffect(() => {
-    if (lockedId > 0 && centerRef.current) centerRef.current.scrollTop = 0
-  }, [lockedId])
+    if (centerRef.current) centerRef.current.scrollTop = 0
+  }, [stage])
   if (!draft) return null
 
   return (
     <div className="grid h-full grid-cols-[minmax(210px,1fr)_minmax(0,1.7fr)_minmax(210px,1fr)] gap-5 max-[1000px]:grid-cols-2 max-[1000px]:content-start max-[1000px]:gap-3 max-[1000px]:overflow-y-auto">
       <TeamColumn side="ally" players={draft.allies} localCellId={draft.localPlayerCellId} />
       <div ref={centerRef} className="flex min-w-0 flex-col gap-3 pr-1 [&>*]:shrink-0 min-[1001px]:min-h-0 min-[1001px]:overflow-y-auto max-[1000px]:order-last max-[1000px]:col-span-2 max-[1000px]:pr-0">
+        <div className="flex justify-center">
+          <StageStepper auto={auto} current={stage} onPick={setManual} />
+        </div>
         <TurnBanner />
-        <MatchupSpotlight />
-        {banning && <BanSuggestions />}
-        <ChampionSearch />
-        <BansBar allies={draft.bans.allies} enemies={draft.bans.enemies} />
-        {!banning && <BanSuggestions />}
-        <MetaCounters />
-        <PickSuggestion />
-        <BuildPanel />
-        {lockedId > 0 && <GamePlan championId={lockedId} role={lastPick?.championId === lockedId ? lastPick.role : null} />}
+        {/* key = etapa: ao trocar, o bloco inteiro é desmontado e o novo entra com animação */}
+        <div key={stage} data-stage={stage} className={`stage-${stage} flex flex-col gap-3 [&>*]:shrink-0`}>
+          {stage === 'ban' && (
+            <>
+              <MatchupSpotlight />
+              <BanSuggestions />
+              <ChampionSearch />
+              <BansBar allies={draft.bans.allies} enemies={draft.bans.enemies} />
+            </>
+          )}
+          {stage === 'pick' && (
+            <>
+              <MatchupSpotlight compact />
+              <MetaCounters />
+              <PickSuggestion />
+              <ChampionSearch />
+              {preview != null && <BuildPanel />}
+              <BansBar allies={draft.bans.allies} enemies={draft.bans.enemies} />
+            </>
+          )}
+          {stage === 'build' && (
+            <>
+              <PickSuggestion />
+              <MatchupSpotlight compact />
+              <ChampionSearch />
+              <BuildPanel />
+              {lockedId > 0 && <GamePlan championId={lockedId} role={lastPick?.championId === lockedId ? lastPick.role : null} />}
+            </>
+          )}
+        </div>
       </div>
       <TeamColumn side="enemy" players={draft.enemies} localCellId={-1} />
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BuildOption, ChampionBuild, SkillKey, SpellInfo } from '../../../shared/dataTypes'
+import { NO_SKILL_POINTS } from '../../../shared/skills'
 import { ZERO_SELECTION, type BuildSelection } from '../../../shared/buildSelection'
 import { pct } from '../lib/format'
 import { ItemIcon } from './Icons'
@@ -154,12 +155,15 @@ function ItemOptions({
 const LOW_SAMPLE = 40
 
 export function BuildOptionsView({
+  championId,
   build,
   spells,
   highlightCore,
   selection,
   onSelect
 }: {
+  /** quando conhecido, permite explicar campeões que não sobem habilidades com pontos (Aphelios) */
+  championId?: number
   build: ChampionBuild
   spells: SpellInfo[]
   highlightCore?: number[] | null
@@ -250,7 +254,11 @@ export function BuildOptionsView({
         </div>
       )}
 
-      {o?.skills ? (
+      {championId !== undefined && NO_SKILL_POINTS.has(championId) ? (
+        <p role="note" className="rounded-xl border border-line bg-panel/50 px-3 py-2 text-sm text-mist">
+          Este campeão não tem ordem de habilidades: os pontos de nível dele vão para atributos (dano, velocidade de ataque e penetração), e as habilidades são aprendidas sozinhas.
+        </p>
+      ) : o?.skills ? (
         <div className="flex flex-col gap-2">
           <h3 className="text-sm text-mist">Ordem das habilidades</h3>
           <Choice label="Opções de habilidades" options={o.skills} total={o.timeline} index={skillIdx} onIndex={setSkillIdx} render={(v) => <SkillOrder build={skillBuild(v)} spells={spells} hideTitle />} />

@@ -83,18 +83,18 @@ export function Header() {
 
   return (
     <header
-      className="app-drag relative z-20 grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line/70 bg-deck/95 pl-4"
+      className="app-drag relative z-20 flex h-14 shrink-0 items-center gap-3 border-b border-line/70 bg-deck/95 pl-4"
       style={{ paddingRight: 'max(16px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px))' }}
     >
       {/* esquerda: marca */}
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex shrink-0 items-center gap-2.5">
         <img src={appIcon} alt="" width={30} height={30} className="h-[30px] w-[30px] shrink-0" draggable={false} />
         <span className="truncate font-display text-xl font-semibold tracking-wide max-[760px]:sr-only">Pedro.gg</span>
         <span className="hidden whitespace-nowrap text-sm text-mist min-[1500px]:inline">Draft Companion</span>
       </div>
 
       {/* centro: telas */}
-      <nav className="app-no-drag flex items-center gap-0.5 whitespace-nowrap rounded-xl border border-line/70 bg-panel/70 p-1" role="tablist" aria-label="Telas">
+      <nav className="app-no-drag ml-2 flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-xl border border-line/70 bg-panel/70 p-1" role="tablist" aria-label="Telas">
         {NAV.map((n) => (
           <button
             key={n.id}
@@ -115,8 +115,9 @@ export function Header() {
         ))}
       </nav>
 
-      {/* direita: conta, estado, aceite e configurações */}
-      <div className="app-no-drag flex min-w-0 items-center justify-end gap-2.5">
+      {/* direita: conta, estado, aceite e configurações (nunca encolhe nem se sobrepõe) */}
+      <div className="min-w-0 flex-1" aria-hidden="true" />
+      <div className="app-no-drag flex shrink-0 items-center justify-end gap-2.5">
         {profiles.length === 0 && !account ? (
           <button type="button" className={btnGold} onClick={openPool}>
             Criar o primeiro perfil
@@ -126,10 +127,10 @@ export function Header() {
             type="button"
             onClick={openPool}
             title={account ? (linked ? 'Conta detectada no cliente. Abrir perfis e Pools' : 'Conta detectada, mas sem perfil. Clique para vincular a um perfil') : 'Abrir seus perfis e Pools'}
-            className="flex min-w-0 items-center gap-2 rounded-full border border-line bg-panel/80 py-0.5 pl-0.5 pr-3 text-sm transition-colors hover:border-mist/50 max-[1180px]:pr-0.5"
+            className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-panel/80 py-0.5 pl-0.5 pr-3 text-sm transition-colors hover:border-mist/50 max-[1180px]:pr-0.5"
           >
             <Avatar name={shownName} iconId={account?.profileIconId} version={version} />
-            <span className="flex max-w-40 flex-col text-left leading-tight max-[1180px]:sr-only">
+            <span className="flex max-w-36 flex-col text-left leading-tight max-[1180px]:sr-only">
               <span className="truncate font-medium">{shownName}</span>
               {account && !linked && <span className="text-[11px] text-gold">sem perfil · vincular</span>}
             </span>
@@ -140,7 +141,7 @@ export function Header() {
             {st.pulse && <span className={`radar absolute inline-flex h-full w-full rounded-full ${st.dot}`} />}
             <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${st.dot}`} />
           </span>
-          <span className="max-[1350px]:sr-only">{st.label}</span>
+          <span className="max-[1700px]:sr-only">{st.label}</span>
         </div>
         <AutoAcceptToggle />
         <button

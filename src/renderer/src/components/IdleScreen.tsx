@@ -1,5 +1,6 @@
 import { useApp } from '../store/useApp'
 import { btn } from '../lib/ui'
+import { BanPrefs } from './BanPrefs'
 
 const COPY = {
   searching: {
@@ -22,7 +23,7 @@ export function IdleScreen() {
   const c = COPY[status]
 
   return (
-    <div className="grid h-full place-items-center">
+    <div className="flex h-full flex-col items-center justify-center gap-6 overflow-y-auto py-2 [&>*]:shrink-0">
       <div className="flex max-w-md flex-col items-center text-center">
         <div className="relative mb-8 grid h-28 w-28 place-items-center">
           {status === 'searching' && (
@@ -46,6 +47,7 @@ export function IdleScreen() {
           </button>
         )}
       </div>
+      {status === 'connected' && <BanPrefs />}
     </div>
   )
 }

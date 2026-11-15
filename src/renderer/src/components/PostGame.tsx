@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ROLE_PT, type Analysis, type Insight, type InsightLevel, type MatchReport, type PgParticipant, type PgSummary } from '../../../shared/postgame'
+import { ROLE_PT, areaCoaching, type AreaCoaching, type Analysis, type Insight, type InsightLevel, type MatchReport, type PgParticipant, type PgSummary } from '../../../shared/postgame'
 import { useApp } from '../store/useApp'
 import { btn, btnGold, btnDanger } from '../lib/ui'
 import { ChampionIcon, useChampionName } from './Icons'
@@ -457,12 +457,81 @@ function Empty() {
   )
 }
 
+
+// ---------------------------------------------------------------- pontuação por área
+
+const LEVEL_TEXT = { strong: 'Forte', ok: 'Regular', weak: 'A melhorar' } as const
+const levelColor = (score: number): string => (score >= 70 ? 'var(--color-ally)' : score >= 45 ? 'var(--color-gold)' : 'var(--color-enemy)')
+
+function AreaCard({ area, i }: { area: AreaCoaching; i: number }) {
+  return (
+    <li
+      aria-label={`Área ${area.label}`}
+      className={`rounded-2xl border bg-panel/70 p-4 shadow-card ${area.focus ? 'border-gold/60' : 'border-line'}`}
+      style={{ animation: 'verdict-in 420ms cubic-bezier(0.2,0.7,0.2,1) both', animationDelay: `${i * 70}ms` }}
+    >
+      <div className="flex items-center gap-3">
+        <span className="num grid h-11 w-11 shrink-0 place-items-center rounded-xl border text-xl font-semibold" style={{ color: gradeColor(area.grade), borderColor: gradeColor(area.grade) }} aria-label={`Conceito ${area.grade}`}>
+          {area.grade}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <h3 className="font-display text-lg font-semibold">{area.label}</h3>
+            <span className="num text-sm text-mist">{area.score}/100</span>
+            <span className="text-xs" style={{ color: levelColor(area.score) }}>
+              {LEVEL_TEXT[area.level]}
+            </span>
+            {area.focus && <span className="rounded-full border border-gold/60 bg-gold/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gold">Foque aqui</span>}
+          </div>
+          <div className="mt-1">
+            <GrowBar value={area.score} color={levelColor(area.score)} label={`${area.label} ${area.score}`} />
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-dim">{area.summary}</p>
+      <h4 className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-mist">{area.level === 'strong' ? 'Continue assim' : 'O que fazer'}</h4>
+      <ul className="mt-1 space-y-1 text-sm text-snow">
+        {area.actions.map((t) => (
+          <li key={t}>• {t}</li>
+        ))}
+      </ul>
+    </li>
+  )
+}
+
+function AreaScores() {
+  const detail = useApp((s) => s.postDetail)
+  const areas = useMemo(() => (detail ? areaCoaching(detail.report, detail.analysis) : []), [detail])
+  if (!detail) return <div className="grid place-items-center text-mist">Carregando a partida…</div>
+  const focus = areas.filter((a) => a.focus)
+  return (
+    <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1 [&>*]:shrink-0" key={detail.report.gameId}>
+      <section aria-label="Foco da próxima partida" className="rounded-2xl border border-gold/40 bg-gold/5 p-4">
+        <h2 className="font-display text-xl font-semibold text-gold">Foco da próxima partida</h2>
+        {focus.length === 0 ? (
+          <p className="mt-1 text-sm text-mist">Nenhuma área ficou abaixo do esperado. Mantenha o que fez e busque consistência.</p>
+        ) : (
+          <p className="mt-1 text-sm text-snow">
+            Priorize <strong>{focus.map((f) => f.label).join(' e ')}</strong>: foram as áreas com a menor pontuação nesta partida.
+          </p>
+        )}
+        <p className="mt-1 text-xs text-dim">As notas comparam a sua partida com referências aproximadas por função, não com a meta oficial.</p>
+      </section>
+      <ul className="grid gap-4 xl:grid-cols-2" aria-label="Pontuação por área">
+        {areas.map((a, i) => (
+          <AreaCard key={a.key} area={a} i={i} />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function PostGameScreen() {
   const list = useApp((s) => s.postList)
   const detail = useApp((s) => s.postDetail)
-  const [tab, setTab] = useState<'match' | 'progress'>('match')
+  const [tab, setTab] = useState<'match' | 'scores' | 'progress'>('match')
   if (list.length === 0) return <Empty />
-  const tabBtn = (id: 'match' | 'progress', label: string) => (
+  const tabBtn = (id: 'match' | 'scores' | 'progress', label: string) => (
     <button
       type="button"
       role="tab"
@@ -478,11 +547,17 @@ export function PostGameScreen() {
     <div className="flex h-full flex-col gap-3">
       <div role="tablist" aria-label="Pós-jogo" className="flex gap-1 border-b border-line">
         {tabBtn('match', 'Partida')}
+        {tabBtn('scores', 'Pontuação')}
         {tabBtn('progress', 'Evolução')}
       </div>
       {tab === 'progress' ? (
         <div role="tabpanel" aria-labelledby="pg-tab-progress" className="flex min-h-0 flex-1 flex-col">
           <ProgressView list={list} />
+        </div>
+      ) : tab === 'scores' ? (
+        <div role="tabpanel" aria-labelledby="pg-tab-scores" className="grid min-h-0 flex-1 grid-cols-[minmax(240px,300px)_1fr] gap-5">
+          <Sidebar />
+          <AreaScores />
         </div>
       ) : (
         <div role="tabpanel" aria-labelledby="pg-tab-match" className="grid min-h-0 flex-1 grid-cols-[minmax(240px,300px)_1fr] gap-5">

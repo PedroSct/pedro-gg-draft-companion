@@ -72,6 +72,9 @@ const draftWithZed = (): DraftState => ({
   bans: { allies: [], enemies: [] }
 })
 
+/** Fase de bans em andamento (ninguém travou): a tela mostra a etapa de banimentos. */
+const banDraft = (): DraftState => ({ ...draftWithZed(), enemies: [player(5, 0, 'none')] })
+
 interface Fake {
   api: LolApi
   pushUpdate(u: UpdateState): void
@@ -537,7 +540,7 @@ describe('Companion App', () => {
     ]
     render(<App />)
     await screen.findByText('Conectado. Entre em uma fila.')
-    act(() => fake.pushDraft(draftWithZed()))
+    act(() => fake.pushDraft(banDraft()))
 
     const panel = await screen.findByRole('region', { name: 'Sugestões de banimento' })
     expect(within(panel).getByText(/Atrapalha Ahri de Pedro/)).toBeInTheDocument()
@@ -560,7 +563,7 @@ describe('Companion App', () => {
       }))
     render(<App />)
     await screen.findByText('Conectado. Entre em uma fila.')
-    act(() => fake.pushDraft(draftWithZed()))
+    act(() => fake.pushDraft(banDraft()))
     const panel = await screen.findByRole('region', { name: 'Sugestões de banimento' })
     expect(within(panel).getAllByText(/Meta de Top: tier S/)).toHaveLength(3)
     expect(within(panel).queryByText(/vence 60,0%/)).not.toBeInTheDocument()
@@ -577,7 +580,7 @@ describe('Companion App', () => {
     ]
     render(<App />)
     await screen.findByText('Conectado. Entre em uma fila.')
-    act(() => fake.pushDraft(draftWithZed()))
+    act(() => fake.pushDraft(banDraft()))
     await screen.findByRole('region', { name: 'Sugestões de banimento' })
     expect(screen.queryByRole('button', { name: /^Banir/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Travar/ })).not.toBeInTheDocument()
@@ -1145,6 +1148,19 @@ describe('0.6: counters do meta, evolução e aviso de patch', () => {
     expect(await screen.findByRole('complementary', { name: 'Partidas analisadas' })).toBeInTheDocument()
   })
 
+  it('o Pós-jogo tem a aba Pontuação com nota por área, o que fazer e o foco', async () => {
+    const user = userEvent.setup()
+    installApi({ postGames: [postGameFixture()] })
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: /Pós-jogo/ }))
+    await user.click(await screen.findByRole('tab', { name: 'Pontuação' }))
+    const panel = await screen.findByRole('tabpanel', { name: 'Pontuação' })
+    expect(await within(panel).findByRole('region', { name: 'Foco da próxima partida' })).toBeInTheDocument()
+    const areas = within(panel).getByRole('list', { name: 'Pontuação por área' })
+    expect(within(areas).getByRole('listitem', { name: 'Área Farm' })).toBeInTheDocument()
+    expect(within(areas).getAllByText(/O que fazer|Continue assim/).length).toBeGreaterThan(0)
+  })
+
   it('troca o atalho do overlay apertando as teclas, recusa o repetido e volta ao padrão', async () => {
     const user = userEvent.setup()
     const fake = installApi()
@@ -1260,7 +1276,104 @@ describe('Draft: confronto, busca e bans pelo campeão em foco', () => {
     ;(fake.api as { getBanSuggestions: LolApi['getBanSuggestions'] }).getBanSuggestions = bans as unknown as LolApi['getBanSuggestions']
     render(<App />)
     await screen.findByText('Conectado. Entre em uma fila.')
-    act(() => fake.pushDraft(lockedAhri()))
+    act(() => fake.pushDraft({ ...lockedAhri(), turn: { id: 3, type: 'ban', championId: 0 } }))
     await waitFor(() => expect(bans).toHaveBeenCalledWith(expect.objectContaining({ focusChampionId: 103 })))
+  })
+})
+
+describe('Meta: servidor', () => {
+  it('troca o servidor e volta ao anterior quando não há dados publicados para ele', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    const setSettings = vi.spyOn(fake.api, 'setSettings')
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Meta' }))
+    await user.selectOptions(await screen.findByLabelText('Servidor'), 'br1')
+    await waitFor(() => expect(setSettings).toHaveBeenCalledWith({ metaRegion: 'br1' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Ainda não há dados/)
+    await waitFor(() => expect(setSettings).toHaveBeenLastCalledWith({ metaRegion: 'global' }))
+  })
+})
+
+describe('Antes da partida: preferências de ban', () => {
+  it('pergunta quem você não gosta de enfrentar e guarda no perfil', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    const card = await screen.findByRole('region', { name: 'Seus bans' })
+    expect(card).toHaveTextContent('Antes da partida')
+    await user.type(within(card).getByLabelText('Campeões que você não gosta de enfrentar'), 'zed')
+    await user.click(await within(card).findByRole('button', { name: 'Adicionar Zed' }))
+    await waitFor(() => expect(fake.saveProfile).toHaveBeenCalledWith(expect.objectContaining({ avoid: [238] })))
+  })
+})
+
+describe('Draft em etapas', () => {
+  const banDraftFor = (role: 'MIDDLE' | 'UTILITY' = 'MIDDLE'): DraftState => ({
+    ...draftWithZed(),
+    localRole: role,
+    enemies: [player(5, 0, 'none')],
+    allies: [player(0, 0, 'none', 'TOP'), player(1, 103, 'hovering', role)]
+  })
+
+  it('etapa 1: só bans; picks e build ficam de fora', async () => {
+    const fake = installApi()
+    ;(fake.api as { getBanSuggestions: LolApi['getBanSuggestions'] }).getBanSuggestions = async () => [
+      { championId: 238, score: 3, reasons: [{ kind: 'meta', role: 'TOP', tier: 'S', winrate: 0.54, games: 900 }] }
+    ]
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(banDraftFor()))
+    await screen.findByRole('region', { name: 'Sugestões de banimento' })
+    expect(screen.getByRole('button', { name: /Bans/, current: 'step' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Build' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Pick travado' })).not.toBeInTheDocument()
+  })
+
+  it('etapa 2: com um pick travado a tela de bans some e entra a dos picks', async () => {
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(banDraftFor()))
+    await screen.findByRole('button', { name: /Bans/, current: 'step' })
+    act(() => fake.pushDraft(draftWithZed()))
+    expect(await screen.findByRole('button', { name: /Picks/, current: 'step' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Sugestões de banimento' })).not.toBeInTheDocument()
+  })
+
+  it('etapa 3: ao travar, entram build e plano; dá para espiar outra etapa e ela volta sozinha', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    const locked: DraftState = { ...draftWithZed(), allies: [player(0, 0, 'none', 'TOP'), player(1, 103, 'locked', 'MIDDLE')] }
+    act(() => fake.pushDraft(locked))
+    expect(await screen.findByRole('button', { name: /Build/, current: 'step' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Build' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Picks/ }))
+    expect(screen.getByRole('button', { name: /Picks/, current: 'step' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Build' })).not.toBeInTheDocument()
+  })
+
+  it('no suporte, mostra a dupla da rota e os pontos fortes e fracos', async () => {
+    const fake = installApi()
+    ;(fake.api as { getLaneMatchup: LolApi['getLaneMatchup'] }).getLaneMatchup = async () => ({
+      enemyId: 238,
+      simulated: false,
+      winrate: 0.5,
+      games: 80,
+      duo: { partnerId: 22, partnerRole: 'BOTTOM', enemyCarryId: 51, enemySupportId: 412, ourWinrate: 0.55, ourGames: 40, enemyWinrate: 0.48, enemyGames: 35 },
+      strengths: ['Tier S no meta'],
+      weaknesses: ['Perde a rota contra Zed']
+    })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    act(() => fake.pushDraft(banDraftFor('UTILITY')))
+    const duo = await screen.findByLabelText('Combo da dupla')
+    expect(duo).toHaveTextContent('Seu atirador')
+    expect(duo).toHaveTextContent('55,0%')
+    expect(await screen.findByText(/Tier S no meta/)).toBeInTheDocument()
+    expect(screen.getByText(/Perde a rota contra Zed/)).toBeInTheDocument()
   })
 })

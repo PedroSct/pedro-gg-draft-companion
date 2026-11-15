@@ -184,12 +184,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir pub && cp meta.json meta-*.json pub/ && (cp holdout.json pub/ 2>/dev/null || true) && cd pub
+          mkdir pub && cp meta.json meta-*.json pub/ && (cp holdout.json pub/ 2>/dev/null || true) && (cp skill-diagnostics.json pub/ 2>/dev/null || true) && cd pub
           git init -q
           git config user.name "pedro-gg-bot"
           git config user.email "actions@users.noreply.github.com"
           git checkout -q --orphan data
           git add meta.json meta-*.json
           [ -f holdout.json ] && git add holdout.json || true
+          [ -f skill-diagnostics.json ] && git add skill-diagnostics.json || true
           git commit -q -m "Dados de meta ($(date -u +%F))"
           git push -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" data

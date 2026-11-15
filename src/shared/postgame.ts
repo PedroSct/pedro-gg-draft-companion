@@ -537,6 +537,121 @@ function buildInsights(report: MatchReport, me: PgParticipant, opp: PgParticipan
 
 // ------------------------------------------------------------------ histórico e IPC
 
+// ------------------------------------------------------------------ pontuação por área
+
+export type AreaLevel = 'strong' | 'ok' | 'weak'
+
+export interface AreaCoaching {
+  key: ComponentKey
+  label: string
+  score: number
+  grade: Grade
+  level: AreaLevel
+  /** o que os números disseram nesta área */
+  summary: string
+  /** o que fazer para melhorar (ou manter, quando a área foi bem) */
+  actions: string[]
+  /** uma das áreas a priorizar na próxima partida */
+  focus: boolean
+}
+
+const areaLevel = (score: number): AreaLevel => (score >= 70 ? 'strong' : score >= 45 ? 'ok' : 'weak')
+
+/**
+ * Transforma a nota de cada área em orientação: o que aconteceu, o que fazer e em quais duas áreas focar.
+ * Só usa números da própria partida; as referências são aproximadas (não é meta oficial).
+ */
+export function areaCoaching(report: MatchReport, a: Analysis): AreaCoaching[] {
+  const me = report.participants.find((p) => p.isMe)
+  if (!me) return []
+  const minutes = Math.max(1, report.durationSec / 60)
+  const role = a.role
+  const early = a.diffs.find((d) => d.minute === 10) ?? a.diffs[0]
+  const worstPhase = [...a.phases].sort((x, y) => y.deaths - x.deaths)[0]
+
+  const actionsFor = (c: ScoreComponent, level: AreaLevel): string[] => {
+    const out: string[] = []
+    switch (c.key) {
+      case 'farm': {
+        const target = role ? CS_TARGET[role] : 6.5
+        const missing = Math.max(0, Math.round(target * minutes - (me.cs + me.jungleCs)))
+        if (level === 'strong') out.push(`Farm em dia (${a.csPerMin} CS/min). Mantenha o ritmo mesmo depois de rotacionar.`)
+        else {
+          out.push(`Faltaram cerca de ${missing} tropas para a referência de ${target} CS/min. Cada tropa perdida é ouro que o oponente não perdeu.`)
+          out.push('Treine o último golpe: espere a tropa chegar na vida certa em vez de bater sempre.')
+          out.push('Antes de recuar ou rotacionar, limpe a onda; voltar com a onda empurrada rende ouro e XP.')
+        }
+        break
+      }
+      case 'laning': {
+        if (level === 'strong') out.push('Você saiu na frente na rota. Use essa vantagem: empurre a onda e ajude a rota vizinha ou um objetivo.')
+        else {
+          if (early && early.gold !== null && early.gold < 0) out.push(`Aos ${early.minute} min você estava ${Math.abs(Math.round(early.gold))} de ouro atrás do oponente.`)
+          out.push('Respeite os níveis 2, 3 e 6 do oponente: trocar sem a vantagem de nível custa vida e farm.')
+          out.push('Se a rota está perdida, farme sob a torre e peça ajuda do caçador em vez de forçar trocas.')
+        }
+        break
+      }
+      case 'fighting': {
+        if (level === 'strong') out.push(`Boas lutas (${me.kills}/${me.deaths}/${me.assists}). Continue entrando nas lutas pelo objetivo, onde o abate vale mais.`)
+        else {
+          if (a.killParticipation < 0.5) out.push(`Você participou de ${Math.round(a.killParticipation * 100)}% dos abates do time. Aproxime-se do time antes dos objetivos.`)
+          if (me.deaths > me.kills + me.assists / 2) out.push('Você morreu mais do que contribuiu. Entre na luta depois das habilidades-chave do inimigo, não antes.')
+          out.push('Escolha lutas em que o seu time tem vantagem numérica ou de ouro; evite as que começam sem visão.')
+        }
+        break
+      }
+      case 'vision': {
+        const target = role ? VISION_TARGET[role] : 0.9
+        if (level === 'strong') out.push(`Boa visão (${me.wardsPlaced} sentinelas colocadas, ${me.wardsKilled} destruídas). Continue cobrindo os objetivos antes de eles nascerem.`)
+        else {
+          out.push(`Placar de visão ${me.visionScore} (${a.visionPerMin}/min, referência ${target}). Colocou ${me.wardsPlaced} e destruiu ${me.wardsKilled}.`)
+          out.push('Compre uma sentinela de controle a cada recuo e use a de rastreador assim que puder.')
+          out.push('Limpe a visão inimiga ao redor do dragão e do Barão antes de contestar.')
+        }
+        break
+      }
+      case 'objectives': {
+        if (level === 'strong') out.push('Você esteve presente na maioria dos objetivos do time. É o que decide jogos.')
+        else {
+          out.push(c.note + '. Dragão, Arauto e torres desequilibram o jogo mais do que um abate isolado.')
+          out.push('Quando um objetivo nasce, empurre a onda antes e chegue com o time, não depois.')
+        }
+        break
+      }
+      case 'survival': {
+        if (level === 'strong') out.push(`Poucas mortes (${me.deaths}). Morrer pouco mantém o seu ouro e a pressão no mapa.`)
+        else {
+          if (worstPhase && worstPhase.deaths > 0) out.push(`Você morreu mais em "${worstPhase.label}" (${worstPhase.deaths}). Reveja o que levou a essas mortes.`)
+          out.push('Antes de avançar, olhe o mapa: se alguém inimigo sumiu, recue ou peça visão.')
+          out.push('Com a vida baixa, volte à base em vez de arriscar mais uma troca; a próxima compra pesa mais que a troca.')
+        }
+        break
+      }
+    }
+    return out
+  }
+
+  const base = a.components.map((c) => ({ c, level: areaLevel(c.score) }))
+  const focusKeys = new Set(
+    [...base]
+      .filter((x) => x.level !== 'strong')
+      .sort((x, y) => x.c.score - y.c.score)
+      .slice(0, 2)
+      .map((x) => x.c.key)
+  )
+  return base.map(({ c, level }) => ({
+    key: c.key,
+    label: c.label,
+    score: c.score,
+    grade: gradeOf(c.score),
+    level,
+    summary: c.note,
+    actions: actionsFor(c, level),
+    focus: focusKeys.has(c.key)
+  }))
+}
+
 export interface PgSummary {
   gameId: number
   playedAt: number | null

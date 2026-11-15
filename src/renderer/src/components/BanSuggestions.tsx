@@ -8,6 +8,8 @@ import { useFocus } from '../lib/useFocus'
 
 function ReasonText({ reason, short = false }: { reason: BanReason; short?: boolean }) {
   const champ = useChampionName(reason.kind === 'counter' ? reason.championId : 0)
+  if (reason.kind === 'avoid') return <>Você marcou como difícil de enfrentar</>
+  if (reason.kind === 'habit') return <>Você costuma banir este campeão</>
   if (reason.kind === 'counter' && reason.self) {
     return short ? (
       <>

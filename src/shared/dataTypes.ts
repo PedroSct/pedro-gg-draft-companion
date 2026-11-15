@@ -26,6 +26,10 @@ export interface FriendProfile {
   mainRoles: Role[]
   notes?: string
   pool: Pool
+  /** campeões que a pessoa não gosta de enfrentar (2 ou 3): entram nas sugestões de ban. Pessoal: não viaja no compartilhamento. */
+  avoid?: number[]
+  /** campeões que a pessoa mais bane: também entram nas sugestões de ban. Pessoal. */
+  usualBans?: number[]
   createdAt: string
   updatedAt: string
 }
@@ -353,6 +357,10 @@ export type BanReason =
       self?: boolean
     }
   | { kind: 'meta'; role: Role; tier: Tier; winrate: number; games: number }
+  /** a pessoa marcou como "não gosto de enfrentar" */
+  | { kind: 'avoid' }
+  /** a pessoa disse que costuma banir este campeão */
+  | { kind: 'habit' }
 
 export interface BanSuggestion {
   championId: number
@@ -472,7 +480,21 @@ export interface MetaChampionDetail {
   build: ChampionBuild | null
 }
 
-/** Confronto de rota: o seu campeão contra o oponente (real ou simulado pela busca). */
+/** A dupla da bot lane (ADC + suporte): a sua contra a do time inimigo. */
+export interface DuoInfo {
+  /** o outro membro da sua dupla (null = ainda não escolheu) */
+  partnerId: number | null
+  partnerRole: Role
+  enemyCarryId: number | null
+  enemySupportId: number | null
+  /** quanto a sua dupla vence junta (0..1); null sem amostra */
+  ourWinrate: number | null
+  ourGames: number
+  enemyWinrate: number | null
+  enemyGames: number
+}
+
+/** Confronto de rota: o seu campeão contra o oponente (real ou simulado pela busca), com pontos fortes e fracos. */
 export interface LaneMatchup {
   enemyId: number | null
   /** o oponente veio da busca (simulação), não do draft */
@@ -480,4 +502,9 @@ export interface LaneMatchup {
   /** vitórias do seu campeão contra ele na rota (0..1); null sem dados suficientes */
   winrate: number | null
   games: number
+  /** só para ADC e suporte */
+  duo?: DuoInfo
+  /** pontos fortes e fracos tirados dos dados (vazios sem dados reais) */
+  strengths?: string[]
+  weaknesses?: string[]
 }

@@ -202,6 +202,23 @@ describe('sugestões de banimento', () => {
     expect(r[0].reasons[0]).toMatchObject({ kind: 'counter', championId: 10, nickname: 'você', self: true })
   })
 
+  it('quem você não gosta de enfrentar e quem costuma banir entram na lista, com o motivo', () => {
+    const base = mid(3)
+    const p: FriendProfile = { ...base, pool: emptyPool(), avoid: [23], usualBans: [21] } as FriendProfile
+    const r = suggestBans({ draft: draft(), dataset: DS, profiles: [p] })
+    const a = r.find((x) => x.championId === 23)
+    const h = r.find((x) => x.championId === 21)
+    expect(a?.reasons[0]).toEqual({ kind: 'avoid' })
+    expect(h?.reasons[0]).toEqual({ kind: 'habit' })
+    expect(r.findIndex((x) => x.championId === 23)).toBeLessThan(r.findIndex((x) => x.championId === 21))
+  })
+
+  it('preferência de ban não sugere quem já foi banido', () => {
+    const p: FriendProfile = { ...mid(3), pool: emptyPool(), avoid: [23] } as FriendProfile
+    const r = suggestBans({ draft: draft({ bans: { allies: [23], enemies: [] } }), dataset: DS, profiles: [p] })
+    expect(r.map((x) => x.championId)).not.toContain(23)
+  })
+
   it('sem dados reais não sugere nada', () => {
     expect(suggestBans({ draft: draft(), dataset: null, profiles: [mid(5)] })).toEqual([])
     expect(suggestBans({ draft: draft(), dataset: { ...DS, isSample: true }, profiles: [mid(5)] })).toEqual([])

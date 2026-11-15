@@ -302,7 +302,7 @@ export function BuildPanel() {
             {focus.role && <ImportPanel championId={focus.championId} role={focus.role} build={build} forLocal={focus.forLocal} selection={selection} />}
             {build.matchup && <MatchupNote matchup={build.matchup} />}
             {situation && <SituationCard situation={situation} />}
-            <BuildOptionsView build={build} spells={data.spells} highlightCore={situation?.variantCore} selection={selection} onSelect={setSelection} />
+            <BuildOptionsView championId={focus.championId} build={build} spells={data.spells} highlightCore={situation?.variantCore} selection={selection} onSelect={setSelection} />
           </>
         )}
       </div>
