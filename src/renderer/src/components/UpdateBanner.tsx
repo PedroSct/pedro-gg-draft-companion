@@ -21,9 +21,9 @@ export function UpdateBanner() {
   if (!['available', 'downloading', 'ready'].includes(status)) return null
 
   return (
-    <div role="status" aria-label="Atualização do app" className="border-b border-ally/40 bg-ally/10 px-5 py-2.5 text-sm">
+    <div role="status" aria-label="Atualização do app" className="border-b border-good/40 bg-good/10 px-5 py-2.5 text-sm">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="chamfer-sm num bg-ally px-2 py-0.5 text-xs font-semibold text-night">NOVO</span>
+        <span className="chamfer-sm num bg-good px-2 py-0.5 text-xs font-semibold text-night">NOVO</span>
 
         {status === 'available' && (
           <>
@@ -57,7 +57,7 @@ export function UpdateBanner() {
               aria-valuenow={percent ?? 0}
               className="h-2 w-48 bg-line"
             >
-              <span className="block h-full bg-ally transition-[width]" style={{ width: `${percent ?? 0}%` }} />
+              <span className="block h-full bg-good transition-[width]" style={{ width: `${percent ?? 0}%` }} />
             </span>
             <span className="num text-mist">{percent ?? 0}%</span>
           </>
@@ -78,7 +78,7 @@ export function UpdateBanner() {
         )}
       </div>
       {status === 'available' && showNotes && notes && (
-        <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap border-l-2 border-ally/50 pl-3 font-sans text-xs text-mist">{notes}</pre>
+        <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap border-l-2 border-good/50 pl-3 font-sans text-xs text-mist">{notes}</pre>
       )}
     </div>
   )

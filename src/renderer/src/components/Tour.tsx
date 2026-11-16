@@ -21,18 +21,32 @@ const STEPS: Step[] = [
   },
   {
     target: 'nav-draft',
-    title: '2. Draft: sugestão na hora',
-    body: 'Durante a seleção, o app mostra o melhor pick da sua Pool (considerando o time inimigo e o seu), sugere banimentos e exibe a build. Ao travar o campeão, ficam só ele e a build. Dá para enviar runas, feitiços e itens direto ao cliente.'
+    title: '2. Antes da partida',
+    body: 'Com o cliente aberto e fora de uma seleção, a aba Draft pergunta 2 ou 3 campeões que você não gosta de enfrentar e quais você mais bane. Isso entra nas sugestões de banimento. Também mostra o seu último plano de jogo.'
+  },
+  {
+    target: 'nav-draft',
+    title: '3. Draft em 3 etapas',
+    body: 'A seleção aparece em ordem. Bans: o que banir e por quê, o seu confronto de rota com pontos fortes e fracos e, se você joga de suporte ou atirador, o combo da dupla. Picks: o melhor pick da sua Pool e os counters, quando os bans acabam. Build: runas, itens e plano de jogo, só depois de travar o campeão. Dá para espiar outra etapa pelas abas no topo. Runas, feitiços e itens vão ao cliente com um clique.'
   },
   {
     target: 'nav-meta',
-    title: '3. Meta: ranking e builds',
-    body: 'Veja o tier de cada campeão por rota, ordene por vitórias, presença ou jogos e confira as builds mais usadas, com a porcentagem de escolha e de vitória de cada opção.'
+    title: '4. Meta: ranking, Tier List e builds',
+    body: 'Veja o tier de cada campeão por rota em duas visões: Lista (ordene por vitórias, presença ou jogos) e Tier List (faixas S a D com os campeões). Clique em um campeão para ver confrontos, sinergias e a build mais usada. Escolha o servidor (Global, BR, NA, EUW, KR e outros) para ver os dados daquela região.'
   },
   {
     target: 'nav-postgame',
-    title: '4. Pós-jogo',
-    body: 'Quando a partida termina, o app analisa como você foi e mostra o que melhorar. Fica tudo guardado nesta aba.'
+    title: '5. Pós-jogo e Evolução',
+    body: 'Quando a partida termina, o app analisa como você foi e mostra o que melhorar. Na aba Evolução fica a pontuação geral por área (farm, rota, lutas, visão, objetivos e sobrevivência) sobre as suas últimas partidas, com a tendência e as áreas para focar.'
+  },
+  {
+    target: 'nav-coach',
+    title: '6. Treino',
+    body: 'Lê as suas partidas recentes e mostra o seu jeito de jogar, avisa se a Pool está concentrada demais e sugere campeões para experimentar, com plano de jogo e entrada na Pool com um clique.'
+  },
+  {
+    title: 'Durante a partida',
+    body: 'Um painel (overlay) mostra a build e a habilidade a subir, e diz o que comprar agora conforme o seu ouro. Ctrl+Shift+F9 muda o tamanho e Ctrl+Shift+F10 deixa mover. O app só mostra informação: nunca joga por você.'
   },
   {
     target: 'autoaccept',
@@ -42,7 +56,7 @@ const STEPS: Step[] = [
   {
     target: 'settings',
     title: 'Configurações',
-    body: 'Aqui ficam a região dos dados (Global, BR, EUW, KR), as atualizações e, se precisar, o botão para ver este tutorial de novo. Pronto: comece criando o seu perfil.'
+    body: 'Aqui ficam a região padrão dos dados, os atalhos do overlay, as atualizações e, se precisar, o botão para ver este tutorial de novo. Pronto: comece criando o seu perfil.'
   }
 ]
 

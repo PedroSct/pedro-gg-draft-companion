@@ -13,31 +13,31 @@ import { GamePlan } from './GamePlan'
 const pct = (n: number): string => `${Math.round(n * 100)}%`
 
 const TIER_STYLE: Record<Tier, string> = {
-  S: 'bg-gold/20 text-gold border-gold/50',
-  A: 'bg-ally/15 text-ally border-ally/40',
-  B: 'bg-raised text-snow border-line',
-  C: 'bg-raised text-mist border-line',
-  D: 'bg-enemy/10 text-enemy border-enemy/40'
+  S: 'text-gold border-gold/40',
+  A: 'text-good border-good/40',
+  B: 'text-ally border-ally/40',
+  C: 'text-mist border-line',
+  D: 'text-enemy border-enemy/40'
 }
 
 const TIP_LOOK: Record<CoachTip['level'], { bar: string; text: string }> = {
-  good: { bar: 'bg-ally', text: 'text-ally' },
+  good: { bar: 'bg-good', text: 'text-good' },
   warn: { bar: 'bg-gold', text: 'text-gold' },
   info: { bar: 'bg-mist/60', text: 'text-mist' }
 }
 
 const CONCENTRATION: Record<CoachReport['concentration'], { label: string; cls: string }> = {
-  high: { label: 'Pool muito concentrada', cls: 'border-gold/60 bg-gold/10 text-gold' },
-  medium: { label: 'Pool um pouco concentrada', cls: 'border-line bg-raised text-snow' },
-  healthy: { label: 'Boa variedade', cls: 'border-ally/50 bg-ally/10 text-ally' }
+  high: { label: 'Pool muito concentrada', cls: 'border-gold/40 text-gold' },
+  medium: { label: 'Pool um pouco concentrada', cls: 'border-line text-snow' },
+  healthy: { label: 'Boa variedade', cls: 'border-good/40 text-good' }
 }
 
 function Card({ title, hint, children, className = '' }: { title: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (
-    <section aria-label={title} className={`rounded-2xl border border-line bg-panel/70 p-4 ${className}`}>
-      <header className="mb-3">
-        <h3 className="font-display text-xl font-semibold text-snow">{title}</h3>
-        {hint && <p className="text-xs text-mist">{hint}</p>}
+    <section aria-label={title} className={className}>
+      <header className="mb-3 flex flex-wrap items-baseline gap-x-3 border-b border-line pb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-dim">{title}</h3>
+        {hint && <p className="text-xs text-dim">{hint}</p>}
       </header>
       {children}
     </section>
@@ -54,10 +54,10 @@ function ChampLine({ id, games, wins, share }: { id: number; games: number; wins
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate text-sm text-snow">{name}</span>
           <span className="num text-xs text-mist">
-            {games} {games === 1 ? 'partida' : 'partidas'} · <span className={wr >= 0.5 ? 'text-ally' : 'text-enemy'}>{pct(wr)}</span>
+            {games} {games === 1 ? 'partida' : 'partidas'} · <span className={wr >= 0.5 ? 'text-good' : 'text-enemy'}>{pct(wr)}</span>
           </span>
         </div>
-        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-raised" role="img" aria-label={`${pct(share)} das partidas`}>
+        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line" role="img" aria-label={`${pct(share)} das partidas`}>
           <span className="block h-full rounded-full bg-gold" style={{ width: `${Math.max(3, Math.round(share * 100))}%` }} />
         </div>
       </div>
@@ -70,7 +70,7 @@ function Difficulty({ value }: { value: number }) {
   return (
     <span className="flex items-center gap-0.5" role="img" aria-label={`Dificuldade ${value} de 10`}>
       {[1, 2, 3, 4, 5].map((i) => (
-        <span key={i} className={`h-1.5 w-3 rounded-full ${i <= dots ? 'bg-gold' : 'bg-raised'}`} />
+        <span key={i} className={`h-1.5 w-3 rounded-full ${i <= dots ? 'bg-gold' : 'bg-line'}`} />
       ))}
     </span>
   )
@@ -92,16 +92,16 @@ function SuggestionCard({ s }: { s: CoachSuggestion }) {
   }
 
   return (
-    <li className="flex flex-col gap-3 rounded-xl border border-line bg-deck/60 p-3.5">
+    <li className="flex flex-col gap-3 border-b border-line pb-5 pt-1">
       <div className="flex items-center gap-3">
         <ChampionIcon id={s.championId} size={52} />
         <div className="min-w-0 flex-1">
-          <h4 className="truncate font-display text-2xl font-semibold leading-none text-snow">{name}</h4>
+          <h4 className="truncate font-display text-xl font-semibold leading-none text-snow">{name}</h4>
           <p className="mt-1 text-xs text-mist">
             {ROLE_LABEL[s.role]} · {pct(s.winrate)} de vitórias
           </p>
         </div>
-        <span className={`grid h-7 w-7 place-items-center rounded-md border font-display text-sm font-bold ${TIER_STYLE[s.tier]}`} title={`Tier ${s.tier}`}>
+        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-md border font-display text-sm font-bold ${TIER_STYLE[s.tier]}`} title={`Tier ${s.tier}`}>
           {s.tier}
         </span>
       </div>
@@ -135,7 +135,7 @@ function SuggestionCard({ s }: { s: CoachSuggestion }) {
 function Tip({ t }: { t: CoachTip }) {
   const look = TIP_LOOK[t.level]
   return (
-    <li className="flex items-start gap-3 rounded-xl border border-line bg-deck/60 p-3">
+    <li className="flex items-start gap-3 border-b border-line py-3">
       <span aria-hidden="true" className={`mt-0.5 h-full min-h-10 w-1 shrink-0 self-stretch rounded-full ${look.bar}`} />
       {t.championId !== undefined && <ChampionIcon id={t.championId} size={36} />}
       <div className="min-w-0">
@@ -155,12 +155,12 @@ function Fundamentals({ role }: { role: Role }) {
   return (
     <ol className="grid grid-cols-3 gap-3 max-[1100px]:grid-cols-1">
       {moments.map((m, i) => (
-        <li key={m.id} className="rounded-xl border border-line bg-deck/60 p-3.5">
+        <li key={m.id} className="border-t border-line pt-3.5">
           <div className="flex items-center gap-2.5">
-            <span aria-hidden="true" className="num grid h-6 w-6 place-items-center rounded-full bg-raised text-xs font-semibold text-gold">
+            <span aria-hidden="true" className="num grid h-6 w-6 place-items-center rounded-full border border-gold/40 text-xs font-semibold text-gold">
               {i + 1}
             </span>
-            <h4 className="font-display text-lg font-semibold leading-none">{m.label}</h4>
+            <h4 className="text-[15px] font-semibold leading-none">{m.label}</h4>
             <span className="text-xs text-mist">{m.levels}</span>
           </div>
           <ul className="mt-2.5 flex flex-col gap-1.5">
@@ -208,10 +208,11 @@ export function CoachScreen() {
   const growth: CoachTip[] = progress.observations.map((o) => ({ level: o.level, title: o.title, detail: o.detail }))
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1 [&>*]:shrink-0">
+    <div className="flex h-full min-h-0 flex-col gap-8 overflow-y-auto pr-1 [&>*]:shrink-0">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="font-display text-3xl font-semibold leading-none">Treino</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-dim">Treino</p>
+          <h2 className="mt-2 font-display text-[30px] font-semibold leading-tight">Seu jeito de jogar e o que treinar</h2>
           <p className="mt-1 text-sm text-mist">
             Lê as suas partidas recentes e a maestria (só leitura) para mostrar o seu jeito de jogar, avisar se a Pool está concentrada e sugerir campeões novos.
             {state.status === 'ready' && state.account ? ` Conta: ${state.account}.` : ''}
@@ -223,12 +224,12 @@ export function CoachScreen() {
       </header>
 
       {lcu !== 'connected' && (
-        <p role="status" className="rounded-xl border border-dashed border-line bg-panel/50 p-5 text-center text-mist">
+        <p role="status" className="rounded-xl border border-dashed border-line p-5 text-center text-mist">
           Abra o League of Legends e entre na sua conta: o Treino lê o histórico pelo cliente.
         </p>
       )}
       {state.status === 'error' && lcu === 'connected' && (
-        <p role="alert" className="rounded-xl border border-enemy/40 bg-enemy/10 p-4 text-sm text-enemy">
+        <p role="alert" className="rounded-xl border border-enemy/40 p-4 text-sm text-enemy">
           {state.message}
         </p>
       )}
@@ -260,7 +261,7 @@ function Ready({ report, metaSample, growth }: { report: CoachReport; metaSample
             <div className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`rounded-full border px-3 py-1 text-sm ${conc.cls}`}>{conc.label}</span>
-                {report.level === 'new' && <span className="rounded-full border border-ally/40 bg-ally/10 px-3 py-1 text-sm text-ally">Começando ou voltando: sugestões mais fáceis</span>}
+                {report.level === 'new' && <span className="rounded-full border border-good/40 px-3 py-1 text-sm text-good">Começando ou voltando: sugestões mais fáceis</span>}
               </div>
               {report.style && (
                 <div>
@@ -268,7 +269,7 @@ function Ready({ report, metaSample, growth }: { report: CoachReport; metaSample
                   <p className="text-sm text-snow">{report.style.label}</p>
                   <ul className="mt-2 flex flex-wrap gap-1.5">
                     {report.style.tags.map((t) => (
-                      <li key={t.tag} className="rounded-md border border-line bg-raised px-2 py-0.5 text-xs text-mist">
+                      <li key={t.tag} className="rounded-full border border-line px-2.5 py-0.5 text-xs text-mist">
                         {tagLabel(t.tag)} <span className="num text-snow">{pct(t.share)}</span>
                       </li>
                     ))}
@@ -280,7 +281,7 @@ function Ready({ report, metaSample, growth }: { report: CoachReport; metaSample
                   <p className="text-xs text-mist">Rotas mais jogadas</p>
                   <ul className="mt-1 flex flex-wrap gap-1.5">
                     {report.roles.slice(0, 3).map((r) => (
-                      <li key={r.role} className="rounded-md border border-line bg-raised px-2 py-0.5 text-xs text-mist">
+                      <li key={r.role} className="rounded-full border border-line px-2.5 py-0.5 text-xs text-mist">
                         {ROLE_SHORT[r.role]} <span className="num text-snow">{pct(r.share)}</span>
                       </li>
                     ))}

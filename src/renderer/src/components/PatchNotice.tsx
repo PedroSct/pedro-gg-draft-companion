@@ -23,13 +23,13 @@ function ChangeRow({ c }: { c: PatchChange }) {
       <span className="text-xs text-mist">
         {c.fromTier !== c.toTier ? (
           <>
-            Tier {c.fromTier} → <span className={up ? 'text-ally' : 'text-enemy'}>{c.toTier}</span>
+            Tier {c.fromTier} → <span className={up ? 'text-good' : 'text-enemy'}>{c.toTier}</span>
           </>
         ) : (
           <>Tier {c.toTier}</>
         )}
         {' · '}
-        {pct(c.winrateFrom)} → <span className={up ? 'text-ally' : 'text-enemy'}>{pct(c.winrateTo)}</span>
+        {pct(c.winrateFrom)} → <span className={up ? 'text-good' : 'text-enemy'}>{pct(c.winrateTo)}</span>
         {c.coreFrom !== undefined && c.coreTo !== undefined && (
           <>
             {' · '}1º item: {itemName(items, c.coreFrom)} → {itemName(items, c.coreTo)}

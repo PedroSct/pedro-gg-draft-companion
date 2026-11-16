@@ -9,7 +9,7 @@ function PickTarget({ championId }: { championId: number }) {
       <ChampionIcon id={championId} size={48} />
       <div className="min-w-0">
         <p className="text-xs text-mist">Campeão em foco</p>
-        <p className="font-display text-2xl font-semibold leading-none text-snow">{name}</p>
+        <p className="font-display text-xl font-semibold leading-none text-snow">{name}</p>
       </div>
       <div className="ml-auto">
         <DraftActButton championId={championId} type="pick" compact />
@@ -35,33 +35,24 @@ export function TurnBanner() {
   const ranking = rec?.ranking ?? []
   const target = preview !== null && ranking.some((r) => r.championId === preview) ? preview : (ranking[0]?.championId ?? 0)
 
+  const tone = ban ? 'border-enemy/50 text-enemy' : 'border-gold/50 text-gold'
   return (
-    <section
-      role="region"
-      aria-label={ban ? 'Sua vez de banir' : 'Sua vez de escolher'}
-      className="turn-banner rounded-2xl border p-4"
-      style={{
-        ['--turn-color' as string]: ban ? 'var(--color-enemy)' : 'var(--color-gold)',
-        borderColor: ban ? 'color-mix(in srgb, var(--color-enemy) 60%, transparent)' : 'color-mix(in srgb, var(--color-gold) 60%, transparent)',
-        background: ban
-          ? 'linear-gradient(135deg, color-mix(in srgb, var(--color-enemy) 14%, var(--color-deck)), var(--color-deck))'
-          : 'linear-gradient(135deg, color-mix(in srgb, var(--color-gold) 14%, var(--color-deck)), var(--color-deck))'
-      }}
-    >
-      <div className="flex items-center gap-3">
-        <span aria-hidden="true" className={`relative grid h-3 w-3 place-items-center`}>
-          <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${ban ? 'bg-enemy' : 'bg-gold'}`} />
-          <span className={`relative inline-flex h-3 w-3 rounded-full ${ban ? 'bg-enemy' : 'bg-gold'}`} />
-        </span>
-        <h2 className={`font-display text-3xl font-semibold leading-none ${ban ? 'text-enemy' : 'text-gold'}`}>{ban ? 'Sua vez de banir' : 'Sua vez de escolher'}</h2>
+    <section role="region" aria-label={ban ? 'Sua vez de banir' : 'Sua vez de escolher'} className="turn-in">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className={`inline-flex items-center gap-2 rounded-full border px-3 py-0.5 text-xs font-semibold ${tone}`}>
+          <span aria-hidden="true" className="relative grid h-2 w-2 place-items-center">
+            <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${ban ? 'bg-enemy' : 'bg-gold'}`} />
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${ban ? 'bg-enemy' : 'bg-gold'}`} />
+          </span>
+          {ban ? 'Sua vez de banir' : 'Sua vez de escolher'}
+        </h2>
+        {ban ? (
+          <p className="text-sm text-mist">Clique em Banir no campeão que você quer tirar da partida. Você confirma antes.</p>
+        ) : !(isLocal && target > 0) ? (
+          <p className="text-sm text-mist">Escolha um campeão no cliente ou clique em uma sugestão da Pool para ver a build.</p>
+        ) : null}
       </div>
-      {ban ? (
-        <p className="mt-1.5 text-sm text-mist">Veja as sugestões logo abaixo e clique em Banir no campeão que você quer tirar da partida. Você confirma antes de banir.</p>
-      ) : isLocal && target > 0 ? (
-        <PickTarget championId={target} />
-      ) : (
-        <p className="mt-1.5 text-sm text-mist">Escolha um campeão no cliente ou clique em uma sugestão da Pool para ver a build.</p>
-      )}
+      {!ban && isLocal && target > 0 && <PickTarget championId={target} />}
     </section>
   )
 }

@@ -38,3 +38,38 @@ describe('summarizeProgress', () => {
     expect(summarizeProgress([g(), g(), g()]).observations).toEqual([])
   })
 })
+
+describe('pontuação por área (geral)', () => {
+  const areas = (farm: number, vision: number, extra: Partial<PgSummary> = {}) =>
+    g({ areas: [{ key: 'farm', score: farm }, { key: 'vision', score: vision }, { key: 'survival', score: 80 }], csPerMin: 6, visionPerMin: 0.5, killParticipation: 0.6, ...extra })
+
+  it('sem notas por área ou com menos de 3 partidas não mostra nada', () => {
+    expect(summarizeProgress([g(), g(), g()]).areas).toEqual([])
+    expect(summarizeProgress([areas(50, 50), areas(50, 50)]).areas).toEqual([])
+  })
+
+  it('média por área, conceito, nível e foco nas duas mais fracas', () => {
+    const p = summarizeProgress(Array.from({ length: 4 }, () => areas(30, 50)))
+    const by = Object.fromEntries(p.areas.map((a) => [a.key, a]))
+    expect(by.farm).toMatchObject({ avg: 30, level: 'weak', focus: true, games: 4 })
+    expect(by.vision).toMatchObject({ avg: 50, level: 'ok', focus: true })
+    expect(by.survival).toMatchObject({ avg: 80, level: 'strong', focus: false })
+    expect(by.farm.detail).toContain('6.0 CS')
+  })
+
+  it('mede a tendência (5 últimas x 5 anteriores) e só usa as últimas 20', () => {
+    const old = Array.from({ length: 5 }, () => areas(40, 50))
+    const recent = Array.from({ length: 5 }, () => areas(70, 50))
+    expect(summarizeProgress([...old, ...recent]).areas.find((a) => a.key === 'farm')!.change).toBe(30)
+    const many = [...Array.from({ length: 10 }, () => areas(0, 50)), ...Array.from({ length: 20 }, () => areas(80, 50))]
+    expect(summarizeProgress(many).areas.find((a) => a.key === 'farm')!.avg).toBe(80)
+  })
+
+  it('uma área ausente em várias partidas (sem timeline) usa só as que a têm', () => {
+    const noLaning = (i: number) => g({ areas: [{ key: 'farm', score: 60 }, ...(i < 2 ? [{ key: 'laning' as const, score: 90 }] : [])] })
+    const p = summarizeProgress(Array.from({ length: 5 }, (_, i) => noLaning(i)))
+    expect(p.areas.find((a) => a.key === 'laning')).toBeUndefined() // só 2 partidas
+    expect(p.areas.find((a) => a.key === 'farm')!.games).toBe(5)
+  })
+})
+

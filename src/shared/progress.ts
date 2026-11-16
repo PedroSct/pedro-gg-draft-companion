@@ -1,7 +1,7 @@
 // src/shared/progress.ts
 // Evolução do jogador a partir das partidas já analisadas (só os resumos): nota ao longo do tempo,
 // desempenho por campeão e padrões de erro. Código puro; cada observação diz o número que a gerou.
-import type { PgSummary } from './postgame'
+import { COMPONENT_LABEL, gradeOf, type ComponentKey, type Grade, type PgSummary } from './postgame'
 import type { Role } from './types'
 
 export interface ChampionLine {
@@ -27,6 +27,28 @@ export interface Observation {
   detail: string
 }
 
+export type AreaLevel = 'strong' | 'ok' | 'weak'
+
+/** Pontuação geral de uma área: média das últimas partidas analisadas (não de uma partida só). */
+export interface AreaAggregate {
+  key: ComponentKey
+  label: string
+  /** média 0..100 nas partidas recentes em que a área existe */
+  avg: number
+  /** em quantas partidas a área pôde ser medida */
+  games: number
+  grade: Grade
+  level: AreaLevel
+  /** média das 5 últimas menos a das 5 anteriores (null = poucas partidas) */
+  change: number | null
+  /** o número médio que explica a nota */
+  detail: string
+  /** o que fazer (ou manter) */
+  actions: string[]
+  /** uma das duas áreas mais fracas: prioridade das próximas partidas */
+  focus: boolean
+}
+
 export interface ProgressSummary {
   games: number
   wins: number
@@ -42,6 +64,89 @@ export interface ProgressSummary {
   champions: ChampionLine[]
   roles: RoleLine[]
   observations: Observation[]
+  /** pontuação geral por área; vazio com menos de 3 partidas com notas por área */
+  areas: AreaAggregate[]
+}
+
+/** Quantas partidas recentes entram na pontuação por área. */
+export const AREA_WINDOW = 20
+const AREA_MIN_GAMES = 3
+const AREA_ORDER: ComponentKey[] = ['farm', 'laning', 'fighting', 'vision', 'objectives', 'survival']
+const levelOf = (score: number): AreaLevel => (score >= 70 ? 'strong' : score >= 45 ? 'ok' : 'weak')
+
+const TIPS: Record<ComponentKey, Record<AreaLevel, string[]>> = {
+  farm: {
+    weak: ['Treine o último golpe nas tropas: espere a vida certa em vez de bater sempre.', 'Antes de recuar ou rotacionar, limpe a onda; voltar com a onda empurrada rende ouro e XP.'],
+    ok: ['Falta pouco para a referência: tente não perder tropas ao recuar e farme mais entre as lutas.'],
+    strong: ['Farm em dia. Mantenha o ritmo mesmo depois de rotacionar.']
+  },
+  laning: {
+    weak: ['Respeite os níveis 2, 3 e 6 do oponente: trocar sem vantagem de nível custa vida e farm.', 'Com a rota perdida, farme sob a torre e peça ajuda do caçador em vez de forçar trocas.'],
+    ok: ['Rotas equilibradas: procure uma vantagem pequena (nível, onda) antes de trocar.'],
+    strong: ['Você costuma sair na frente. Use a vantagem: empurre a onda e ajude um objetivo.']
+  },
+  fighting: {
+    weak: ['Chegue junto do time antes dos objetivos para participar de mais abates.', 'Entre na luta depois das habilidades-chave do inimigo, não antes.'],
+    ok: ['Escolha lutas em que o seu time tem vantagem de números ou de ouro.'],
+    strong: ['Boas lutas. Continue entrando nas lutas pelo objetivo, onde o abate vale mais.']
+  },
+  vision: {
+    weak: ['Compre uma sentinela de controle a cada recuo e use a de rastreador assim que puder.', 'Limpe a visão inimiga ao redor do dragão e do Barão antes de contestar.'],
+    ok: ['Cubra os objetivos com visão um pouco antes de eles nascerem.'],
+    strong: ['Boa visão. Continue cobrindo e limpando antes dos objetivos.']
+  },
+  objectives: {
+    weak: ['Quando um objetivo nasce, empurre a onda antes e chegue com o time.', 'Dragão, Arauto e torres desequilibram o jogo mais do que um abate isolado.'],
+    ok: ['Esteja presente em mais objetivos: rotacione assim que a onda estiver empurrada.'],
+    strong: ['Você está presente na maioria dos objetivos. É o que decide jogos.']
+  },
+  survival: {
+    weak: ['Antes de avançar, olhe o mapa: se alguém inimigo sumiu, recue ou peça visão.', 'Com a vida baixa, volte à base em vez de arriscar mais uma troca.'],
+    ok: ['Reveja as mortes mais caras (antes de objetivos) e evite trocas sem necessidade.'],
+    strong: ['Poucas mortes. Isso mantém o seu ouro e a pressão no mapa.']
+  }
+}
+
+function areaDetail(key: ComponentKey, gs: PgSummary[]): string {
+  const mean = (f: (g: PgSummary) => number | undefined): number => avg(gs.map(f).filter((x): x is number => typeof x === 'number'))
+  switch (key) {
+    case 'farm':
+      return `${mean((g) => g.csPerMin).toFixed(1)} CS por minuto em média`
+    case 'laning':
+      return 'ouro e CS contra o oponente de rota aos 10 e 15 min'
+    case 'fighting':
+      return `participação média em ${pctText(mean((g) => g.killParticipation))} dos abates do time, KDA ${kdaOf(avg(gs.map((g) => g.kills)), avg(gs.map((g) => g.deaths)), avg(gs.map((g) => g.assists))).toFixed(1)}`
+    case 'vision':
+      return `${mean((g) => g.visionPerMin).toFixed(1)} de placar de visão por minuto em média`
+    case 'objectives':
+      return 'presença nos objetivos que o seu time pegou'
+    case 'survival':
+      return `${avg(gs.map((g) => g.deaths)).toFixed(1)} mortes por partida em média`
+  }
+}
+
+/** Pontuação por área sobre as últimas partidas, com tendência (5 últimas contra as 5 anteriores). */
+export function summarizeAreas(sorted: readonly PgSummary[]): AreaAggregate[] {
+  const recent = sorted.slice(-AREA_WINDOW).filter((g) => g.areas && g.areas.length > 0)
+  const scoreOf = (g: PgSummary, key: ComponentKey): number | null => g.areas?.find((a) => a.key === key)?.score ?? null
+  const out: AreaAggregate[] = []
+  for (const key of AREA_ORDER) {
+    const withArea = recent.filter((g) => scoreOf(g, key) !== null)
+    if (withArea.length < AREA_MIN_GAMES) continue
+    const scores = withArea.map((g) => scoreOf(g, key) as number)
+    const a = Math.round(avg(scores))
+    let change: number | null = null
+    if (scores.length >= 10) change = Math.round(avg(scores.slice(-5)) - avg(scores.slice(-10, -5)))
+    out.push({ key, label: COMPONENT_LABEL[key], avg: a, games: withArea.length, grade: gradeOf(a), level: levelOf(a), change, detail: areaDetail(key, withArea), actions: TIPS[key][levelOf(a)], focus: false })
+  }
+  const focusKeys = new Set(
+    out
+      .filter((x) => x.level !== 'strong')
+      .sort((x, y) => x.avg - y.avg)
+      .slice(0, 2)
+      .map((x) => x.key)
+  )
+  return out.map((x) => ({ ...x, focus: focusKeys.has(x.key) }))
 }
 
 const MIN_GAMES = 5
@@ -130,6 +235,7 @@ export function summarizeProgress(list: readonly PgSummary[]): ProgressSummary {
     scoreChange,
     champions,
     roles,
-    observations: obs
+    observations: obs,
+    areas: summarizeAreas(games)
   }
 }

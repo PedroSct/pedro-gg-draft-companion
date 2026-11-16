@@ -64,7 +64,7 @@ export function SkillOrder({ build, spells, hideTitle = false }: { build: Champi
                     <td
                       key={i}
                       className={`num h-[18px] w-[18px] text-[11px] ${
-                        l === k ? (k === 'R' ? 'bg-gold text-night' : 'bg-ally/80 text-night') : 'bg-raised/60'
+                        l === k ? (k === 'R' ? 'bg-gold text-night' : 'bg-good/80 text-night') : 'bg-raised/60'
                       }`}
                     >
                       {l === k ? i + 1 : ''}

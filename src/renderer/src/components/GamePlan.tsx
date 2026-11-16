@@ -12,7 +12,7 @@ const SKILLS: SkillKey[] = ['Q', 'W', 'E', 'R']
 
 /** Aparência de cada momento: número, cor da faixa e do fundo das células da grade. */
 const LOOK = {
-  early: { n: 1, bar: 'bg-ally', text: 'text-ally', tint: 'bg-ally/10', head: 'bg-ally/15 text-ally' },
+  early: { n: 1, bar: 'bg-good', text: 'text-good', tint: 'bg-good/10', head: 'bg-good/15 text-good' },
   mid: { n: 2, bar: 'bg-gold', text: 'text-gold', tint: 'bg-gold/10', head: 'bg-gold/15 text-gold' },
   late: { n: 3, bar: 'bg-snow/70', text: 'text-snow', tint: 'bg-snow/5', head: 'bg-snow/10 text-snow' }
 } as const
@@ -131,7 +131,7 @@ function PlanGrid({ levels }: { levels: SkillKey[] }) {
               {levels.map((l, i) => (
                 <td
                   key={i}
-                  className={`num h-[22px] text-xs ${l === k ? (k === 'R' ? 'bg-gold font-semibold text-night' : 'bg-ally/80 font-semibold text-night') : LOOK[bandOf(i + 1)].tint}`}
+                  className={`num h-[22px] text-xs ${l === k ? (k === 'R' ? 'bg-gold font-semibold text-night' : 'bg-good/80 font-semibold text-night') : LOOK[bandOf(i + 1)].tint}`}
                 >
                   {l === k ? i + 1 : ''}
                 </td>

@@ -125,10 +125,10 @@ export function Radar({ items, size = 260 }: { items: { label: string; score: nu
         return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="var(--color-line)" strokeWidth="1" />
       })}
       <g style={{ transformOrigin: '130px 130px', transform: mounted ? 'scale(1)' : 'scale(0.2)', opacity: mounted ? 1 : 0, transition: 'transform 900ms cubic-bezier(0.2,0.7,0.2,1), opacity 600ms' }}>
-        <polygon points={poly} fill="rgb(60 201 220 / 0.22)" stroke="var(--color-ally)" strokeWidth="2" strokeLinejoin="round" />
+        <polygon points={poly} fill="rgb(227 182 89 / 0.16)" stroke="var(--color-gold)" strokeWidth="2" strokeLinejoin="round" />
         {items.map((it, i) => {
           const [x, y] = pt(i, it.score / 100)
-          return <circle key={it.label} cx={x} cy={y} r="3.5" fill="var(--color-ally)" />
+          return <circle key={it.label} cx={x} cy={y} r="3.5" fill="var(--color-gold)" />
         })}
       </g>
       {items.map((it, i) => {

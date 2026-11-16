@@ -54,7 +54,7 @@ function ModeSwitch() {
 /** Campeão com um número ao lado (winrate contra ele, ou ganho de sinergia). */
 function ChampChip({ id, text, tone, title, showName = false }: { id: number; text: string; tone: 'good' | 'bad' | 'neutral'; title: string; showName?: boolean }) {
   const name = useChampionName(id)
-  const color = tone === 'good' ? 'text-ally' : tone === 'bad' ? 'text-enemy' : 'text-mist'
+  const color = tone === 'good' ? 'text-good' : tone === 'bad' ? 'text-enemy' : 'text-mist'
   return (
     <span className="flex items-center gap-1.5 border border-line bg-panel/80 py-0.5 pl-0.5 pr-2" title={title}>
       <ChampionIcon id={id} size={24} />
@@ -126,14 +126,14 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
       key={pick.championId}
       data-testid="verdict"
       aria-label={owner ? `Melhor pick de ${owner}` : 'Melhor pick da sua Pool'}
-      className="verdict-in rounded-2xl bg-gradient-to-br from-gold via-gold/40 to-gold/10 p-px shadow-card"
+      className="verdict-in rounded-xl bg-panel"
     >
-     <div className="overflow-hidden rounded-[15px] bg-deck">
-      <div className="flex items-center gap-4 bg-deck p-4">
-        <ChampionIcon id={pick.championId} size={88} />
+     <div className="overflow-hidden rounded-xl">
+      <div className="flex items-center gap-5 p-5">
+        <ChampionIcon id={pick.championId} size={72} className="ring-2 ring-gold" />
         <div className="min-w-0 flex-1">
           <p className="text-sm text-gold">{owner ? `Melhor pick de ${owner}` : 'Melhor pick da sua Pool'}</p>
-          <h2 className="truncate font-display text-4xl font-bold leading-none">{name}</h2>
+          <h2 className="truncate font-display text-3xl font-semibold leading-none">{name}</h2>
           <p className="mt-1.5 flex items-center gap-3 text-sm text-mist">
             <span>{ROLE_LABEL[pick.role]}</span>
             <span className="flex items-center gap-1.5">
@@ -143,7 +143,7 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
           </p>
         </div>
         <div className="shrink-0 text-right">
-          <div className="num text-5xl font-semibold leading-none text-snow">
+          <div className="num text-4xl font-semibold leading-none text-gold">
             {mainStat === null ? '—' : pct(mainStat)}
           </div>
           <div className="mt-1 text-sm text-mist">
@@ -152,7 +152,7 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
         </div>
       </div>
       <dl
-        className="grid grid-cols-3 gap-px bg-line/60 text-center sm:grid-cols-6"
+        className="grid grid-cols-3 gap-px border-t border-line bg-line text-center sm:grid-cols-6"
         title="Quanto cada fator somou ao score, em pontos"
       >
         {(
@@ -165,16 +165,16 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
             ['Conforto', pick.factors.comfort]
           ] as const
         ).map(([label, value]) => (
-          <div key={label} className="bg-deck py-1.5">
+          <div key={label} className="bg-panel py-1.5">
             <dt className="text-xs text-mist">{label}</dt>
-            <dd className={`num text-lg ${value > 0 ? 'text-ally' : value < 0 ? 'text-enemy' : 'text-mist'}`}>
+            <dd className={`num text-lg ${value > 0 ? 'text-good' : value < 0 ? 'text-enemy' : 'text-mist'}`}>
               {signed(value)}
             </dd>
           </div>
         ))}
       </dl>
       {(pick.matchups.length > 0 || pick.synergies.length > 0) && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-deck px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-3 border-t border-line">
           {pick.matchups.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5" aria-label="Confrontos diretos">
               <span className="text-xs text-mist">Contra</span>
@@ -206,11 +206,11 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
         </div>
       )}
       {(pick.compReasons.length > 0 || pick.versusList.length > 0) && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 bg-deck px-4 pb-2.5" aria-label="Encaixe no time">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-3 border-t border-line" aria-label="Encaixe no time">
           {pick.compReasons.map((r) => (
             <span
               key={r}
-              className={`rounded-full px-2.5 py-0.5 text-xs ${COMP_GOOD.has(r) ? 'bg-ally/15 text-ally' : 'bg-enemy/15 text-enemy'}`}
+              className={`rounded-full px-2.5 py-0.5 text-xs ${COMP_GOOD.has(r) ? 'bg-good/15 text-good' : 'bg-enemy/15 text-enemy'}`}
             >
               {COMP_TEXT[r]}
             </span>
@@ -232,7 +232,7 @@ function Verdict({ pick, owner }: { pick: PickScore; owner: string | null }) {
         </div>
       )}
       {pick.risk.level !== 'none' && (
-        <div className="bg-deck px-4 pb-3">
+        <div className="border-t border-line px-5 py-3">
           <RiskBadge risk={pick.risk} />
         </div>
       )}
@@ -260,13 +260,11 @@ function AltRow({ pick, selected, onSelect }: { pick: PickScore; selected: boole
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
-        className={`flex w-full items-center gap-3 border px-2.5 py-1.5 text-left transition-colors hover:bg-raised ${
-          selected ? 'border-gold/70 bg-raised' : 'border-line bg-panel/70'
-        }`}
+        className={`flex w-full items-center gap-3.5 border-b border-line px-1 py-3 text-left transition-colors hover:bg-raised/60 ${selected ? 'bg-raised' : ''}`}
       >
-        <ChampionIcon id={pick.championId} size={36} />
+        <ChampionIcon id={pick.championId} size={40} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-lg font-semibold leading-tight">{name}</span>
+          <span className="block truncate font-semibold leading-tight">{name}</span>
           <span className="block truncate text-xs text-mist">
             {pick.matchupWinrate !== null ? (
               <>
@@ -289,7 +287,7 @@ function AltRow({ pick, selected, onSelect }: { pick: PickScore; selected: boole
         )}
         <Stars value={pick.comfort} label={`Conforto com ${name}`} />
         <span
-          className={`num w-12 text-right text-xl ${pick.score > 0 ? 'text-ally' : pick.score < 0 ? 'text-enemy' : 'text-mist'}`}
+          className={`num w-12 text-right text-xl ${pick.score > 0 ? 'text-good' : pick.score < 0 ? 'text-enemy' : 'text-mist'}`}
         >
           {signed(pick.score)}
         </span>
@@ -374,13 +372,13 @@ function LockedPick({ player, isLocal, nickname }: { player: DraftPlayer; isLoca
   return (
     <div className="flex flex-col gap-2">
       <FocusStrip onlyWithFriends />
-      <section aria-label="Pick travado" className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-gold/5 px-4 py-3">
-        <ChampionIcon id={player.championId} size={44} />
-        <div className="min-w-0">
-          <div className="text-xs text-mist">{isLocal ? 'Você travou' : `${nickname ?? 'Seu amigo'} travou`}</div>
-          <div className="truncate font-display text-xl font-semibold leading-tight text-snow">{name}</div>
+      <section aria-label="Pick travado" className="flex items-center gap-4 border-b border-line pb-5">
+        <ChampionIcon id={player.championId} size={72} className="ring-2 ring-gold" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-display text-3xl font-semibold leading-tight text-snow">{name}</div>
+          <div className="text-sm text-mist">{isLocal ? 'Você travou este campeão' : `${nickname ?? 'Seu amigo'} travou este campeão`}</div>
         </div>
-        <p className="ml-auto max-w-[16rem] text-right text-xs text-mist">As sugestões voltam se o pick for desfeito. A build está logo abaixo.</p>
+        <span className="shrink-0 rounded-full border border-gold/50 px-2.5 py-0.5 text-xs text-gold">Pick travado</span>
       </section>
     </div>
   )
@@ -463,7 +461,7 @@ export function PickSuggestion() {
         <>
           <Verdict pick={ranking[0]} owner={isLocal ? null : (profile?.nickname ?? null)} />
           {visibleAlts.length > 0 && (
-            <ul className="flex flex-col gap-1.5" aria-label="Outras opções da Pool">
+            <ul className="flex flex-col" aria-label="Outras opções da Pool">
               {visibleAlts.map((p) => (
                 <AltRow
                   key={`${p.championId}-${p.role}`}

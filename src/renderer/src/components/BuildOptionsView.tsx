@@ -17,7 +17,7 @@ function Stats({ games, wins, total }: { games: number; wins: number; total: num
       <span className="text-mist">
         <span className="text-snow">{total > 0 ? pct(games / total) : '—'}</span> escolha
       </span>
-      <span className={games > 0 && wins / games >= 0.5 ? 'text-ally' : 'text-enemy'}>{games > 0 ? pct(wins / games) : '—'}</span>
+      <span className={games > 0 && wins / games >= 0.5 ? 'text-good' : 'text-enemy'}>{games > 0 ? pct(wins / games) : '—'}</span>
       <span className={`w-14 text-right text-xs ${few ? 'text-gold' : 'text-dim'}`}>{games.toLocaleString('pt-BR')}{few ? '*' : ''}</span>
     </span>
   )
@@ -81,7 +81,7 @@ function ItemOptionRow({
   selected?: boolean
   onPick?: () => void
 }) {
-  const ring = selected ? 'ring-1 ring-gold/60 bg-raised/60' : highlight ? 'bg-ally/10 ring-1 ring-ally/40' : ''
+  const ring = selected ? 'ring-1 ring-gold/60 bg-raised/60' : highlight ? 'bg-good/10 ring-1 ring-good/40' : ''
   return (
     <li>
       <button
@@ -103,7 +103,7 @@ function ItemOptionRow({
             <ItemIcon id={id} size={34} />
           </span>
         ))}
-        {highlight && <span className="ml-2 rounded-full bg-ally/15 px-2 py-0.5 text-xs text-ally">encaixa melhor agora</span>}
+        {highlight && <span className="ml-2 rounded-full bg-good/15 px-2 py-0.5 text-xs text-good">encaixa melhor agora</span>}
       </span>
       <Stats games={o.games} wins={o.wins} total={total} />
       </button>

@@ -24,7 +24,7 @@ export function DraftActButton({ championId, type, compact = false }: { champion
 
   if (!turn || turn.type !== type) {
     return msg ? (
-      <p role="status" className={`text-xs ${msg.ok ? 'text-ally' : 'text-enemy'}`}>
+      <p role="status" className={`text-xs ${msg.ok ? 'text-good' : 'text-enemy'}`}>
         {msg.text}
       </p>
     ) : null
@@ -75,7 +75,7 @@ export function DraftActButton({ championId, type, compact = false }: { champion
         </>
       )}
       {msg && (
-        <span role="status" className={`text-xs ${msg.ok ? 'text-ally' : 'text-enemy'}`}>
+        <span role="status" className={`text-xs ${msg.ok ? 'text-good' : 'text-enemy'}`}>
           {msg.text}
         </span>
       )}

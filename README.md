@@ -134,6 +134,23 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Logo nova (0.13.1)**: a logo desenhada pelo Pedro (hexágono, P isométrico e o traço embaixo) foi redesenhada em vetor, com
+  inclinação isométrica exata de 30°, espessuras e espaços iguais e dourado igual ao do app. Existe uma versão grande e uma
+  **pequena** (borda mais grossa, P maior) para 16 a 32 px. Foi aplicada no ícone da janela, no instalador (`build/icon.ico`),
+  no cabeçalho, na tela de espera e na abertura animada (o hexágono se desenha, o P e o traço entram). O kit completo (SVG
+  horizontal, vertical, branca, preta, PNG 1024 e .ico) está na pasta `brand/`. O componente `Logo.tsx` desenha a marca no app.
+- **Novo visual (0.13.0)**: direção aprovada nos mockups. Fundo liso (sem brilho nem grade), cores com significado fixo
+  (**dourado** = você e a ação principal, **azul** = time aliado, **vermelho** = inimigo, ban e alerta, **verde** = vantagem e
+  resultado positivo), fonte Space Grotesk nos títulos e números, menu com abas sublinhadas, colunas dos times em linhas finas
+  (função, ícone, nome e estado), barra de etapas numerada, **barra de duelo** no confronto (você × oponente com as taxas de
+  vitória), listas de bans, picks e pontos fortes/fracos em linhas em vez de cartões, pick travado e build sem molduras, e a
+  Evolução com faixa de números, radar dourado e áreas em linhas. Todas as telas seguem a mesma direção:
+  **Meta** com duas visões, **Lista** (ranking em linhas finas e detalhe do campeão sem moldura) e **Tier List** (faixas S a D
+  com os campeões e a vitória de cada um); **Pools** com cabeçalho de perfil (foto, ID, elo e as últimas 10 partidas em uma
+  faixa, no seu próprio perfil) e abas sublinhadas; **Treino** em seções com linhas finas; **tela de espera** com a lista do
+  que está pronto (cliente, meta, perfil, aceite automático, overlay) e as preferências de ban ao lado; **Configurações** e
+  **overlay** sem brilho nem degradê (a ultimate deixou de ser roxa); e uma **abertura animada** nova (o hexágono se
+  desenha, o miolo acende, o nome entra e uma barra fina enche, em cerca de 2 s).
 - **Draft em etapas (0.12.0)**: a tela deixou de mostrar tudo de uma vez. **1 · Bans**: só os banimentos, com o porquê de cada
   um, o seu confronto de rota em destaque com **pontos fortes e fracos** tirados dos dados e, se você joga de **suporte ou
   atirador, o combo da dupla** (você + seu parceiro contra o atirador e o suporte inimigos, com o quanto cada dupla vence).
@@ -145,10 +162,12 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   não gosta de enfrentar** e **quais você mais bane**. Eles entram nas sugestões de ban (os que você não gosta pesam mais) e
   aparecem com o motivo "você não gosta de enfrentar" / "você costuma banir". Interpretei "não gosta de jogar" como "não gosta
   de enfrentar"; se era outra coisa, é só avisar.
-- **Pós-jogo: aba Pontuação (0.12.0)**: nota de 0 a 100 e conceito para **farm, rota, lutas (abates), visão, objetivos e
-  sobrevivência**, cada uma com os números que a geraram, **o que fazer para melhorar** (ou "continue assim") e a marcação
-  **"Foque aqui"** nas duas áreas mais fracas, resumidas no card "Foco da próxima partida". As referências são aproximadas por
-  função, não a meta oficial.
+- **Pontuação geral por área (0.12.1)**: na aba **Pós-jogo › Evolução**, nota de 0 a 100 e conceito para **farm, rota, lutas
+  (abates), visão, objetivos e sobrevivência**, calculada sobre as **últimas 20 partidas analisadas** (não por partida), com
+  radar, tendência (últimas 5 contra as 5 anteriores), o número médio que gerou cada nota, o que fazer e **"Foque aqui"** nas
+  duas áreas mais fracas. As referências são aproximadas por função, não a meta oficial.
+- **Tutorial atualizado (0.12.1)**: inclui as perguntas de ban, o Draft em 3 etapas, o filtro de servidor do Meta, Pós-jogo e
+  Evolução, Treino e o overlay.
 - **Meta por servidor (0.12.0)**: a tela Meta tem um seletor de **servidor** (BR, NA, EUW, KR... os 13 publicados); se um
   servidor ainda não tem dados, o app avisa e volta ao anterior.
 - **Menu superior (0.12.0)**: o chip do perfil não sobrepõe mais o estado da conexão (layout em flex; o texto do estado vira só

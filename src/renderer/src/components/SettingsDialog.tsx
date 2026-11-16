@@ -68,7 +68,7 @@ function ShortcutField({ label, value, fallback, other, onChange }: { label: str
 
 function Row({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-b border-line/60 py-3 last:border-b-0">
+    <div className="flex items-center justify-between gap-6 border-b border-line py-3 last:border-b-0">
       <div className="min-w-0">
         <div className="text-sm font-medium text-snow">{title}</div>
         {hint && <div className="mt-0.5 text-xs text-mist">{hint}</div>}
@@ -86,17 +86,17 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: 
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 rounded-full border transition-colors ${checked ? 'border-gold/60 bg-gold/70' : 'border-line bg-raised'}`}
+      className={`relative h-6 w-11 rounded-full border transition-colors ${checked ? 'border-gold bg-gold' : 'border-line bg-raised'}`}
     >
-      <span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full bg-snow shadow transition-all ${checked ? 'left-[22px]' : 'left-0.5'}`} style={{ width: 18, height: 18 }} />
+      <span className={`absolute top-0.5 h-4.5 w-4.5 rounded-full transition-all ${checked ? 'left-[22px] bg-[#1a1405]' : 'left-0.5 bg-mist'}`} style={{ width: 18, height: 18 }} />
     </button>
   )
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-line bg-panel/60 p-4">
-      <h3 className="mb-1 font-display text-lg font-semibold">{title}</h3>
+    <section>
+      <h3 className="mb-1 border-b border-line pb-2 text-xs font-semibold uppercase tracking-[0.08em] text-dim">{title}</h3>
       {children}
     </section>
   )
@@ -314,10 +314,10 @@ export function SettingsDialog() {
         role="dialog"
         aria-modal="true"
         aria-label="Configurações"
-        className="flex h-[min(640px,100%)] w-full max-w-3xl overflow-hidden rounded-2xl border border-line bg-deck shadow-[0_30px_80px_-20px_rgb(0_0_0/0.8)]"
+        className="flex h-[min(680px,100%)] w-full max-w-3xl overflow-hidden rounded-[14px] border border-line bg-panel"
       >
-        <nav className="flex w-52 shrink-0 flex-col gap-1 border-r border-line bg-night/40 p-3" aria-label="Seções" role="tablist">
-          <h2 className="px-2 pb-2 pt-1 font-display text-2xl font-semibold">Configurações</h2>
+        <nav className="flex w-52 shrink-0 flex-col gap-1 border-r border-line bg-night p-3" aria-label="Seções" role="tablist">
+          <h2 className="px-2 pb-3 pt-1 font-display text-lg font-semibold">Configurações</h2>
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -325,10 +325,10 @@ export function SettingsDialog() {
               role="tab"
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
-              className={`rounded-xl px-3 py-2 text-left transition-colors ${tab === t.id ? 'bg-raised text-gold' : 'text-snow hover:bg-panel'}`}
+              className={`rounded-lg px-3 py-2 text-left transition-colors ${tab === t.id ? 'bg-raised text-snow' : 'text-mist hover:bg-panel hover:text-snow'}`}
             >
-              <span className="block font-display text-lg font-semibold leading-tight">{t.label}</span>
-              <span className="block text-xs text-mist">{t.hint}</span>
+              <span className="block text-sm font-medium leading-tight">{t.label}</span>
+              <span className="block text-xs text-dim">{t.hint}</span>
             </button>
           ))}
           <button type="button" className={`${btn} mt-auto justify-center`} onClick={close}>
@@ -336,7 +336,7 @@ export function SettingsDialog() {
           </button>
         </nav>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-5" role="tabpanel">
+        <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto p-6" role="tabpanel">
           {tab === 'general' && (
             <>
               <Card title="Cliente do League of Legends">
@@ -346,7 +346,7 @@ export function SettingsDialog() {
                     Conta detectada: <span className="font-medium text-snow">{account.gameName}{account.tagLine ? `#${account.tagLine}` : ''}</span>
                   </p>
                 )}
-                <p className="mt-3 break-all rounded-xl border border-line bg-night px-3 py-2 text-sm">{settings?.lockfilePath ?? 'Detecção automática da pasta'}</p>
+                <p className="mt-3 break-all rounded-md border border-line bg-night px-3 py-2 text-sm">{settings?.lockfilePath ?? 'Detecção automática da pasta'}</p>
                 <div className="mt-2 flex gap-2">
                   <button type="button" className={btnGold} onClick={() => void chooseDir()}>
                     Escolher pasta
@@ -358,7 +358,7 @@ export function SettingsDialog() {
                   )}
                 </div>
                 {dirMessage && (
-                  <p role="status" className={`mt-2 text-sm ${dirMessage.ok ? 'text-ally' : 'text-enemy'}`}>
+                  <p role="status" className={`mt-2 text-sm ${dirMessage.ok ? 'text-good' : 'text-enemy'}`}>
                     {dirMessage.text}
                   </p>
                 )}
@@ -396,7 +396,7 @@ export function SettingsDialog() {
                     aria-label="Espera antes de aceitar"
                     value={settings?.autoAcceptDelay ?? 1}
                     onChange={(e) => void saveSettings({ autoAcceptDelay: Number(e.target.value) })}
-                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                    className="rounded-md border border-line bg-night px-2 py-1 text-sm text-snow"
                   >
                     {[0, 1, 2, 3, 5, 8].map((n) => (
                       <option key={n} value={n}>
@@ -424,7 +424,7 @@ export function SettingsDialog() {
                     aria-label="Tamanho do overlay"
                     value={settings?.overlayCompact ? 'compact' : 'full'}
                     onChange={(e) => void saveSettings({ overlayCompact: e.target.value === 'compact' })}
-                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                    className="rounded-md border border-line bg-night px-2 py-1 text-sm text-snow"
                   >
                     <option value="full">Estendido (build completa)</option>
                     <option value="compact">Recuado (só o próximo item)</option>
@@ -453,7 +453,7 @@ export function SettingsDialog() {
                     aria-label="Canto do overlay"
                     value={settings?.overlayCorner ?? 'tr'}
                     onChange={(e) => void saveSettings({ overlayCorner: e.target.value as 'tl' | 'tr' | 'bl' | 'br', overlayPos: null })}
-                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                    className="rounded-md border border-line bg-night px-2 py-1 text-sm text-snow"
                   >
                     <option value="tr">Superior direito</option>
                     <option value="tl">Superior esquerdo</option>
@@ -466,7 +466,7 @@ export function SettingsDialog() {
                     aria-label="Opacidade do overlay"
                     value={String(settings?.overlayOpacity ?? 0.9)}
                     onChange={(e) => void saveSettings({ overlayOpacity: Number(e.target.value) })}
-                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                    className="rounded-md border border-line bg-night px-2 py-1 text-sm text-snow"
                   >
                     {[1, 0.9, 0.8, 0.7, 0.6, 0.5].map((n) => (
                       <option key={n} value={n}>
@@ -489,7 +489,7 @@ export function SettingsDialog() {
                   )}
                 </div>
                 {overlayMsg && (
-                  <p role="status" className={`mt-2 text-sm ${overlayMsg.ok ? 'text-ally' : 'text-mist'}`}>
+                  <p role="status" className={`mt-2 text-sm ${overlayMsg.ok ? 'text-good' : 'text-mist'}`}>
                     {overlayMsg.text}
                   </p>
                 )}
@@ -500,7 +500,7 @@ export function SettingsDialog() {
                     aria-label="Prioridade das sugestões"
                     value={pickMode}
                     onChange={(e) => void setPickMode(e.target.value as 'balanced' | 'comfort' | 'meta')}
-                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                    className="rounded-md border border-line bg-night px-2 py-1 text-sm text-snow"
                   >
                     <option value="balanced">Equilibrado</option>
                     <option value="comfort">Conforto</option>
@@ -530,7 +530,7 @@ export function SettingsDialog() {
                     value={region}
                     disabled={busy}
                     onChange={(e) => void changeRegion(e.target.value)}
-                    className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-snow"
+                    className="rounded-md border border-line bg-night px-2 py-1 text-sm text-snow"
                   >
                     <option value="global">Global</option>
                     {regionOptions.map((r) => (
@@ -569,7 +569,7 @@ export function SettingsDialog() {
                   <Switch label="Atualizar ao abrir o app" checked={settings?.metaAutoUpdate ?? true} onChange={(v) => void saveSettings({ metaAutoUpdate: v })} />
                 </Row>
                 {metaMessage && (
-                  <p role="status" className={`text-sm ${metaMessage.ok ? 'text-ally' : 'text-enemy'}`}>
+                  <p role="status" className={`text-sm ${metaMessage.ok ? 'text-good' : 'text-enemy'}`}>
                     {metaMessage.text}
                   </p>
                 )}
@@ -599,7 +599,7 @@ export function SettingsDialog() {
                   </button>
                 </div>
                 {appText && (
-                  <p role="status" className={`mt-2 text-sm ${appText.ok ? 'text-ally' : 'text-mist'}`}>
+                  <p role="status" className={`mt-2 text-sm ${appText.ok ? 'text-good' : 'text-mist'}`}>
                     {appText.text}
                   </p>
                 )}
@@ -617,7 +617,7 @@ export function SettingsDialog() {
                   </button>
                 </div>
                 {backupMsg && (
-                  <p role="status" className={`mt-2 text-sm ${backupMsg.ok ? 'text-ally' : 'text-enemy'}`}>
+                  <p role="status" className={`mt-2 text-sm ${backupMsg.ok ? 'text-good' : 'text-enemy'}`}>
                     {backupMsg.text}
                   </p>
                 )}
@@ -645,7 +645,7 @@ export function SettingsDialog() {
                   </ul>
                 )}
                 {diagMsg && (
-                  <p role="status" className={`mt-2 text-sm ${diagMsg.ok ? 'text-ally' : 'text-enemy'}`}>
+                  <p role="status" className={`mt-2 text-sm ${diagMsg.ok ? 'text-good' : 'text-enemy'}`}>
                     {diagMsg.text}
                   </p>
                 )}

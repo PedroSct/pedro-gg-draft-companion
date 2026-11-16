@@ -500,6 +500,27 @@ describe('Companion App', () => {
     expect(await screen.findByText(/não têm campeões para esta rota/)).toBeInTheDocument()
   })
 
+  it('a aba Meta alterna para a Tier List, agrupa por faixa e abre o detalhe ao clicar', async () => {
+    const user = userEvent.setup()
+    installApi()
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Meta' }))
+    await screen.findByRole('list', { name: 'Ranking de Meio' })
+
+    await user.click(screen.getByRole('tab', { name: 'Tier List' }))
+    const tiers = await screen.findByRole('group', { name: 'Tier List de Meio' })
+    expect(screen.queryByRole('list', { name: 'Ranking de Meio' })).not.toBeInTheDocument()
+    const bands = within(tiers).getAllByRole('region', { name: /^Tier [SABCD]$/ })
+    expect(bands.length).toBeGreaterThan(0)
+    const cells = within(tiers).getAllByRole('button')
+    await user.click(cells[cells.length - 1])
+    expect(await screen.findByRole('region', { name: /Detalhes de/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Lista' }))
+    expect(await screen.findByRole('list', { name: 'Ranking de Meio' })).toBeInTheDocument()
+  })
+
   it('a aba Meta ordena pelos cabeçalhos e filtra por tier', async () => {
     const user = userEvent.setup()
     installApi()
@@ -545,7 +566,7 @@ describe('Companion App', () => {
     const panel = await screen.findByRole('region', { name: 'Sugestões de banimento' })
     expect(within(panel).getByText(/Atrapalha Ahri de Pedro/)).toBeInTheDocument()
     expect(within(panel).getByText(/tier S/)).toBeInTheDocument()
-    await user.click(within(panel).getByRole('button', { name: /Sugestões de banimento/ }))
+    await user.click(within(panel).getByRole('button', { name: /Bans recomendados/ }))
     expect(within(panel).queryByText(/Atrapalha Ahri/)).not.toBeInTheDocument()
   })
 
@@ -791,6 +812,11 @@ describe('tutorial de primeira vez', () => {
     expect(within(tour).getByText('Bem-vindo ao Pedro.gg')).toBeInTheDocument()
     await user.click(within(tour).getByRole('button', { name: 'Próximo' }))
     expect(within(tour).getByText('1. Monte as Pools')).toBeInTheDocument()
+    await user.click(within(tour).getByRole('button', { name: 'Próximo' }))
+    await user.click(within(tour).getByRole('button', { name: 'Próximo' }))
+    expect(within(tour).getByText('3. Draft em 3 etapas')).toBeInTheDocument()
+    await user.click(within(tour).getByRole('button', { name: 'Voltar' }))
+    await user.click(within(tour).getByRole('button', { name: 'Voltar' }))
     await user.click(within(tour).getByRole('button', { name: 'Voltar' }))
     expect(within(tour).getByText('Bem-vindo ao Pedro.gg')).toBeInTheDocument()
     await user.click(within(tour).getByRole('button', { name: 'Pular' }))
@@ -814,7 +840,7 @@ describe('tutorial de primeira vez', () => {
     installApi({ tourDone: false, profiles: [] })
     render(<App />)
     const tour = await screen.findByRole('dialog', { name: 'Tutorial' })
-    for (let i = 0; i < 6; i++) await user.click(within(tour).getByRole('button', { name: 'Próximo' }))
+    while (within(tour).queryByRole('button', { name: 'Próximo' })) await user.click(within(tour).getByRole('button', { name: 'Próximo' }))
     await user.click(within(tour).getByRole('button', { name: 'Criar meu perfil' }))
     expect(await screen.findByRole('region', { name: 'Perfis e Pools' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Pools' })).toHaveAttribute('aria-selected', 'true')
@@ -841,6 +867,18 @@ describe('Pools como tela do menu', () => {
     await user.click(screen.getByRole('tab', { name: 'Meta' }))
     expect(await screen.findByRole('list', { name: 'Ranking de Meio' })).toBeInTheDocument()
     confirm.mockRestore()
+  })
+
+  it('mostra o cabeçalho do perfil com o apelido e o resumo', async () => {
+    const user = userEvent.setup()
+    installApi({ profiles: [makeProfile()] })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Pools' }))
+    const hero = await screen.findByRole('group', { name: 'Resumo do perfil' })
+    expect(within(hero).getByRole('heading', { level: 2 })).toBeInTheDocument()
+    expect(within(hero).getByText(/campe/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Editar dados do perfil' })).toBeInTheDocument()
   })
 
   it('sem alterações, sai sem perguntar', async () => {
@@ -1144,21 +1182,12 @@ describe('0.6: counters do meta, evolução e aviso de patch', () => {
     expect(within(panel).getByText('Partidas analisadas')).toBeInTheDocument()
     expect(within(panel).getByRole('img', { name: /Nota de cada partida/ })).toBeInTheDocument()
     expect(within(panel).getByRole('region', { name: 'Desempenho por campeão' })).toBeInTheDocument()
+    // pontuação geral por área, junto da evolução (não por partida)
+    const scores = within(panel).getByRole('region', { name: 'Pontuação por área' })
+    expect(within(scores).getByRole('listitem', { name: 'Área Farm' })).toBeInTheDocument()
+    expect(within(scores).getByLabelText('Foco da próxima partida')).toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: 'Partida' }))
     expect(await screen.findByRole('complementary', { name: 'Partidas analisadas' })).toBeInTheDocument()
-  })
-
-  it('o Pós-jogo tem a aba Pontuação com nota por área, o que fazer e o foco', async () => {
-    const user = userEvent.setup()
-    installApi({ postGames: [postGameFixture()] })
-    render(<App />)
-    await user.click(await screen.findByRole('tab', { name: /Pós-jogo/ }))
-    await user.click(await screen.findByRole('tab', { name: 'Pontuação' }))
-    const panel = await screen.findByRole('tabpanel', { name: 'Pontuação' })
-    expect(await within(panel).findByRole('region', { name: 'Foco da próxima partida' })).toBeInTheDocument()
-    const areas = within(panel).getByRole('list', { name: 'Pontuação por área' })
-    expect(within(areas).getByRole('listitem', { name: 'Área Farm' })).toBeInTheDocument()
-    expect(within(areas).getAllByText(/O que fazer|Continue assim/).length).toBeGreaterThan(0)
   })
 
   it('troca o atalho do overlay apertando as teclas, recusa o repetido e volta ao padrão', async () => {

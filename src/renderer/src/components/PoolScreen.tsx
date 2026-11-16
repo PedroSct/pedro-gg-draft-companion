@@ -11,6 +11,8 @@ import { ImportDialog } from './ImportDialog'
 import { AccountPoolDialog } from './AccountPoolDialog'
 import { applySuggestion, type PoolCandidate } from '../../../shared/poolImport'
 import { ShareDialog } from './ShareDialog'
+import { Avatar } from './Header'
+import type { PgSummary } from '../../../shared/postgame'
 
 interface FormState {
   id?: string
@@ -49,10 +51,10 @@ function PoolRow({
   const [showNotes, setShowNotes] = useState(false)
   const notesOpen = showNotes || !!entry.notes
   return (
-    <li className="rise rounded-xl border border-line bg-panel/70 px-2.5 py-2 transition-colors hover:border-mist/30">
+    <li className="rise border-b border-line px-1 py-2.5 transition-colors hover:bg-panel/60">
       <div className="flex items-center gap-3">
-        <ChampionIcon id={entry.championId} size={38} />
-        <span className="min-w-0 flex-1 truncate font-display text-lg font-semibold">{name}</span>
+        <ChampionIcon id={entry.championId} size={40} />
+        <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
         <Stars value={entry.comfort} onChange={onComfort} label={`Conforto com ${name}`} />
         {!notesOpen && (
           <button
@@ -109,11 +111,11 @@ function AccountStatsLine() {
   const wr = games > 0 && stats.wins !== null ? Math.round((stats.wins / games) * 100) : null
   return (
     <span className="flex flex-wrap items-center gap-2 text-xs text-mist" aria-label="Nível e elo da conta">
-      {stats.level !== null && <span className="rounded-full bg-panel px-2 py-0.5">Nível {stats.level}</span>}
-      <span className="rounded-full bg-panel px-2 py-0.5">
+      {stats.level !== null && <span className="rounded-full border border-line px-2 py-0.5">Nível {stats.level}</span>}
+      <span className="rounded-full border border-line px-2 py-0.5">
         {stats.tier ? `${TIER_PT[stats.tier] ?? stats.tier}${stats.division ? ' ' + stats.division : ''}${stats.lp !== null ? ` · ${stats.lp} PdL` : ''}` : 'Sem classificação Solo/Duo'}
       </span>
-      {wr !== null && <span className="rounded-full bg-panel px-2 py-0.5">{games} partidas · {wr}% vitórias</span>}
+      {wr !== null && <span className="rounded-full border border-line px-2 py-0.5">{games} partidas · {wr}% vitórias</span>}
     </span>
   )
 }
@@ -142,9 +144,8 @@ function AccountLine({
       <span className="text-mist">
         Conta no cliente: <span className="font-medium text-snow">{full}</span>
       </span>
-      <AccountStatsLine />
       {isThis ? (
-        <span className="rounded-full bg-ally/15 px-2 py-0.5 text-xs font-medium text-ally">Este perfil é você</span>
+        <span className="rounded-full border border-good/40 px-2 py-0.5 text-xs font-medium text-good">Este perfil é você</span>
       ) : formId ? (
         <button type="button" className={btn} onClick={() => void onClaim()}>
           Esta conta é este perfil
@@ -158,11 +159,64 @@ function AccountLine({
   )
 }
 
+/** Últimas partidas da conta (só no seu perfil): faixa compacta, uma por partida, verde = vitória. */
+function RecentStrip() {
+  const [list, setList] = useState<PgSummary[] | null>(null)
+  useEffect(() => {
+    let off = false
+    void Promise.resolve(window.api.listPostGames())
+      .then((l) => !off && setList(l.slice(0, 10)))
+      .catch(() => undefined)
+    return () => {
+      off = true
+    }
+  }, [])
+  if (!list || list.length === 0) return null
+  const wins = list.filter((g) => g.win === true).length
+  return (
+    <div aria-label="Últimas partidas" role="group" className="flex items-center gap-3">
+      <div className="text-xs leading-tight text-dim">
+        Últimas {list.length}
+        <div className="num text-sm text-snow">
+          {wins}V · {list.length - wins}D
+        </div>
+      </div>
+      <ul className="flex gap-1.5">
+        {list.map((g) => (
+          <li key={g.gameId} title={`${g.win ? 'Vitória' : 'Derrota'} · ${g.kills}/${g.deaths}/${g.assists} · nota ${g.grade}`} className="flex flex-col items-center gap-1">
+            <ChampionIcon id={g.championId} size={30} />
+            <span className={`h-[3px] w-full rounded-full ${g.win === true ? 'bg-good' : g.win === false ? 'bg-enemy' : 'bg-line'}`} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Cabeçalho do perfil: foto, nome, resumo e (no seu perfil) elo e últimas partidas. */
+function ProfileHero({ name, summary, mine, iconId, version }: { name: string; summary: string; mine: boolean; iconId?: number; version?: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-3" aria-label="Resumo do perfil" role="group">
+      <Avatar name={name} iconId={mine ? iconId : undefined} version={version} size={64} />
+      <div className="min-w-0 flex-1">
+        <h2 className="truncate font-display text-[26px] font-semibold leading-tight">{name}</h2>
+        <p className="mt-0.5 truncate text-sm text-mist">{summary}</p>
+        {mine && (
+          <div className="mt-2">
+            <AccountStatsLine />
+          </div>
+        )}
+      </div>
+      {mine && <RecentStrip />}
+    </div>
+  )
+}
+
 function Panel({ title, hint, children, className = '' }: { title: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (
-    <section className={`flex min-h-0 flex-col rounded-2xl border border-line/70 bg-panel/40 p-3 ${className}`}>
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-3">
-        <h3 className="font-display text-lg font-semibold">{title}</h3>
+    <section className={`flex min-h-0 flex-col ${className}`}>
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 border-b border-line pb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-dim">{title}</h3>
         {hint && <p className="text-xs text-mist">{hint}</p>}
       </div>
       {children}
@@ -179,6 +233,7 @@ export function PoolScreen() {
   const saveProfile = useApp((s) => s.saveProfile)
   const deleteProfile = useApp((s) => s.deleteProfile)
   const identity = useApp((s) => s.identity)
+  const version = useApp((s) => s.catalog?.version)
   const claimProfile = useApp((s) => s.claimProfile)
   const setPoolDirty = useApp((s) => s.setPoolDirty)
 
@@ -315,7 +370,7 @@ export function PoolScreen() {
 
       {/* Perfis */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex flex-wrap gap-1 rounded-xl border border-line/70 bg-panel/70 p-1" role="group" aria-label="Perfis cadastrados">
+        <div className="flex flex-wrap items-center gap-x-6" role="group" aria-label="Perfis cadastrados">
           {profiles.map((p) => {
             const mine = identity?.profileId === p.id
             const selected = form.id === p.id
@@ -325,10 +380,10 @@ export function PoolScreen() {
                 type="button"
                 aria-pressed={selected}
                 onClick={() => select(p)}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-display text-base font-semibold ${selected ? 'bg-raised text-gold' : 'text-mist hover:text-snow'}`}
+                className={`-mb-px flex items-center gap-1.5 border-b-2 py-2 text-[15px] ${selected ? 'border-gold text-snow' : 'border-transparent text-mist hover:text-snow'}`}
               >
                 {p.nickname}
-                {mine && <span className="rounded-full bg-ally/15 px-1.5 text-[11px] font-medium text-ally">você</span>}
+                {mine && <span className="rounded-full border border-good/40 px-1.5 text-[11px] font-medium text-good">você</span>}
               </button>
             )
           })}
@@ -336,7 +391,7 @@ export function PoolScreen() {
             type="button"
             aria-pressed={!form.id}
             onClick={() => select(null)}
-            className={`rounded-lg px-3 py-1 font-display text-base font-semibold ${!form.id ? 'bg-raised text-gold' : 'text-mist hover:text-snow'}`}
+            className={`-mb-px border-b-2 py-2 text-[15px] ${!form.id ? 'border-gold text-snow' : 'border-transparent text-mist hover:text-snow'}`}
           >
             + Novo perfil
           </button>
@@ -360,19 +415,24 @@ export function PoolScreen() {
         </div>
       </div>
 
-      {/* Dados do perfil (recolhidos enquanto não precisa mexer) */}
-      <div className="rounded-2xl border border-line/70 bg-panel/40 px-4 py-2.5">
-        <div className="flex items-center gap-3">
-          <p className="min-w-0 flex-1 truncate text-sm text-mist">
-            <span className="font-display text-lg font-semibold text-snow">{form.nickname.trim() || 'Perfil novo'}</span>
-            <span className="ml-2">{summary}</span>
-          </p>
+      {/* Cabeçalho do perfil + dados (recolhidos enquanto não precisa mexer) */}
+      <div className="border-b border-line pb-4 pt-2">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <ProfileHero
+              name={form.nickname.trim() || 'Perfil novo'}
+              summary={summary}
+              mine={!!form.id && identity?.profileId === form.id}
+              iconId={identity?.account?.profileIconId}
+              version={version}
+            />
+          </div>
           <button type="button" className={btn} aria-expanded={showDetails} onClick={() => setDetailsOpen(!showDetails)}>
             {showDetails ? 'Recolher' : 'Editar dados do perfil'}
           </button>
         </div>
         {showDetails && (
-          <div className="mt-3 flex flex-col gap-3 border-t border-line/60 pt-3">
+          <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4">
             <div className="grid grid-cols-2 gap-3 max-[700px]:grid-cols-1">
               <div>
                 <label htmlFor="nick" className="mb-1 block text-sm text-mist">
@@ -450,7 +510,7 @@ export function PoolScreen() {
       </div>
 
       {/* Rota */}
-      <div className="flex flex-wrap gap-1 self-start rounded-xl border border-line/70 bg-panel/70 p-1" role="tablist" aria-label="Rota da Pool">
+      <div className="flex flex-wrap gap-x-6 border-b border-line" role="tablist" aria-label="Rota da Pool">
         {ROLES.map((r) => (
           <button
             key={r}
@@ -458,14 +518,14 @@ export function PoolScreen() {
             role="tab"
             aria-selected={role === r}
             onClick={() => setRole(r)}
-            className={`rounded-lg px-3 py-1 font-display text-base font-semibold ${role === r ? 'bg-raised text-gold' : 'text-mist hover:text-snow'}`}
+            className={`-mb-px border-b-2 py-2 text-[15px] ${role === r ? 'border-gold text-snow' : 'border-transparent text-mist hover:text-snow'}`}
           >
             {ROLE_LABEL[r]} <span className="text-sm font-normal text-dim">{form.pool[r].length}</span>
           </button>
         ))}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[1.35fr_1fr] gap-4 max-[1000px]:flex-none max-[1000px]:grid-cols-1 max-[1000px]:[&>*]:min-h-[380px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[1.35fr_1fr] gap-10 max-[1000px]:flex-none max-[1000px]:grid-cols-1 max-[1000px]:[&>*]:min-h-[380px]">
         <Panel title="Campeões" hint="Clique para adicionar ou tirar da Pool">
           {catalogError && !catalog ? (
             <div className="border border-enemy/40 bg-enemy/10 p-3 text-sm">
@@ -500,10 +560,10 @@ export function PoolScreen() {
                 if (group.length === 0) return null
                 return (
                   <section key={lvl}>
-                    <h4 className={`mb-1 text-xs uppercase tracking-wider ${lvl >= 4 ? 'text-gold' : 'text-dim'}`}>
+                    <h4 className={`mb-1 text-xs font-semibold uppercase tracking-[0.08em] ${lvl >= 4 ? 'text-gold' : 'text-dim'}`}>
                       {COMFORT_LABEL[lvl]} · {group.length}
                     </h4>
-                    <ul className="flex flex-col gap-1.5">
+                    <ul className="flex flex-col">
                       {group.map((e) => (
                         <PoolRow
                           key={e.championId}
@@ -530,7 +590,7 @@ export function PoolScreen() {
           </span>
         )}
         {notice && !error && (
-          <span role="status" className="max-w-xl text-right text-sm text-ally">
+          <span role="status" className="max-w-xl text-right text-sm text-good">
             {notice}
           </span>
         )}

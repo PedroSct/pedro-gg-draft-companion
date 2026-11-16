@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { analyzeMatch, areaCoaching, gradeOf } from '../src/shared/postgame'
+import { analyzeMatch, gradeOf } from '../src/shared/postgame'
 import { findGameIds, normalizeMatch } from '../src/main/postgame/normalize'
 import { PostGameStore } from '../src/main/postgame/store'
 import { PostGameCollector } from '../src/main/postgame/collector'
@@ -122,41 +122,6 @@ describe('analyzeMatch', () => {
     r.participants.forEach((p) => (p.isMe = false))
     expect(analyzeMatch(r)).toBeNull()
     expect([gradeOf(90), gradeOf(75), gradeOf(60), gradeOf(45), gradeOf(10)]).toEqual(['S', 'A', 'B', 'C', 'D'])
-  })
-})
-
-describe('areaCoaching', () => {
-  const run = (o: Parameters<typeof makeLcuMatch>[0]) => {
-    const r = normalizeMatch(makeLcuMatch(o))!
-    return areaCoaching(r, analyzeMatch(r)!)
-  }
-
-  it('uma área por componente, com nota, conceito e o que fazer', () => {
-    const areas = run({ myCsPerMin: 4, myDeaths: 11 })
-    expect(areas.map((a) => a.key)).toEqual(expect.arrayContaining(['farm', 'fighting', 'vision', 'survival']))
-    for (const a of areas) {
-      expect(a.actions.length).toBeGreaterThan(0)
-      expect(a.grade).toBe(gradeOf(a.score))
-    }
-  })
-
-  it('marca como foco as duas piores áreas fracas, e só elas', () => {
-    const areas = run({ myCsPerMin: 4, myDeaths: 11 })
-    const focus = areas.filter((a) => a.focus)
-    expect(focus.length).toBeGreaterThan(0)
-    expect(focus.length).toBeLessThanOrEqual(2)
-    expect(focus.every((a) => a.level !== 'strong')).toBe(true)
-    const farm = areas.find((a) => a.key === 'farm')!
-    expect(farm.level).toBe('weak')
-    expect(farm.actions.join(' ')).toMatch(/tropas|último golpe/)
-  })
-
-  it('um bom jogo elogia em vez de mandar corrigir', () => {
-    const areas = run({ myCsPerMin: 9, myDeaths: 0 })
-    const farm = areas.find((a) => a.key === 'farm')!
-    expect(farm.level).toBe('strong')
-    expect(farm.focus).toBe(false)
-    expect(farm.actions[0]).toMatch(/em dia/)
   })
 })
 

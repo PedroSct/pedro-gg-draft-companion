@@ -26,7 +26,7 @@ function Row({ c, checked, inPool, onToggle }: { c: PoolCandidate; checked: bool
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm text-snow">
           {name}
-          {inPool && <span className="ml-2 rounded-full bg-ally/15 px-1.5 text-[11px] text-ally">já na Pool</span>}
+          {inPool && <span className="ml-2 rounded-full bg-good/15 px-1.5 text-[11px] text-good">já na Pool</span>}
         </div>
         <div className="truncate text-xs text-mist">{c.reason}</div>
       </div>

@@ -44,17 +44,20 @@ function ReasonText({ reason, short = false }: { reason: BanReason; short?: bool
 }
 
 /** Uma linha por sugestão: ícone, nome e o motivo principal. Os outros motivos abrem sob demanda. */
-function Row({ s }: { s: BanSuggestion }) {
+function Row({ s, best }: { s: BanSuggestion; best: boolean }) {
   const name = useChampionName(s.championId)
   const [open, setOpen] = useState(false)
   const more = s.reasons.length > 1
   return (
-    <li className="py-1.5">
-      <div className="flex items-center gap-3">
-        <ChampionIcon id={s.championId} size={32} />
+    <li className={best ? '-mx-3 rounded-lg bg-panel px-3 py-3' : 'border-b border-line py-3'}>
+      <div className="flex items-center gap-3.5">
+        <ChampionIcon id={s.championId} size={40} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-snow">{name}</div>
-          <div className="truncate text-xs text-mist">
+          <div className="flex items-center gap-2">
+            <span className="truncate font-semibold text-snow">{name}</span>
+            {best && <span className="shrink-0 rounded-full border border-gold/50 px-2 text-[11px] text-gold">Melhor ban</span>}
+          </div>
+          <div className="truncate text-[13px] text-mist">
             <ReasonText reason={s.reasons[0]} short />
           </div>
         </div>
@@ -66,7 +69,7 @@ function Row({ s }: { s: BanSuggestion }) {
         <DraftActButton championId={s.championId} type="ban" compact />
       </div>
       {open && (
-        <ul className="mt-1 space-y-0.5 pl-11 text-xs text-mist">
+        <ul className="mt-1 space-y-0.5 pl-[54px] text-xs text-mist">
           {s.reasons.map((r, i) => (
             <li key={i}>
               <ReasonText reason={r} />
@@ -123,24 +126,24 @@ export function BanSuggestions() {
   const shown = showAll ? items : items.slice(0, TOP)
 
   return (
-    <section aria-label="Sugestões de banimento" className="border border-line bg-panel/70 px-3 py-2">
+    <section aria-label="Sugestões de banimento">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 text-left text-sm text-snow"
+        className="flex w-full items-baseline justify-between gap-2 text-left"
       >
-        <span>
-          {banning ? 'É a sua vez de banir' : 'Sugestões de banimento'}
-          {focusId ? <span className="text-xs text-mist"> · pensando em {focusName}</span> : null}
+        <span className="flex items-baseline gap-2.5">
+          <span className="text-[15px] font-semibold text-snow">Bans recomendados</span>
+          {focusId ? <span className="text-xs text-dim">pensando em {focusName}</span> : banning ? <span className="text-xs text-dim">sua vez</span> : null}
         </span>
         <span className="text-xs text-mist">{open ? 'Ocultar' : `Mostrar (${items.length})`}</span>
       </button>
       {open && (
         <>
-          <ul className="mt-1 divide-y divide-line/60">
-            {shown.map((s) => (
-              <Row key={s.championId} s={s} />
+          <ul className="mt-2">
+            {shown.map((s, i) => (
+              <Row key={s.championId} s={s} best={i === 0} />
             ))}
           </ul>
           {items.length > TOP && (

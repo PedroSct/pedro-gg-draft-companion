@@ -1,4 +1,4 @@
-import appIcon from '../assets/icon.png'
+import { LogoMark } from './Logo'
 import type { LcuStatus } from '../../../shared/types'
 import { useEffect, useState } from 'react'
 import { selectActiveProfile, useApp } from '../store/useApp'
@@ -6,19 +6,19 @@ import { btnGold } from '../lib/ui'
 
 const STATUS: Record<LcuStatus, { label: string; dot: string; pulse: boolean }> = {
   searching: { label: 'Procurando o LoL', dot: 'bg-gold', pulse: true },
-  connected: { label: 'Conectado ao cliente', dot: 'bg-ally', pulse: false },
+  connected: { label: 'Conectado ao cliente', dot: 'bg-good', pulse: false },
   disconnected: { label: 'Cliente fechado', dot: 'bg-enemy', pulse: false }
 }
 
 /** Foto de perfil do LoL (a do cliente); sem ela ou sem internet, a inicial do nome. */
-function Avatar({ name, iconId, version }: { name: string; iconId?: number; version?: string }) {
+export function Avatar({ name, iconId, version, size = 32 }: { name: string; iconId?: number; version?: string; size?: number }) {
   const [failed, setFailed] = useState(false)
   useEffect(() => setFailed(false), [iconId, version])
   const src = iconId !== undefined && version ? `https://ddragon.leagueoflegends.com/cdn/${version}/img/profileicon/${iconId}.png` : null
   return src && !failed ? (
-    <img src={src} alt="" width={32} height={32} onError={() => setFailed(true)} draggable={false} className="h-8 w-8 shrink-0 rounded-full border border-gold/60 object-cover" />
+    <img src={src} alt="" width={size} height={size} onError={() => setFailed(true)} draggable={false} className="shrink-0 rounded-full border border-gold/60 object-cover" style={{ width: size, height: size }} />
   ) : (
-    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-gold/30 bg-gold/15 font-display text-sm font-semibold text-gold" aria-hidden="true">
+    <span className="grid shrink-0 place-items-center rounded-full border border-gold/30 bg-gold/15 font-display font-semibold text-gold" style={{ width: size, height: size, fontSize: Math.max(12, size * 0.4) }} aria-hidden="true">
       {name.slice(0, 1).toUpperCase() || '?'}
     </span>
   )
@@ -47,7 +47,7 @@ function AutoAcceptToggle() {
       data-tour="autoaccept"
       title="Quando a partida for encontrada, o Pedro.gg clica em Aceitar por você (pelo cliente do LoL, sem usar o mouse)."
       className={`app-no-drag flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border py-1 pl-3 pr-1.5 text-sm transition-colors max-[1180px]:pl-1.5 ${
-        flash ? 'border-ally/60 bg-ally/10 text-ally' : on ? 'border-gold/50 bg-gold/10 text-gold' : 'border-line bg-panel/80 text-mist hover:border-mist/50 hover:text-snow'
+        flash ? 'border-good/60 bg-good/10 text-good' : on ? 'border-gold/50 bg-gold/10 text-gold' : 'border-line bg-panel/80 text-mist hover:border-mist/50 hover:text-snow'
       }`}
     >
       <span className="max-[1180px]:sr-only">{flash ? 'Partida aceita!' : on ? 'Aceite automático' : 'Aceite manual'}</span>
@@ -83,18 +83,18 @@ export function Header() {
 
   return (
     <header
-      className="app-drag relative z-20 flex h-14 shrink-0 items-center gap-3 border-b border-line/70 bg-deck/95 pl-4"
+      className="app-drag relative z-20 flex h-14 shrink-0 items-center gap-3 border-b border-line bg-night pl-6"
       style={{ paddingRight: 'max(16px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px))' }}
     >
       {/* esquerda: marca */}
       <div className="flex shrink-0 items-center gap-2.5">
-        <img src={appIcon} alt="" width={30} height={30} className="h-[30px] w-[30px] shrink-0" draggable={false} />
-        <span className="truncate font-display text-xl font-semibold tracking-wide max-[760px]:sr-only">Pedro.gg</span>
+        <LogoMark size={32} small />
+        <span className="truncate font-display text-lg font-bold tracking-wider max-[760px]:sr-only">PEDRO.GG</span>
         <span className="hidden whitespace-nowrap text-sm text-mist min-[1500px]:inline">Draft Companion</span>
       </div>
 
       {/* centro: telas */}
-      <nav className="app-no-drag ml-2 flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-xl border border-line/70 bg-panel/70 p-1" role="tablist" aria-label="Telas">
+      <nav className="app-no-drag ml-4 flex shrink-0 items-stretch gap-1 self-stretch whitespace-nowrap" role="tablist" aria-label="Telas">
         {NAV.map((n) => (
           <button
             key={n.id}
@@ -103,13 +103,13 @@ export function Header() {
             role="tab"
             aria-selected={view === n.id}
             onClick={() => setView(n.id)}
-            className={`relative rounded-lg px-3.5 py-1 font-display text-base font-semibold tracking-wide transition-colors max-[900px]:px-2.5 max-[900px]:text-[15px] ${
-              view === n.id ? 'bg-raised text-snow shadow-[0_0_0_1px_rgb(220_184_112/0.35)]' : 'text-mist hover:text-snow'
+            className={`relative border-b-2 px-3.5 text-[15px] font-medium transition-colors max-[900px]:px-2.5 ${
+              view === n.id ? 'border-gold text-snow' : 'border-transparent text-mist hover:text-snow'
             }`}
           >
             {n.label}
             {n.id === 'draft' && draft && view !== 'draft' && (
-              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-ally" aria-label="seleção em andamento" />
+              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-good" aria-label="seleção em andamento" />
             )}
           </button>
         ))}

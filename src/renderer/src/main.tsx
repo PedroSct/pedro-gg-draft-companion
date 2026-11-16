@@ -1,6 +1,4 @@
-import '@fontsource/rajdhani/500.css'
-import '@fontsource/rajdhani/600.css'
-import '@fontsource/rajdhani/700.css'
+import '@fontsource-variable/space-grotesk'
 import '@fontsource-variable/inter'
 import './styles.css'
 import { lazy, StrictMode, Suspense } from 'react'

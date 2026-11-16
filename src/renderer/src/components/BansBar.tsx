@@ -25,7 +25,7 @@ function Group({ ids, side }: { ids: number[]; side: 'ally' | 'enemy' }) {
 
 export function BansBar({ allies, enemies }: { allies: number[]; enemies: number[] }) {
   return (
-    <div className="flex items-center justify-between gap-3 border border-line bg-panel/70 px-3 py-2">
+    <div className="flex items-center justify-between gap-3 py-1">
       <Group ids={allies} side="ally" />
       <Group ids={enemies} side="enemy" />
     </div>

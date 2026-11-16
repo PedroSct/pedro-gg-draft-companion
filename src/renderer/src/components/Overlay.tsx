@@ -13,13 +13,13 @@ const FOCUS_TEXT = { armor: 'priorize armadura', 'magic-resist': 'priorize resis
 const fmtTime = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const fmtGold = (n: number): string => n.toLocaleString('pt-BR')
 /** a ultimate ganha outra cor para não se confundir com as demais */
-const keyColor = (k: string): string => (k === 'R' ? 'text-[#c4a8ff]' : 'text-snow')
+const keyColor = (k: string): string => (k === 'R' ? 'text-snow underline decoration-gold decoration-2 underline-offset-4' : 'text-snow')
 
 function Pips({ value, max, ult }: { value: number; max: number; ult: boolean }) {
   return (
     <span className="mt-1 flex justify-center gap-[3px]" aria-hidden="true">
       {Array.from({ length: max }, (_, i) => (
-        <span key={i} className={`h-1.5 w-1.5 rounded-full ${i < value ? (ult ? 'bg-[#c4a8ff]' : 'bg-gold') : 'bg-white/15'}`} />
+        <span key={i} className={`h-1.5 w-1.5 rounded-full ${i < value ? (ult ? 'bg-snow' : 'bg-gold') : 'bg-white/15'}`} />
       ))}
     </span>
   )
@@ -31,14 +31,14 @@ function Tile({ step, catalog, next, size }: { step: OverlayItemStep; catalog: C
   return (
     <li className="flex w-12 flex-col items-center gap-0.5">
       <span
-        className={`relative block overflow-hidden rounded-lg border ${dim} ${next ? 'border-gold shadow-[0_0_12px_rgba(220,184,112,0.55)]' : 'border-white/10'}`}
+        className={`relative block overflow-hidden rounded-md border ${dim} ${next ? 'border-gold ring-1 ring-gold' : 'border-line'}`}
       >
         {info ? (
           <img src={info.iconUrl} alt={info.name} className={`h-full w-full object-cover ${step.owned ? 'opacity-35 grayscale' : ''}`} draggable={false} />
         ) : (
           <span className="grid h-full w-full place-items-center bg-white/5 text-[10px] text-mist">{step.itemId}</span>
         )}
-        {step.owned && <span className="absolute inset-0 grid place-items-center text-base font-bold text-ally">✓</span>}
+        {step.owned && <span className="absolute inset-0 grid place-items-center text-base font-bold text-good">✓</span>}
       </span>
       <span className={`text-[9px] leading-none ${next ? 'font-semibold text-gold' : 'text-dim'}`}>{step.label === 'Situacional' ? (step.reason ? REASON_SHORT[step.reason] : 'Situ.') : step.label}</span>
     </li>
@@ -48,7 +48,7 @@ function Tile({ step, catalog, next, size }: { step: OverlayItemStep; catalog: C
 function MiniIcon({ id, catalog }: { id: number; catalog: Catalog | null }) {
   const info = catalog?.items[String(id)]
   return info ? (
-    <img src={info.iconUrl} alt={info.name} title={info.name} className="h-6 w-6 shrink-0 rounded-md border border-white/15 object-cover" draggable={false} />
+    <img src={info.iconUrl} alt={info.name} title={info.name} className="h-6 w-6 shrink-0 rounded-md border border-line object-cover" draggable={false} />
   ) : (
     <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/5 text-[9px] text-mist">{id}</span>
   )
@@ -65,7 +65,7 @@ function AdviceLine({ advice, gold, catalog }: { advice: PurchaseAdvice; gold: n
     headline = part ? `Junte ouro: faltam ${fmtGold(Math.max(0, part.cost - (gold ?? 0)))} g para ${name(part.itemId)}` : `Faltam ${fmtGold(advice.missing)} g`
   }
   return (
-    <div role="note" aria-label="Conselho de compra" className="flex items-center gap-2 rounded-lg border border-gold/40 bg-gold/10 px-2 py-1.5">
+    <div role="note" aria-label="Conselho de compra" className="flex items-center gap-2 rounded-lg bg-panel px-2 py-1.5">
       <span className="flex shrink-0 gap-1">
         {advice.buy.map((b) => (
           <MiniIcon key={b.itemId} id={b.itemId} catalog={catalog} />
@@ -107,11 +107,11 @@ export default function Overlay() {
     <div
       role="region"
       aria-label="Pedro.gg no jogo"
-      style={{ ...(state.editing ? DRAG : {}), background: 'linear-gradient(165deg, rgba(22,28,44,0.95) 0%, rgba(9,11,18,0.95) 70%)' }}
-      className={`m-1 flex ${width} flex-col gap-2 rounded-2xl border p-2.5 text-snow shadow-2xl ${state.editing ? 'cursor-move border-gold' : 'border-white/10'}`}
+      style={{ ...(state.editing ? DRAG : {}), background: 'rgba(13,15,20,0.94)' }}
+      className={`m-1 flex ${width} flex-col gap-2 rounded-xl border p-2.5 text-snow ${state.editing ? 'cursor-move border-gold' : 'border-line'}`}
     >
       {state.editing && (
-        <div className="flex items-center justify-between gap-2 rounded-lg bg-gold/15 px-2 py-1.5 text-xs text-gold">
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-gold/40 px-2 py-1.5 text-xs text-gold">
           <span>Arraste o painel para onde quiser</span>
           <button type="button" style={NO_DRAG} className="cursor-pointer rounded-md bg-gold px-2 py-1 font-semibold text-[#0b0e17]" onClick={() => void window.api.finishOverlayMove()}>
             Salvar posição
@@ -139,7 +139,7 @@ export default function Overlay() {
       <div className="flex items-center gap-2.5">
         {nextStep ? (
           <>
-            <span className="relative block h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-gold shadow-[0_0_12px_rgba(220,184,112,0.55)]">
+            <span className="relative block h-11 w-11 shrink-0 overflow-hidden rounded-md border border-gold ring-1 ring-gold">
               {nextInfo ? <img src={nextInfo.iconUrl} alt={nextInfo.name} className="h-full w-full object-cover" draggable={false} /> : <span className="grid h-full w-full place-items-center bg-white/5 text-[10px] text-mist">{nextStep.itemId}</span>}
             </span>
             <div className="min-w-0 flex-1">
@@ -154,7 +154,7 @@ export default function Overlay() {
           </>
         ) : (
           <div className="min-w-0 flex-1">
-            <div className="font-display text-base font-semibold text-ally">{path.length > 0 && path.every((i) => i.owned) ? 'Build completa' : state.championName}</div>
+            <div className="font-display text-base font-semibold text-good">{path.length > 0 && path.every((i) => i.owned) ? 'Build completa' : state.championName}</div>
             <div className="text-[11px] text-mist">Sem item principal para comprar agora</div>
           </div>
         )}
@@ -174,11 +174,11 @@ export default function Overlay() {
     <div
       role="region"
       aria-label="Pedro.gg no jogo"
-      style={{ ...(state.editing ? DRAG : {}), background: 'linear-gradient(165deg, rgba(22,28,44,0.95) 0%, rgba(9,11,18,0.95) 70%)' }}
-      className={`m-1 flex w-[312px] flex-col gap-2.5 rounded-2xl border p-3 text-snow shadow-2xl ${state.editing ? 'cursor-move border-gold' : 'border-white/10'}`}
+      style={{ ...(state.editing ? DRAG : {}), background: 'rgba(13,15,20,0.94)' }}
+      className={`m-1 flex w-[312px] flex-col gap-2.5 rounded-xl border p-3 text-snow ${state.editing ? 'cursor-move border-gold' : 'border-line'}`}
     >
       {state.editing && (
-        <div className="flex items-center justify-between gap-2 rounded-lg bg-gold/15 px-2 py-1.5 text-xs text-gold">
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-gold/40 px-2 py-1.5 text-xs text-gold">
           <span>Arraste o painel para onde quiser</span>
           <button type="button" style={NO_DRAG} className="cursor-pointer rounded-md bg-gold px-2 py-1 font-semibold text-[#0b0e17]" onClick={() => void window.api.finishOverlayMove()}>
             Salvar posição
@@ -187,7 +187,7 @@ export default function Overlay() {
       )}
 
       <header className="flex items-center gap-2.5">
-        {champ && <img src={champ.iconUrl} alt="" className="h-10 w-10 rounded-xl border border-gold/50 object-cover" draggable={false} />}
+        {champ && <img src={champ.iconUrl} alt="" className="h-10 w-10 rounded-lg ring-2 ring-gold object-cover" draggable={false} />}
         <div className="min-w-0 flex-1">
           <div className="truncate font-display text-lg font-semibold leading-tight">{state.championName}</div>
           <div className="text-[11px] text-mist">
@@ -204,7 +204,7 @@ export default function Overlay() {
       </header>
 
       {sk.next || sk.priority.length > 0 ? (
-        <section aria-label="Habilidades" className="rounded-xl border border-white/8 bg-white/[0.04] p-2.5">
+        <section aria-label="Habilidades" className="border-t border-line pt-2.5">
           <div className="flex items-center gap-3">
             {sk.next ? (
               <div
@@ -227,7 +227,7 @@ export default function Overlay() {
             {KEYS.map((k) => {
               const isNext = sk.next === k
               return (
-                <div key={k} className={`rounded-lg border px-1 py-1.5 text-center ${isNext ? 'border-gold/70 bg-gold/10' : 'border-white/10 bg-black/20'}`}>
+                <div key={k} className={`rounded-md border px-1 py-1.5 text-center ${isNext ? 'border-gold text-gold' : 'border-line'}`}>
                   <div className={`font-display text-base font-bold leading-none ${isNext ? 'text-gold' : keyColor(k)}`}>{k}</div>
                   <Pips value={sk.levels[k]} max={MAX[k]} ult={k === 'R'} />
                 </div>
@@ -240,7 +240,7 @@ export default function Overlay() {
               <span className="text-[10px] uppercase tracking-wide text-dim">Depois</span>
               <ol className="flex flex-1 gap-1" aria-label="Próximos pontos">
                 {sk.upcoming.map((k, i) => (
-                  <li key={i} className="flex flex-1 flex-col items-center rounded-md bg-black/25 py-0.5">
+                  <li key={i} className="flex flex-1 flex-col items-center rounded-md border border-line py-0.5">
                     <span className="text-[8px] leading-none text-dim">nv {spent + 2 + i}</span>
                     <span className={`font-display text-sm font-bold leading-tight ${keyColor(k)}`}>{k}</span>
                   </li>
@@ -252,7 +252,7 @@ export default function Overlay() {
       ) : null}
 
       {state.items.length > 0 && (
-        <section aria-label="Itens" className="rounded-xl border border-white/8 bg-white/[0.04] p-2.5">
+        <section aria-label="Itens" className="border-t border-line pt-2.5">
           <div className="mb-1.5 flex items-baseline justify-between gap-2">
             <span className="font-display text-sm font-semibold">Build</span>
             {nextStep && nextInfo ? (
@@ -261,7 +261,7 @@ export default function Overlay() {
                 {nextInfo.goldTotal > 0 && <span className="text-mist"> · {fmtGold(nextInfo.goldTotal)} g</span>}
               </span>
             ) : (
-              path.length > 0 && path.every((i) => i.owned) && <span className="text-[11px] text-ally">Build completa</span>
+              path.length > 0 && path.every((i) => i.owned) && <span className="text-[11px] text-good">Build completa</span>
             )}
           </div>
           {starting.length > 0 && (

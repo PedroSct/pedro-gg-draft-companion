@@ -82,7 +82,7 @@ export function ShareDialog({ profile, onClose }: { profile: ProfileInput; onClo
             </button>
           </div>
           {message && (
-            <p role="status" className="text-sm text-ally">
+            <p role="status" className="text-sm text-good">
               {message}
             </p>
           )}

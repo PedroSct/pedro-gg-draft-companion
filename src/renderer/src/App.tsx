@@ -125,24 +125,33 @@ const STAGES: { id: DraftStage; label: string }[] = [
 
 /** Etapas da seleção: o passo atual aparece em destaque e os outros ficam um clique de distância. */
 function StageStepper({ auto, current, onPick }: { auto: DraftStage; current: DraftStage; onPick: (s: DraftStage) => void }) {
+  const autoIndex = STAGES.findIndex((st) => st.id === auto)
   return (
-    <nav aria-label="Etapas da seleção" className="flex items-center gap-2">
-      {STAGES.map((st, i) => (
-        <Fragment key={st.id}>
-          {i > 0 && <span className="h-px w-6 bg-line" aria-hidden="true" />}
-          <button
-            type="button"
-            aria-current={current === st.id ? 'step' : undefined}
-            onClick={() => onPick(st.id)}
-            className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide transition-colors ${
-              current === st.id ? 'border-gold bg-gold/15 text-gold' : auto === st.id ? 'border-ally/60 text-ally hover:bg-ally/10' : 'border-line text-mist hover:text-snow'
-            }`}
-          >
-            <span className="num">{i + 1}</span>
-            {st.label}
-          </button>
-        </Fragment>
-      ))}
+    <nav aria-label="Etapas da seleção" className="flex items-center justify-center gap-4">
+      {STAGES.map((st, i) => {
+        const on = current === st.id
+        const done = i < autoIndex
+        return (
+          <Fragment key={st.id}>
+            {i > 0 && <span className={`h-px w-14 ${i <= autoIndex ? 'bg-gold' : 'bg-line'}`} aria-hidden="true" />}
+            <button
+              type="button"
+              aria-current={on ? 'step' : undefined}
+              onClick={() => onPick(st.id)}
+              className={`flex items-center gap-2.5 text-sm font-medium transition-colors ${on ? 'text-snow' : 'text-dim hover:text-snow'}`}
+            >
+              <span
+                className={`num grid h-6 w-6 place-items-center rounded-full border text-xs ${
+                  on ? 'border-gold bg-gold text-night' : done || st.id === auto ? 'border-gold text-gold' : 'border-line'
+                }`}
+              >
+                {i + 1}
+              </span>
+              {st.label}
+            </button>
+          </Fragment>
+        )
+      })}
     </nav>
   )
 }
@@ -166,10 +175,10 @@ function DraftScreen() {
   if (!draft) return null
 
   return (
-    <div className="grid h-full grid-cols-[minmax(210px,1fr)_minmax(0,1.7fr)_minmax(210px,1fr)] gap-5 max-[1000px]:grid-cols-2 max-[1000px]:content-start max-[1000px]:gap-3 max-[1000px]:overflow-y-auto">
+    <div className="grid h-full grid-cols-[minmax(210px,264px)_minmax(0,1fr)_minmax(210px,264px)] gap-10 max-[1000px]:grid-cols-2 max-[1000px]:content-start max-[1000px]:gap-3 max-[1000px]:overflow-y-auto">
       <TeamColumn side="ally" players={draft.allies} localCellId={draft.localPlayerCellId} />
       <div ref={centerRef} className="flex min-w-0 flex-col gap-3 pr-1 [&>*]:shrink-0 min-[1001px]:min-h-0 min-[1001px]:overflow-y-auto max-[1000px]:order-last max-[1000px]:col-span-2 max-[1000px]:pr-0">
-        <div className="flex justify-center">
+        <div className="flex justify-center pb-1">
           <StageStepper auto={auto} current={stage} onPick={setManual} />
         </div>
         <TurnBanner />
@@ -248,8 +257,7 @@ export default function App() {
   }
 
   return (
-    <div className="bg-aurora relative flex h-full flex-col">
-      <div className="bg-grid pointer-events-none absolute inset-0 z-0" aria-hidden="true" />
+    <div className="relative flex h-full flex-col">
       <div className="relative z-10 flex h-full flex-col">
         <Header />
         <UpdateBanner />

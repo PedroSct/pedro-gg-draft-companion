@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ROLE_PT, areaCoaching, type AreaCoaching, type Analysis, type Insight, type InsightLevel, type MatchReport, type PgParticipant, type PgSummary } from '../../../shared/postgame'
+import { ROLE_PT, type Analysis, type Insight, type InsightLevel, type MatchReport, type PgParticipant, type PgSummary } from '../../../shared/postgame'
 import { useApp } from '../store/useApp'
 import { btn, btnGold, btnDanger } from '../lib/ui'
 import { ChampionIcon, useChampionName } from './Icons'
@@ -27,7 +27,7 @@ const fmtWhen = (ms: number | null): string => {
   return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} · ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
 }
 const sgn = (v: number | null, unit = ''): string => (v === null ? '–' : `${v > 0 ? '+' : ''}${Math.round(v)}${unit}`)
-const tone = (v: number | null): string => (v === null || v === 0 ? 'text-mist' : v > 0 ? 'text-ally' : 'text-enemy')
+const tone = (v: number | null): string => (v === null || v === 0 ? 'text-mist' : v > 0 ? 'text-good' : 'text-enemy')
 
 // ---------------------------------------------------------------- lista de partidas
 
@@ -45,7 +45,7 @@ function HistoryRow({ item, active }: { item: PgSummary; active: boolean }) {
           active ? 'border-gold/60 bg-raised' : 'border-line bg-panel/70'
         }`}
       >
-        <span className={`absolute inset-y-0 left-0 w-1 ${win === null ? 'bg-dim' : win ? 'bg-ally' : 'bg-enemy'}`} aria-hidden="true" />
+        <span className={`absolute inset-y-0 left-0 w-1 ${win === null ? 'bg-dim' : win ? 'bg-good' : 'bg-enemy'}`} aria-hidden="true" />
         <ChampionIcon id={item.championId} size={40} />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-display text-lg font-semibold leading-tight">{name || 'Campeão'}</span>
@@ -77,7 +77,7 @@ function Sidebar() {
         </button>
         {status !== 'connected' && <p className="mt-1.5 text-xs text-mist">Abra o League of Legends para buscar partidas.</p>}
         {msg && (
-          <p role="status" className={`mt-1.5 text-xs ${msg.ok ? 'text-ally' : 'text-enemy'}`}>
+          <p role="status" className={`mt-1.5 text-xs ${msg.ok ? 'text-good' : 'text-enemy'}`}>
             {msg.text}
           </p>
         )}
@@ -98,7 +98,7 @@ function Sidebar() {
 // ---------------------------------------------------------------- detalhe
 
 const LEVEL_STYLE: Record<InsightLevel, { border: string; text: string; icon: string }> = {
-  good: { border: 'border-ally', text: 'text-ally', icon: '▲' },
+  good: { border: 'border-good', text: 'text-good', icon: '▲' },
   warn: { border: 'border-gold', text: 'text-gold', icon: '!' },
   bad: { border: 'border-enemy', text: 'text-enemy', icon: '▼' },
   info: { border: 'border-mist/50', text: 'text-mist', icon: 'i' }
@@ -134,7 +134,7 @@ function Hero({ report, a }: { report: MatchReport; a: Analysis }) {
   const win = report.win
   return (
     <div className={`rise relative flex flex-wrap items-center gap-6 overflow-hidden rounded-2xl border border-line bg-panel/80 p-5`}>
-      <div className={`absolute inset-y-0 left-0 w-1.5 ${win ? 'bg-ally' : 'bg-enemy'}`} aria-hidden="true" />
+      <div className={`absolute inset-y-0 left-0 w-1.5 ${win ? 'bg-good' : 'bg-enemy'}`} aria-hidden="true" />
       <div
         className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full opacity-20"
         style={{ background: `radial-gradient(circle, ${win ? 'var(--color-ally)' : 'var(--color-enemy)'} 0%, transparent 68%)` }}
@@ -142,7 +142,7 @@ function Hero({ report, a }: { report: MatchReport; a: Analysis }) {
       />
       <ChampionIcon id={me.championId} size={84} />
       <div className="min-w-0 flex-1">
-        <div className={`font-display text-sm font-semibold uppercase tracking-[0.2em] ${win ? 'text-ally' : 'text-enemy'}`}>{win ? 'Vitória' : 'Derrota'}</div>
+        <div className={`font-display text-sm font-semibold uppercase tracking-[0.2em] ${win ? 'text-good' : 'text-enemy'}`}>{win ? 'Vitória' : 'Derrota'}</div>
         <h2 className="font-display text-4xl font-semibold leading-tight">{name || 'Campeão'}</h2>
         <p className="text-sm text-mist">
           {a.role ? ROLE_PT[a.role] : 'Rota não identificada'} · {queueName(report.queueId, report.mode)} · {fmtDuration(report.durationSec)}
@@ -186,7 +186,7 @@ function Scoreboard({ report }: { report: MatchReport }) {
     <div className="grid gap-4 lg:grid-cols-2">
       {teams.map((team, ti) => (
         <div key={ti}>
-          <div className={`mb-1 text-xs font-semibold uppercase tracking-widest ${team[0]?.win ? 'text-ally' : 'text-enemy'}`}>
+          <div className={`mb-1 text-xs font-semibold uppercase tracking-widest ${team[0]?.win ? 'text-good' : 'text-enemy'}`}>
             {team[0]?.win ? 'Time vencedor' : 'Time derrotado'}
           </div>
           <ul className="flex flex-col gap-1">
@@ -350,7 +350,7 @@ function Detail() {
                 {a.swings.map((s) => (
                   <li key={s.minute} className="flex gap-2">
                     <span className="num text-gold">{s.minute} min</span>
-                    <span className={s.delta > 0 ? 'text-ally' : 'text-enemy'}>{s.delta > 0 ? '▲' : '▼'}</span>
+                    <span className={s.delta > 0 ? 'text-good' : 'text-enemy'}>{s.delta > 0 ? '▲' : '▼'}</span>
                     <span className="text-mist">{s.text}</span>
                   </li>
                 ))}
@@ -383,7 +383,7 @@ function Detail() {
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wider text-dim">
                   <th className="pb-1 font-medium">Objetivo</th>
-                  <th className="pb-1 text-center font-medium text-ally">Seu time</th>
+                  <th className="pb-1 text-center font-medium text-good">Seu time</th>
                   <th className="pb-1 text-center font-medium text-enemy">Inimigo</th>
                   <th className="pb-1 text-center font-medium text-gold">Você</th>
                 </tr>
@@ -447,7 +447,7 @@ function Empty() {
           {busy ? 'Buscando a partida…' : 'Analisar a última partida que joguei'}
         </button>
         {msg && (
-          <p role="status" className={`mt-2 text-sm ${msg.ok ? 'text-ally' : 'text-enemy'}`}>
+          <p role="status" className={`mt-2 text-sm ${msg.ok ? 'text-good' : 'text-enemy'}`}>
             {msg.text}
           </p>
         )}
@@ -458,80 +458,12 @@ function Empty() {
 }
 
 
-// ---------------------------------------------------------------- pontuação por área
-
-const LEVEL_TEXT = { strong: 'Forte', ok: 'Regular', weak: 'A melhorar' } as const
-const levelColor = (score: number): string => (score >= 70 ? 'var(--color-ally)' : score >= 45 ? 'var(--color-gold)' : 'var(--color-enemy)')
-
-function AreaCard({ area, i }: { area: AreaCoaching; i: number }) {
-  return (
-    <li
-      aria-label={`Área ${area.label}`}
-      className={`rounded-2xl border bg-panel/70 p-4 shadow-card ${area.focus ? 'border-gold/60' : 'border-line'}`}
-      style={{ animation: 'verdict-in 420ms cubic-bezier(0.2,0.7,0.2,1) both', animationDelay: `${i * 70}ms` }}
-    >
-      <div className="flex items-center gap-3">
-        <span className="num grid h-11 w-11 shrink-0 place-items-center rounded-xl border text-xl font-semibold" style={{ color: gradeColor(area.grade), borderColor: gradeColor(area.grade) }} aria-label={`Conceito ${area.grade}`}>
-          {area.grade}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <h3 className="font-display text-lg font-semibold">{area.label}</h3>
-            <span className="num text-sm text-mist">{area.score}/100</span>
-            <span className="text-xs" style={{ color: levelColor(area.score) }}>
-              {LEVEL_TEXT[area.level]}
-            </span>
-            {area.focus && <span className="rounded-full border border-gold/60 bg-gold/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gold">Foque aqui</span>}
-          </div>
-          <div className="mt-1">
-            <GrowBar value={area.score} color={levelColor(area.score)} label={`${area.label} ${area.score}`} />
-          </div>
-        </div>
-      </div>
-      <p className="mt-2 text-xs text-dim">{area.summary}</p>
-      <h4 className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-mist">{area.level === 'strong' ? 'Continue assim' : 'O que fazer'}</h4>
-      <ul className="mt-1 space-y-1 text-sm text-snow">
-        {area.actions.map((t) => (
-          <li key={t}>• {t}</li>
-        ))}
-      </ul>
-    </li>
-  )
-}
-
-function AreaScores() {
-  const detail = useApp((s) => s.postDetail)
-  const areas = useMemo(() => (detail ? areaCoaching(detail.report, detail.analysis) : []), [detail])
-  if (!detail) return <div className="grid place-items-center text-mist">Carregando a partida…</div>
-  const focus = areas.filter((a) => a.focus)
-  return (
-    <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1 [&>*]:shrink-0" key={detail.report.gameId}>
-      <section aria-label="Foco da próxima partida" className="rounded-2xl border border-gold/40 bg-gold/5 p-4">
-        <h2 className="font-display text-xl font-semibold text-gold">Foco da próxima partida</h2>
-        {focus.length === 0 ? (
-          <p className="mt-1 text-sm text-mist">Nenhuma área ficou abaixo do esperado. Mantenha o que fez e busque consistência.</p>
-        ) : (
-          <p className="mt-1 text-sm text-snow">
-            Priorize <strong>{focus.map((f) => f.label).join(' e ')}</strong>: foram as áreas com a menor pontuação nesta partida.
-          </p>
-        )}
-        <p className="mt-1 text-xs text-dim">As notas comparam a sua partida com referências aproximadas por função, não com a meta oficial.</p>
-      </section>
-      <ul className="grid gap-4 xl:grid-cols-2" aria-label="Pontuação por área">
-        {areas.map((a, i) => (
-          <AreaCard key={a.key} area={a} i={i} />
-        ))}
-      </ul>
-    </div>
-  )
-}
-
 export function PostGameScreen() {
   const list = useApp((s) => s.postList)
   const detail = useApp((s) => s.postDetail)
-  const [tab, setTab] = useState<'match' | 'scores' | 'progress'>('match')
+  const [tab, setTab] = useState<'match' | 'progress'>('match')
   if (list.length === 0) return <Empty />
-  const tabBtn = (id: 'match' | 'scores' | 'progress', label: string) => (
+  const tabBtn = (id: 'match' | 'progress', label: string) => (
     <button
       type="button"
       role="tab"
@@ -547,17 +479,11 @@ export function PostGameScreen() {
     <div className="flex h-full flex-col gap-3">
       <div role="tablist" aria-label="Pós-jogo" className="flex gap-1 border-b border-line">
         {tabBtn('match', 'Partida')}
-        {tabBtn('scores', 'Pontuação')}
         {tabBtn('progress', 'Evolução')}
       </div>
       {tab === 'progress' ? (
         <div role="tabpanel" aria-labelledby="pg-tab-progress" className="flex min-h-0 flex-1 flex-col">
           <ProgressView list={list} />
-        </div>
-      ) : tab === 'scores' ? (
-        <div role="tabpanel" aria-labelledby="pg-tab-scores" className="grid min-h-0 flex-1 grid-cols-[minmax(240px,300px)_1fr] gap-5">
-          <Sidebar />
-          <AreaScores />
         </div>
       ) : (
         <div role="tabpanel" aria-labelledby="pg-tab-match" className="grid min-h-0 flex-1 grid-cols-[minmax(240px,300px)_1fr] gap-5">

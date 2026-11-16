@@ -64,7 +64,7 @@ export function ChampionSearch() {
   if (!draft) return null
 
   return (
-    <section aria-label="Buscar campeão" className="rounded-2xl border border-line bg-panel/70 p-3">
+    <section aria-label="Buscar campeão" className="rounded-lg border border-line p-3">
       <div className="flex items-center gap-2">
         <label htmlFor="champ-search" className="shrink-0 text-sm text-snow">
           Buscar campeão

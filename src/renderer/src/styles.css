@@ -1,32 +1,33 @@
 @import 'tailwindcss';
 
 @theme {
-  --font-display: 'Rajdhani', 'Segoe UI', sans-serif;
+  --font-display: 'Space Grotesk Variable', 'Segoe UI', sans-serif;
   --font-sans: 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
 
   /* Noite azulada: base, painéis e superfícies elevadas */
-  --color-night: #090b12;
-  --color-deck: #0e121c;
-  --color-panel: #131826;
-  --color-raised: #1b2233;
-  --color-line: #263049;
+  --color-night: #0d0f14;
+  --color-deck: #10131a;
+  --color-panel: #13161d;
+  --color-raised: #191d26;
+  --color-line: #252a36;
 
   /* Cada cor tem um significado fixo no draft */
-  --color-ally: #3cc9dc; /* time aliado */
-  --color-enemy: #f2627a; /* time inimigo */
-  --color-gold: #dcb870; /* veredito / melhor pick */
+  --color-ally: #6ea8ff; /* time aliado */
+  --color-enemy: #f0716a; /* time inimigo, ban e alerta */
+  --color-gold: #e3b659; /* você, destaque e ação principal */
+  --color-good: #58c79a; /* vantagem e resultado positivo */
 
   /* Formas: tudo mais arredondado que o padrão (rounded-sm/md/lg do Tailwind passam a usar estes valores) */
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 22px;
-  --shadow-card: 0 10px 30px -12px rgb(0 0 0 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.03);
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --shadow-card: none;
 
-  --color-snow: #e9eef8;
-  --color-mist: #93a0bf;
-  --color-dim: #5f6b88;
+  --color-snow: #e8eaf0;
+  --color-mist: #a3abbc;
+  --color-dim: #8089a0;
 }
 
 @layer base {
@@ -37,9 +38,6 @@
   }
   body {
     background-color: var(--color-night);
-    background-image:
-      radial-gradient(1100px 480px at 50% -12%, rgb(60 201 220 / 0.07), transparent 62%),
-      radial-gradient(900px 520px at 100% 100%, rgb(242 98 122 / 0.06), transparent 60%);
     color: var(--color-snow);
     font-family: var(--font-sans);
     font-size: 14px;
@@ -77,7 +75,7 @@
 }
 
 /* Todo painel com borda da cor "line" ganha cantos suaves (ícones pequenos ficam proporcionais) */
-.border-line {
+.border.border-line {
   border-radius: min(var(--radius-lg), 14%);
 }
 .shadow-card {
@@ -152,26 +150,6 @@
   animation: draw 1.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
-/* Fundo: brilhos estáticos (animação contínua em tela inteira gasta GPU à toa) */
-.bg-aurora::before {
-  content: '';
-  position: fixed;
-  inset: -20% -10% auto -10%;
-  height: 70%;
-  background:
-    radial-gradient(520px 260px at 25% 40%, rgb(60 201 220 / 0.09), transparent 70%),
-    radial-gradient(480px 240px at 75% 30%, rgb(220 184 112 / 0.06), transparent 70%);
-  pointer-events: none;
-  z-index: 0;
-}
-.bg-grid {
-  background-image:
-    linear-gradient(to right, rgb(147 160 191 / 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(147 160 191 / 0.045) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(ellipse at 50% 20%, black 20%, transparent 75%);
-}
-
 /* Barra de título própria: a área do cabeçalho arrasta a janela; botões e campos ficam clicáveis */
 .app-drag {
   -webkit-app-region: drag;
@@ -180,36 +158,67 @@
   -webkit-app-region: no-drag;
 }
 
-/* Abertura: o logo aparece, o anel se desenha e a tela sobe */
-@keyframes splash-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.86);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+/* Abertura: o hexágono se desenha, o miolo aparece, o nome entra, a barra enche e a tela some */
+@keyframes splash-ring {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes splash-core {
+  from { opacity: 0; transform: translateY(6px) scale(0.92); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes splash-word {
+  from { opacity: 0; transform: translateY(8px); letter-spacing: 0.8em; }
+  to { opacity: 1; transform: none; letter-spacing: 0.5em; }
+}
+@keyframes splash-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes splash-load {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
 }
 @keyframes splash-out {
-  to {
-    opacity: 0;
-    visibility: hidden;
-  }
-}
-.splash {
-  animation: none;
+  to { opacity: 0; visibility: hidden; }
 }
 .splash-leaving {
-  animation: splash-out 520ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: splash-out 440ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
-.splash-logo {
-  animation: splash-pop 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+.logo-ring {
+  stroke-dasharray: 300;
+  stroke-dashoffset: 300;
+  animation: splash-ring 900ms cubic-bezier(0.65, 0, 0.35, 1) 100ms forwards;
 }
-.splash-ring {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: draw 1.3s 0.15s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+.logo-body {
+  opacity: 0;
+  animation: splash-core 520ms cubic-bezier(0.2, 0.7, 0.2, 1) 600ms forwards;
+}
+.logo-tail {
+  opacity: 0;
+  animation: splash-core 420ms cubic-bezier(0.2, 0.7, 0.2, 1) 900ms forwards;
+}
+.logo-body,
+.logo-tail {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.splash-word {
+  margin-right: -0.5em;
+  letter-spacing: 0.5em;
+  opacity: 0;
+  animation: splash-word 600ms cubic-bezier(0.2, 0.7, 0.2, 1) 800ms forwards;
+}
+.splash-tag {
+  opacity: 0;
+  animation: splash-fade 400ms ease 1200ms forwards;
+}
+.splash-bar {
+  opacity: 0;
+  animation: splash-fade 300ms ease 1100ms forwards;
+}
+.splash-fill {
+  transform: translateX(-100%);
+  animation: splash-load 800ms cubic-bezier(0.4, 0, 0.2, 1) 1100ms forwards;
 }
 
 /* Abas do cabeçalho (antiga versão com sublinhado) */
@@ -270,8 +279,8 @@ html.overlay-mode #root {
 
 /* Overlay: brilho suave na habilidade que pode receber ponto agora */
 @keyframes overlay-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 184, 112, 0.45); }
-  50% { box-shadow: 0 0 14px 2px rgba(220, 184, 112, 0.55); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(227, 182, 89, 0); }
+  50% { box-shadow: 0 0 0 3px rgba(227, 182, 89, 0.35); }
 }
 .overlay-pulse {
   animation: overlay-pulse 1.8s ease-in-out infinite;
@@ -300,10 +309,8 @@ html.overlay-mode #root {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--turn-color) 35%, transparent), 0 0 30px -2px color-mix(in srgb, var(--turn-color) 55%, transparent);
   }
 }
-.turn-banner {
-  animation:
-    turn-in 360ms cubic-bezier(0.2, 0.7, 0.2, 1),
-    turn-glow 1.8s ease-in-out 360ms infinite;
+.turn-in {
+  animation: turn-in 360ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 /* Confronto de rota: os dois lados brilham nas cores do time e o "VS" respira */
@@ -320,21 +327,19 @@ html.overlay-mode #root {
   50% { transform: scale(1.12); opacity: 1; }
 }
 .spot-card { animation: spot-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1); }
-.spot-side { animation: spot-glow 2.4s ease-in-out infinite; }
-.spot-vs { animation: spot-vs 2.4s ease-in-out infinite; }
 
 /* Etapas do draft: a anterior some por completo e a nova entra com movimento próprio, item a item. */
 @keyframes stage-ban-in {
-  from { opacity: 0; transform: translateY(-14px) scale(0.985); filter: blur(3px); }
+  from { opacity: 0; transform: translateY(-12px); }
   to { opacity: 1; transform: none; filter: none; }
 }
 @keyframes stage-pick-in {
-  from { opacity: 0; transform: translateX(34px) scale(0.97); }
+  from { opacity: 0; transform: translateX(28px); }
   60% { opacity: 1; }
   to { opacity: 1; transform: none; }
 }
 @keyframes stage-build-in {
-  from { opacity: 0; transform: translateY(26px) scale(0.98); filter: blur(4px); }
+  from { opacity: 0; transform: translateY(22px); }
   to { opacity: 1; transform: none; filter: none; }
 }
 .stage-ban > * { animation: stage-ban-in 380ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }

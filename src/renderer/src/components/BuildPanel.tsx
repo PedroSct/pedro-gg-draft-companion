@@ -4,7 +4,7 @@ import type { LoadoutParts, PartResult } from '../../../shared/loadout'
 import type { BuildSituation, ChampionBuild, SpellInfo } from '../../../shared/dataTypes'
 import { useApp } from '../store/useApp'
 import { useFocus } from '../lib/useFocus'
-import { ROLE_LABEL, ROLE_SHORT, splashUrl } from '../lib/format'
+import { ROLE_LABEL, ROLE_SHORT } from '../lib/format'
 import { btnGold } from '../lib/ui'
 import { ROLES } from '../../../shared/dataTypes'
 import { ChampionIcon, useChampionName } from './Icons'
@@ -72,9 +72,9 @@ function ImportPanel({ championId, role, build, forLocal, selection }: { champio
   }
 
   return (
-    <section aria-label="Importar para o cliente" className="rounded-2xl border border-gold/30 bg-gold/5 p-3">
+    <section aria-label="Importar para o cliente" className="rounded-lg border border-line p-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h3 className="font-display text-lg font-semibold text-gold">Enviar para o LoL</h3>
+        <h3 className="font-display text-lg font-semibold text-snow">Enviar para o LoL</h3>
         {(Object.keys(PART_LABEL) as (keyof LoadoutParts)[]).map((k) => (
           <label key={k} title={detail[k]} className={`flex items-center gap-1.5 text-sm ${available[k] ? '' : 'opacity-50'}`}>
             <input
@@ -102,7 +102,7 @@ function ImportPanel({ championId, role, build, forLocal, selection }: { champio
       {results && (
         <ul className="mt-2 flex flex-col gap-1" role="status">
           {(Object.keys(results) as (keyof LoadoutParts)[]).map((k) => (
-            <li key={k} className={`text-sm ${results[k]?.ok ? 'text-ally' : 'text-enemy'}`}>
+            <li key={k} className={`text-sm ${results[k]?.ok ? 'text-good' : 'text-enemy'}`}>
               {PART_LABEL[k]}: {results[k]?.message}
             </li>
           ))}
@@ -128,12 +128,12 @@ function SituationCard({ situation }: { situation: BuildSituation }) {
   const ad = Math.round(dmg.physical * 100)
   const ap = 100 - ad
   return (
-    <section aria-label="Para esta partida" className="rounded-xl border border-ally/25 bg-ally/5 p-3">
-      <h3 className="font-display text-base font-semibold text-ally">Para esta partida</h3>
+    <section aria-label="Para esta partida" className="rounded-lg border border-line p-3">
+      <h3 className="font-display text-base font-semibold text-good">Para esta partida</h3>
       <div className="mt-2" role="img" aria-label={`Dano inimigo: ${ad}% físico, ${ap}% mágico`}>
         <div className="flex h-2 overflow-hidden rounded-full bg-raised">
           <span className="bg-gold" style={{ width: `${ad}%` }} />
-          <span className="bg-ally" style={{ width: `${ap}%` }} />
+          <span className="bg-good" style={{ width: `${ap}%` }} />
         </div>
         <p className="mt-1 flex justify-between text-xs text-mist">
           <span>{ad}% físico</span>
@@ -168,7 +168,7 @@ function MatchupNote({ matchup }: { matchup: NonNullable<ChampionBuild['matchup'
   const enemy = useChampionName(matchup.enemyId)
   const changed = [matchup.runes && 'runas', matchup.spells && 'feitiços'].filter(Boolean).join(' e ')
   return (
-    <p role="note" className="rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-sm text-mist">
+    <p role="note" className="rounded-lg border border-line px-3 py-2 text-sm text-mist">
       <span className="text-gold">Contra {enemy}</span>
       {changed
         ? `: ${changed} trocados pelos mais usados nesse confronto (${matchup.games} partidas). A opção geral continua na lista.`
@@ -248,27 +248,19 @@ export function BuildPanel() {
     focus.source === 'local' ? 'Seu campeão' : focus.source === 'preview' ? 'Opção selecionada' : 'Melhor pick da Pool'
 
   return (
-    <section aria-label="Build" className="overflow-hidden rounded-2xl border border-line bg-panel/70 shadow-card">
-      <header className="relative flex items-center gap-3 overflow-hidden border-b border-line px-4 py-3">
-        {champ && (
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-cover bg-top opacity-25"
-            style={{ backgroundImage: `url("${splashUrl(champ.key)}")` }}
-          />
-        )}
-        <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-panel via-panel/80 to-transparent" />
-        <ChampionIcon id={focus.championId} size={52} className="relative" />
-        <div className="relative min-w-0 flex-1">
-          <h2 className="truncate font-display text-3xl font-semibold leading-none">{name}</h2>
-          <p className="mt-1 text-xs text-mist">
+    <section aria-label="Build">
+      <header className="flex items-center gap-4 border-b border-line pb-5">
+        <ChampionIcon id={focus.championId} size={56} />
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate font-display text-2xl font-semibold leading-none">{name}</h2>
+          <p className="mt-1.5 text-sm text-mist">
             {origin}
             {focus.role ? `, ${ROLE_LABEL[focus.role]}` : ''}
           </p>
         </div>
       </header>
 
-      <div className="flex flex-col gap-5 p-4">
+      <div className="flex flex-col gap-7 pt-6">
         {status === 'loading' && <p className="text-mist">Carregando build…</p>}
         {status === 'error' && <p className="text-enemy">Não foi possível carregar a build deste campeão.</p>}
 
