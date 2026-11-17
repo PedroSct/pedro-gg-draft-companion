@@ -134,6 +134,12 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Tier List mais justa e dupla nos Picks (0.13.2)**: o tier agora leva em conta a **quantidade de jogos**, não só a taxa de
+  vitória. A nota usa a vitória suavizada menos uma margem de erro (quanto menos partidas, maior a margem), e campeões de
+  **nicho** (menos de 0,5% das partidas da rota ou menos de 100 jogos) ficam no máximo em B; só quem tem pelo menos 1,5% de
+  presença pode ser S. Na tela Meta há **Lista** e **Tier List** (cada campeão mostra a taxa e os jogos), o filtro "Esconder
+  campeões de nicho" e a nota "Como o tier é calculado". Quem joga **suporte ou atirador** agora vê o **combo da dupla** (e os
+  pontos fortes e fracos) também na etapa de **Picks**, não só nos bans.
 - **Logo nova (0.13.1)**: a logo desenhada pelo Pedro (hexágono, P isométrico e o traço embaixo) foi redesenhada em vetor, com
   inclinação isométrica exata de 30°, espessuras e espaços iguais e dourado igual ao do app. Existe uma versão grande e uma
   **pequena** (borda mais grossa, P maior) para 16 a 32 px. Foi aplicada no ícone da janela, no instalador (`build/icon.ico`),

@@ -40,4 +40,5 @@ for f in "${REMOVER[@]+"${REMOVER[@]}"}"; do rm -f -- "$f"; done
 cp -R "$NOVA"/. .
 echo
 echo "Pronto. Confira com:  git status"
+echo "Se a versão trouxer pacotes novos, rode:  pnpm install"
 echo "Depois rode:          bash publicar.sh"

@@ -23,7 +23,7 @@ const CH = [
 ]
 const nameOf = (id: number): string => CH.find((c) => c.id === id)?.name ?? `#${id}`
 const row = (championId: number, delta: number, winrate = 0.51, over: Partial<MetaTierRow> = {}): MetaTierRow => ({
-  championId, games: 5000, winrate, delta, score: delta, presence: 0.05, tier: delta >= 2 ? 'S' : 'B', hasBuild: true, lowSample: false, ...over
+  championId, games: 5000, winrate, delta, score: delta, presence: 0.05, tier: delta >= 2 ? 'S' : 'B', hasBuild: true, lowSample: false, rare: false, ...over
 })
 const games = (id: number, role: AccountGame['role'], n: number, wins: number): AccountGame[] =>
   Array.from({ length: n }, (_, i) => ({ championId: id, role, win: i < wins }))

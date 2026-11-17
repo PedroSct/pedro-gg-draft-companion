@@ -25,27 +25,71 @@ const LIST_SIZE = 5
 
 const smooth = (s: WinStats, prior = PRIOR_GAMES): number => (s.wins + prior / 2) / (s.games + prior)
 
-/** Pontuação do ranking: com poucos jogos ela fica dentro da faixa B (amostra pequena não chama de forte nem fraco). */
-function scoreOf(delta: number, games: number): number {
-  return games < MIN_GAMES_FOR_TIER ? Math.max(-0.79, Math.min(0.79, delta)) : delta
+/** Menos que isto das partidas da rota: campeão de nicho. Fica em B (quem joga muito um campeão raro costuma vencer mais do que ele vale). */
+export const RARE_PRESENCE = 0.005
+/** S só para quem também é bastante jogado na rota: vitória alta com pouco uso não prova que o campeão é o melhor. */
+export const TOP_PRESENCE = 0.015
+const TIER_S = 1.5
+const TIER_A = 0.6
+
+/**
+ * Pontuação do ranking, em pontos acima ou abaixo de 50%.
+ * Parte do winrate suavizado e tira a margem de erro (1 erro-padrão): com poucos jogos o número encolhe para 0,
+ * então 150 jogos a 58% valem menos que 15 mil jogos a 53%. Vale para cima e para baixo.
+ */
+export function tierScore(s: WinStats): number {
+  const d = smooth(s, TIER_PRIOR_GAMES) - 0.5
+  const se = Math.sqrt(0.25 / Math.max(1, s.games))
+  return Math.sign(d) * Math.max(0, Math.abs(d) - se) * 100
 }
 
-function tierFor(delta: number, games: number): Tier {
-  return tierOf(scoreOf(delta, games))
-}
-
-export function tierOf(deltaPoints: number): Tier {
-  if (deltaPoints >= 2) return 'S'
-  if (deltaPoints >= 0.8) return 'A'
-  if (deltaPoints >= -0.8) return 'B'
-  if (deltaPoints >= -2) return 'C'
+export function tierOf(scorePoints: number): Tier {
+  if (scorePoints >= TIER_S) return 'S'
+  if (scorePoints >= TIER_A) return 'A'
+  if (scorePoints >= -TIER_A) return 'B'
+  if (scorePoints >= -TIER_S) return 'C'
   return 'D'
 }
 
+export interface Grade {
+  /** pontuação conservadora (pontos) */
+  score: number
+  tier: Tier
+  /** poucas partidas ou campeão de nicho: tier limitado a B */
+  rare: boolean
+}
+
+/** Tier de um campeão numa rota: pontuação conservadora + quanto ele é jogado (presence = fração das partidas da rota). */
+export function gradeOf(s: WinStats, presence: number): Grade {
+  const raw = tierScore(s)
+  const rare = s.games < MIN_GAMES_FOR_TIER || presence < RARE_PRESENCE
+  let score = raw
+  if (rare) score = Math.max(-(TIER_A - 0.01), Math.min(TIER_A - 0.01, raw))
+  else if (presence < TOP_PRESENCE) score = Math.min(raw, TIER_S - 0.01)
+  return { score, tier: tierOf(score), rare }
+}
+
+const totalsCache = new WeakMap<MetaDataset, Map<Role, number>>()
 function roleTotal(ds: MetaDataset, role: Role): number {
-  let total = 0
-  for (const c of Object.values(ds.champions)) total += c.roles[role]?.games ?? 0
+  let by = totalsCache.get(ds)
+  if (!by) {
+    by = new Map()
+    totalsCache.set(ds, by)
+  }
+  let total = by.get(role)
+  if (total === undefined) {
+    total = 0
+    for (const c of Object.values(ds.champions)) total += c.roles[role]?.games ?? 0
+    by.set(role, total)
+  }
   return total
+}
+
+/** Fração das partidas da rota em que o campeão aparece. */
+export function rolePresence(ds: MetaDataset, championId: number | string, role: Role): number {
+  const m = ds.champions[String(championId)]?.roles[role]
+  const total = roleTotal(ds, role)
+  return m && total > 0 ? m.games / total : 0
 }
 
 /** Ranking da rota: melhores primeiro (pelo winrate suavizado, então amostras pequenas não dominam). */
@@ -56,16 +100,19 @@ export function tierRows(ds: MetaDataset, role: Role): MetaTierRow[] {
     const m = c.roles[role]
     if (!m || m.games <= 0) continue
     const delta = (smooth(m, TIER_PRIOR_GAMES) - 0.5) * 100
+    const presence = total > 0 ? m.games / total : 0
+    const g = gradeOf(m, presence)
     rows.push({
       championId: Number(id),
       games: m.games,
       winrate: m.wins / m.games,
       delta,
-      presence: total > 0 ? m.games / total : 0,
-      score: scoreOf(delta, m.games),
-      tier: tierFor(delta, m.games),
+      presence,
+      score: g.score,
+      tier: g.tier,
       hasBuild: !!m.build,
-      lowSample: m.games < MIN_GAMES_FOR_TIER
+      lowSample: m.games < MIN_GAMES_FOR_TIER,
+      rare: g.rare
     })
   }
   return rows.sort((a, b) => b.score - a.score || b.games - a.games || a.championId - b.championId)
@@ -125,7 +172,7 @@ export function championDetail(ds: MetaDataset, championId: number, role: Role):
     winrate: m.wins / m.games,
     delta,
     presence: total > 0 ? m.games / total : 0,
-    tier: tierFor(delta, m.games),
+    tier: gradeOf(m, total > 0 ? m.games / total : 0).tier,
     best,
     worst,
     allies,

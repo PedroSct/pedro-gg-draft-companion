@@ -446,7 +446,7 @@ export interface MetaTierRow {
   winrate: number
   /** diferença para 50% em pontos, já com suavização (poucos jogos puxam para 0) */
   delta: number
-  /** pontuação do ranking: igual a delta, mas dentro da faixa B quando há poucos jogos */
+  /** pontuação do ranking: o delta menos a margem de erro (poucos jogos encolhem para 0); campeão de nicho fica na faixa B */
   score: number
   /** participação do campeão nas partidas da rota (0..1) */
   presence: number
@@ -454,6 +454,8 @@ export interface MetaTierRow {
   hasBuild: boolean
   /** poucos jogos: o tier fica em B e os números ainda oscilam */
   lowSample: boolean
+  /** pouco jogado na rota (menos de 0,5% das partidas) ou poucas partidas: o tier fica limitado a B */
+  rare: boolean
 }
 
 export interface MetaMatchupRow {

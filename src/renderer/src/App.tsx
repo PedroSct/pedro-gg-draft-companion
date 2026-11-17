@@ -194,7 +194,7 @@ function DraftScreen() {
           )}
           {stage === 'pick' && (
             <>
-              <MatchupSpotlight compact />
+              <MatchupSpotlight compact points />
               <MetaCounters />
               <PickSuggestion />
               <ChampionSearch />

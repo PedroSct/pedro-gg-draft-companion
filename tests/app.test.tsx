@@ -1385,6 +1385,27 @@ describe('Draft em etapas', () => {
     expect(screen.queryByRole('region', { name: 'Build' })).not.toBeInTheDocument()
   })
 
+  it('a dupla da rota e os pontos fortes e fracos também aparecem na etapa de Picks', async () => {
+    const fake = installApi()
+    ;(fake.api as { getLaneMatchup: LolApi['getLaneMatchup'] }).getLaneMatchup = async () => ({
+      enemyId: 238,
+      simulated: false,
+      winrate: 0.5,
+      games: 80,
+      duo: { partnerId: 22, partnerRole: 'BOTTOM', enemyCarryId: 51, enemySupportId: 412, ourWinrate: 0.55, ourGames: 40, enemyWinrate: 0.48, enemyGames: 35 },
+      strengths: ['Tier S no meta'],
+      weaknesses: ['Perde a rota contra Zed']
+    })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    // é a vez de escolher (etapa de Picks), jogando de suporte
+    const pickDraft: DraftState = { ...draftWithZed(), localRole: 'UTILITY', allies: [player(0, 0, 'none', 'TOP'), player(1, 103, 'hovering', 'UTILITY')] }
+    act(() => fake.pushDraft(pickDraft))
+    await screen.findByRole('button', { name: /Picks/, current: 'step' })
+    expect(await screen.findByLabelText('Combo da dupla')).toHaveTextContent('Seu atirador')
+    expect(await screen.findByText(/Tier S no meta/)).toBeInTheDocument()
+  })
+
   it('no suporte, mostra a dupla da rota e os pontos fortes e fracos', async () => {
     const fake = installApi()
     ;(fake.api as { getLaneMatchup: LolApi['getLaneMatchup'] }).getLaneMatchup = async () => ({

@@ -3,7 +3,7 @@
 // confiam, e quem está forte no meta. Função pura sobre o dataset, sem I/O.
 import type { DraftState, Role } from '../../shared/types'
 import { ROLES, type BanReason, type BanSuggestion, type FriendProfile, type MetaDataset, type WinStats } from '../../shared/dataTypes'
-import { tierOf } from './metaStats'
+import { gradeOf, rolePresence } from './metaStats'
 import { banPhaseOpen } from '../../shared/draftStage'
 
 /** Só campeões com conforto 4 ou 5 pesam: não vale gastar ban para proteger um pick inseguro. */
@@ -129,9 +129,10 @@ export function suggestBans(input: BanInput): BanSuggestion[] {
       if (!m || m.games < 100) continue
       const s = share(xid, role)
       if (s < MIN_ROLE_SHARE) continue
+      const g = gradeOf(m, rolePresence(dataset, xid, role))
+      if (g.tier !== 'S' && g.tier !== 'A') continue
+      const tier = g.tier
       const delta = (smooth(m, META_PRIOR) - 0.5) * 100
-      const tier = tierOf(delta)
-      if (tier !== 'S' && tier !== 'A') continue
       bump(idNum, delta * s * META_WEIGHT, { kind: 'meta', role, tier, winrate: m.wins / m.games, games: m.games })
     }
   }

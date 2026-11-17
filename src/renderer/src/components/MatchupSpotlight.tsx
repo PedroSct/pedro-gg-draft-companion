@@ -44,10 +44,10 @@ function MiniChamp({ id, ring }: { id: number | null; ring: string }) {
   )
 }
 
-function DuoCard({ duo, myId }: { duo: DuoInfo; myId: number }) {
+function DuoCard({ duo, myId, compact = false }: { duo: DuoInfo; myId: number; compact?: boolean }) {
   const mine = duo.partnerRole === 'BOTTOM' ? 'Seu atirador' : 'Seu suporte'
   return (
-    <div aria-label="Combo da dupla" className="mt-6 border-t border-line pt-4">
+    <div aria-label="Combo da dupla" className={`${compact ? 'mt-4 pt-3' : 'mt-6 pt-4'} border-t border-line`}>
       <p className="mb-2 text-center text-[11px] uppercase tracking-wide text-dim">Dupla da rota</p>
       <div className="flex items-center justify-center gap-3">
         <div className="flex flex-col items-center gap-1">
@@ -72,7 +72,7 @@ function DuoCard({ duo, myId }: { duo: DuoInfo; myId: number }) {
   )
 }
 
-function Points({ strengths, weaknesses }: { strengths: string[]; weaknesses: string[] }) {
+function Points({ strengths, weaknesses, compact = false }: { strengths: string[]; weaknesses: string[]; compact?: boolean }) {
   if (!strengths.length && !weaknesses.length) return null
   const list = (items: string[], mark: string, empty: string) =>
     items.length ? (
@@ -87,7 +87,7 @@ function Points({ strengths, weaknesses }: { strengths: string[]; weaknesses: st
       <p className="border-b border-line py-2 text-sm text-dim">{empty}</p>
     )
   return (
-    <div className="mt-6 grid grid-cols-2 gap-10 max-[640px]:grid-cols-1 max-[640px]:gap-5">
+    <div className={`${compact ? 'mt-4' : 'mt-6'} grid grid-cols-2 gap-10 max-[640px]:grid-cols-1 max-[640px]:gap-5`}>
       <div>
         <h3 className="border-b border-line pb-2 text-xs font-semibold uppercase tracking-wider text-good">Pontos fortes</h3>
         {list(strengths, '+', 'Nada se destaca nos dados.')}
@@ -104,7 +104,8 @@ function Points({ strengths, weaknesses }: { strengths: string[]; weaknesses: st
  * Seu confronto de rota em destaque: o seu campeão (ou o em foco) contra o oponente da rota, com o quanto você vence dele.
  * O oponente vem do draft; sem ele, dá para simular um pela busca (ex.: Caitlyn no ADC) e a build/runas se ajustam.
  */
-export function MatchupSpotlight({ compact = false }: { compact?: boolean } = {}) {
+/** compact: versão menor (etapas de Picks e Build). points: mostra também os pontos fortes e fracos (padrão: só na versão grande). A dupla da rota aparece sempre. */
+export function MatchupSpotlight({ compact = false, points = !compact }: { compact?: boolean; points?: boolean } = {}) {
   const draft = useApp((s) => s.draft)
   const focus = useFocus()
   const sim = useApp((s) => s.simEnemyId)
@@ -173,8 +174,8 @@ export function MatchupSpotlight({ compact = false }: { compact?: boolean } = {}
         </div>
         <Side id={m?.enemyId ?? 0} ring="ring-enemy" label={m?.enemyId ? (m.simulated ? 'Simulado' : 'Oponente de rota') : 'Oponente'} size={size} />
       </div>
-      {!compact && m?.duo && <DuoCard duo={m.duo} myId={focus.championId} />}
-      {!compact && m && <Points strengths={m.strengths ?? []} weaknesses={m.weaknesses ?? []} />}
+      {m?.duo && <DuoCard duo={m.duo} myId={focus.championId} compact={compact} />}
+      {points && m && <Points strengths={m.strengths ?? []} weaknesses={m.weaknesses ?? []} compact={compact} />}
     </section>
   )
 }

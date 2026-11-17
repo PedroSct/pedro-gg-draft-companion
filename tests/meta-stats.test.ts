@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { championDetail, tierOf, tierRows } from '../src/main/data/metaStats'
+import { championDetail, gradeOf, rolePresence, tierOf, tierRows, tierScore } from '../src/main/data/metaStats'
 import { validateDataset } from '../src/main/data/meta'
 
 const ds = validateDataset({
@@ -18,7 +18,34 @@ const ds = validateDataset({
 
 describe('tela Meta: estatísticas', () => {
   it('classifica em tiers pelo winrate suavizado', () => {
-    expect([tierOf(3), tierOf(1), tierOf(0), tierOf(-1.5), tierOf(-3)]).toEqual(['S', 'A', 'B', 'C', 'D'])
+    expect([tierOf(3), tierOf(1), tierOf(0), tierOf(-1), tierOf(-3)]).toEqual(['S', 'A', 'B', 'C', 'D'])
+  })
+
+  it('o tier compara jogos com vitórias: poucos jogos encolhem a nota, muitos jogos a mantêm', () => {
+    const few = { games: 150, wins: 87 } // 58%
+    const many = { games: 15000, wins: 7950 } // 53%
+    expect(tierScore(few)).toBeLessThan(tierScore(many))
+    expect(gradeOf(few, 0.02).tier).not.toBe('S')
+    expect(gradeOf(many, 0.03).tier).toBe('S')
+    // vale também para baixo: poucos jogos não condenam o campeão
+    expect(Math.abs(tierScore({ games: 150, wins: 63 }))).toBeLessThan(Math.abs(tierScore({ games: 15000, wins: 7050 })))
+  })
+
+  it('campeão pouco jogado não passa de B, e S pede presença na rota', () => {
+    const niche = { games: 1400, wins: 769 } // 54,9% em 0,23% das partidas
+    const g = gradeOf(niche, 0.0023)
+    expect(g.rare).toBe(true)
+    expect(g.tier).toBe('B')
+    const strongButUncommon = gradeOf({ games: 15000, wins: 7950 }, 0.01) // abaixo de 1,5%
+    expect(strongButUncommon.rare).toBe(false)
+    expect(strongButUncommon.tier).toBe('A')
+    expect(gradeOf({ games: 20000, wins: 9400 }, 0.05).tier).toBe('D') // 47% com muitos jogos
+    expect(gradeOf({ games: 20000, wins: 9400 }, 0.001).tier).toBe('B') // nicho nunca é C nem D
+  })
+
+  it('rolePresence é a fração das partidas da rota', () => {
+    expect(rolePresence(ds, 1, 'MIDDLE')).toBeCloseTo(10000 / 16030, 3)
+    expect(rolePresence(ds, 1, 'TOP')).toBe(0)
   })
 
   it('ranking da rota: amostra pequena não ganha de quem tem muitos jogos', () => {

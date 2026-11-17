@@ -3,7 +3,7 @@
 // Função pura: sem I/O. Os textos já saem em português.
 import type { DraftState, Role } from '../../shared/types'
 import { ROLES, type DuoInfo, type FriendProfile, type LaneMatchup, type MetaDataset, type WinStats } from '../../shared/dataTypes'
-import { tierOf } from './metaStats'
+import { gradeOf, rolePresence } from './metaStats'
 
 export const ROLE_NAMES: Record<Role, string> = { TOP: 'Top', JUNGLE: 'Selva', MIDDLE: 'Mid', BOTTOM: 'ADC', UTILITY: 'Suporte' }
 
@@ -79,8 +79,7 @@ export function buildInsights(input: InsightsInput): LaneMatchup {
 
   // Força do campeão na rota
   if (mine && mine.games >= 100) {
-    const delta = (smooth(mine, 300) - 0.5) * 100
-    const tier = tierOf(delta)
+    const { tier } = gradeOf(mine, rolePresence(ds, championId, role))
     if (tier === 'S' || tier === 'A') strengths.push(`Forte no meta de ${input.roleLabel(role)}: tier ${tier} (${pctText(mine.wins / mine.games)})`)
     else if (tier === 'D' || tier === 'C') weaknesses.push(`Fraco no meta de ${input.roleLabel(role)} neste patch: tier ${tier} (${pctText(mine.wins / mine.games)})`)
   }

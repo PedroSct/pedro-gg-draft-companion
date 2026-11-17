@@ -37,6 +37,10 @@ echo
 
 # 3) Confere tipos e testes ANTES de enviar (é o que a build do GitHub faz; evita tag com erro)
 if [ -d node_modules ] && command -v pnpm >/dev/null 2>&1; then
+  # Versões novas podem trazer pacotes novos (ex.: fontes): instala o que faltar antes de conferir.
+  echo "Conferindo as dependências (pnpm install)..."
+  pnpm install --frozen-lockfile >/dev/null 2>&1 || pnpm install || { echo; echo "Não consegui instalar as dependências (internet?). Nada foi enviado."; exit 1; }
+  echo
   echo "Conferindo os tipos (pnpm typecheck)..."
   pnpm typecheck || { echo; echo "Há erro de tipos: nada foi enviado. Corrija (ou me mande a mensagem) e rode de novo."; exit 1; }
   echo
