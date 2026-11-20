@@ -14,6 +14,7 @@ import {
   completeLevels,
   isValidSkillSequence,
   itemRulesFrom,
+  mergeStates,
   newState,
   noteSkillReject,
   priorityOf,
@@ -616,5 +617,65 @@ describe('buildMeta (Riot simulada)', () => {
   it('sem nenhuma partida válida, avisa em vez de gerar um arquivo vazio', async () => {
     await expect(buildMeta(options({ patch: '15.1' }))).rejects.toThrow(/Nenhuma partida válida/)
     expect(existsSync(join(dir, 'meta.json'))).toBe(false)
+  })
+})
+
+describe('dupla com as duas rotas e taxa de ban', () => {
+  const roles = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY']
+  const match = (blueWins: boolean, bans: number[][]): RawMatch => ({
+    info: {
+      gameVersion: '16.20.1.1', queueId: 420, gameDuration: 1500, gameEndedInEarlySurrender: false,
+      teams: bans.map((b, i) => ({ teamId: i === 0 ? 100 : 200, bans: b.map((championId) => ({ championId })) })),
+      participants: Array.from({ length: 10 }, (_, i) => ({ participantId: i + 1, championId: i + 1, teamId: i < 5 ? 100 : 200, teamPosition: roles[i % 5], win: (i < 5) === blueWins }))
+    }
+  })
+  const rules = itemRulesFrom({ data: {} })
+
+  it('guarda a rota do aliado junto do campeão e passa pela validação', () => {
+    const state = newState('16.20')
+    for (const blue of [true, true, false]) addMatch(state, match(blue, []), null, rules)
+    expect(state.champions['1'].TOP!.pairs!['JUNGLE:2']).toEqual({ games: 3, wins: 2 })
+    expect(state.champions['1'].TOP!.pairs!['TOP:6']).toBeUndefined() // inimigo
+    const ds = finalize(state, { minGames: 1, minMatchupGames: 3, minBuildSamples: 1, source: 't', generatedAt: '' })
+    const checked = validateDataset(JSON.parse(JSON.stringify(ds)))
+    expect(checked.champions['1'].roles.TOP!.pairs!['MIDDLE:3']).toEqual({ games: 3, wins: 2 })
+  })
+
+  it('conta cada ban uma vez por partida e calcula a base da taxa', () => {
+    const state = newState('16.20')
+    addMatch(state, match(true, [[1, 6, 0], [1, 7]]), null, rules) // o 1 é banido pelos dois times: conta uma vez
+    addMatch(state, match(true, [[1], [6]]), null, rules)
+    addMatch(state, match(false, []), null, rules) // sem lista de bans: fora da base
+    expect(state.banMatches).toBe(2)
+    expect(state.bans).toEqual({ '1': 2, '6': 2, '7': 1 })
+    const ds = finalize(state, { minGames: 1, minMatchupGames: 3, minBuildSamples: 1, source: 't', generatedAt: '' })
+    expect(ds.bans).toBeUndefined() // abaixo do mínimo de bans: não incha o arquivo
+  })
+
+  it('o dataset traz os bans acima do mínimo e a validação ignora lixo', () => {
+    const state = newState('16.20')
+    for (let i = 0; i < 4; i++) addMatch(state, match(true, [[1], [6]]), null, rules)
+    const ds = finalize(state, { minGames: 1, minMatchupGames: 3, minBuildSamples: 1, source: 't', generatedAt: '' })
+    expect(ds.bans).toEqual({ matches: 4, counts: { '1': 4, '6': 4 } })
+    const raw = JSON.parse(JSON.stringify(ds))
+    raw.bans.counts['x'] = 3
+    raw.bans.counts['2'] = 99 // maior que o número de partidas
+    expect(validateDataset(raw).bans).toEqual({ matches: 4, counts: { '1': 4, '6': 4 } })
+    delete raw.bans
+    expect(validateDataset(raw).bans).toBeUndefined()
+  })
+
+  it('juntar coletas soma duplas e bans', () => {
+    const a = newState('16.20')
+    const b = newState('16.20')
+    addMatch(a, match(true, [[1], [6]]), null, rules)
+    addMatch(b, match(false, [[1], [7]]), null, rules)
+    const { merged } = mergeStates([a, b])
+    expect(merged.banMatches).toBe(2)
+    expect(merged.bans).toEqual({ '1': 2, '6': 1, '7': 1 })
+    expect(merged.champions['1'].TOP!.pairs!['JUNGLE:2']).toEqual({ games: 2, wins: 1 })
+    // checkpoint antigo (sem pairs/bans) entra sem quebrar
+    const old = newState('16.20')
+    expect(mergeStates([old, a]).merged.banMatches).toBe(1)
   })
 })

@@ -31,8 +31,8 @@ const STEPS: Step[] = [
   },
   {
     target: 'nav-meta',
-    title: '4. Meta: ranking, Tier List e builds',
-    body: 'Veja o tier de cada campeão por rota em duas visões: Lista (ordene por vitórias, presença ou jogos) e Tier List (faixas S a D com os campeões). Clique em um campeão para ver confrontos, sinergias e a build mais usada. Escolha o servidor (Global, BR, NA, EUW, KR e outros) para ver os dados daquela região.'
+    title: '4. Meta: ranking, Tier List, sinergias e builds',
+    body: 'Veja o tier de cada campeão por rota em três visões: Lista (ordene por vitórias, presença ou jogos), Tier List (faixas S a D com os campeões) e Sinergias (os melhores combos de cada par de rotas, como Atirador + Suporte ou Meio + Selva, ou os parceiros de um campeão que você fixar). No Draft, o painel Grupo mostra as relações de duo, trio, squad ou time fechado. Clique em um campeão para ver confrontos, sinergias e a build mais usada. Escolha o servidor (Global, BR, NA, EUW, KR e outros) para ver os dados daquela região.'
   },
   {
     target: 'nav-postgame',

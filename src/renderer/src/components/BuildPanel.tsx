@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Role } from '../../../shared/types'
 import type { LoadoutParts, PartResult } from '../../../shared/loadout'
 import type { BuildSituation, ChampionBuild, SpellInfo } from '../../../shared/dataTypes'
+import { KIND_LABEL, type AdviceKind, type ItemAdvice } from '../../../shared/itemAdvice'
 import { useApp } from '../store/useApp'
 import { useFocus } from '../lib/useFocus'
 import { ROLE_LABEL, ROLE_SHORT } from '../lib/format'
@@ -119,7 +120,22 @@ const FOCUS_TEXT: Record<NonNullable<BuildSituation['focus']>, string> = {
   'magic-resist': 'O time inimigo causa quase só dano mágico: priorize resistência mágica.',
   penetration: 'O time inimigo tem vários tanques: priorize penetração.'
 }
-const REASON_TEXT = { armor: 'armadura', 'magic-resist': 'resistência mágica', penetration: 'penetração' } as const
+export const REASON_TEXT: Record<AdviceKind, string> = {
+  armor: 'armadura',
+  'magic-resist': 'resistência mágica',
+  penetration: 'penetração',
+  'anti-heal': 'anticura',
+  'anti-shield': 'corta escudo',
+  shield: 'escudo contra explosão',
+  tenacity: 'tenacidade e controle de grupo'
+}
+
+/** Uma recomendação: o item, o motivo e, se a necessidade é grande, qual item principal ele substitui. */
+function AdviceItem({ advice }: { advice: ItemAdvice }) {
+  const replaced = useApp((s) => (advice.replaces ? s.catalog?.items[String(advice.replaces)]?.name : undefined))
+  const swap = advice.replaces ? ` Troque ${replaced ?? `o item ${advice.slot}`} (item ${advice.slot}) por este.` : ''
+  return <SituationalItem id={advice.itemId} when={`${KIND_LABEL[advice.kind]}: ${advice.why}.${swap}${advice.general ? ' Sugestão geral.' : ''}`} />
+}
 
 /** "Para esta partida": o que muda na build por causa do time inimigo (só aparece com inimigos conhecidos). */
 function SituationCard({ situation }: { situation: BuildSituation }) {
@@ -141,19 +157,21 @@ function SituationCard({ situation }: { situation: BuildSituation }) {
         </p>
       </div>
       <p className="mt-2 text-sm">
-        {situation.focus ? FOCUS_TEXT[situation.focus] : 'Dano inimigo equilibrado: siga a build padrão.'}
+        {situation.focus ? FOCUS_TEXT[situation.focus] : situation.advice.length > 0 ? 'Dano inimigo equilibrado, mas o time pede estes ajustes:' : 'Dano inimigo equilibrado: siga a build padrão.'}
         {situation.enemiesKnown < 5 && <span className="text-mist"> ({situation.enemiesKnown} de 5 inimigos conhecidos)</span>}
       </p>
-      {situation.picks.length > 0 && (
-        <ul className="mt-2 flex flex-col gap-2">
-          {situation.picks.map((p) => (
-            <SituationalItem key={p.itemId} id={p.itemId} when={`Boa aqui: ${REASON_TEXT[p.reason]}`} />
+      {situation.advice.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-2.5" aria-label="Itens para esta partida">
+          {situation.advice.map((a) => (
+            <AdviceItem key={a.itemId} advice={a} />
           ))}
         </ul>
       )}
-      {situation.focus && situation.picks.length === 0 && (
-        <p className="mt-1 text-xs text-mist">Os dados deste campeão não trazem um item de {REASON_TEXT[situation.focus]} entre os mais comprados.</p>
-      )}
+      {situation.needs.filter((n) => !situation.advice.some((a) => a.kind === n.kind)).map((n) => (
+        <p key={n.kind} className="mt-1 text-xs text-mist">
+          {n.why}: sem item de {REASON_TEXT[n.kind]} na sua build ou no catálogo que combine com o seu campeão.
+        </p>
+      ))}
       {situation.variantCore && (
         <div className="mt-2">
           <ItemRow title="Construção que encaixa melhor nesta partida" ids={situation.variantCore} chain />
@@ -182,10 +200,10 @@ export function BuildPanel() {
   const champ = useApp((s) => (focus ? s.champById.get(focus.championId) : undefined))
   const name = useChampionName(focus?.championId ?? 0)
   const setRoleOverride = useApp((s) => s.setRoleOverride)
-  const [data, setData] = useState<{ build: ChampionBuild | null; spells: SpellInfo[] }>({ build: null, spells: [] })
+  const [data, setData] = useState<{ build: ChampionBuild | null; spells: SpellInfo[]; forKey: string }>({ build: null, spells: [], forKey: '' })
   const [status, setStatus] = useState<Status>('loading')
   const [situation, setSituation] = useState<BuildSituation | null>(null)
-  const [selection, setSelection] = useState<BuildSelection>(ZERO_SELECTION)
+  const chooseBuild = useApp((s) => s.chooseBuild)
   // Muda quando um inimigo é escolhido, trocado ou travado: refaz os ajustes da build.
   const enemySignature = useApp((s) => (s.draft ? s.draft.enemies.map((e) => `${e.championId}${e.status}`).join(',') : ''))
   const simEnemyId = useApp((s) => s.simEnemyId)
@@ -193,6 +211,25 @@ export function BuildPanel() {
   const championId = focus?.championId
   const role = focus?.role
   const key = champ?.key
+  const selKey = championId !== undefined && role ? `${championId}|${role}` : ''
+  const stored = useApp((s) => (selKey ? s.buildSelections[selKey] : undefined))
+  const loaded = data.forKey === selKey && status === 'ready'
+  const enemyId = loaded ? (data.build?.matchup?.enemyId ?? null) : null
+  // A escolha vale para o confronto em que a lista foi montada; com outro oponente a ordem das opções muda e volta para a primeira.
+  const stale = loaded && !!stored && stored.enemyId !== enemyId
+  const selection = stored && !stale ? stored.selection : ZERO_SELECTION
+  const onSelect = (s: BuildSelection): void => {
+    if (!selKey || championId === undefined || !role) return
+    chooseBuild(selKey, s, enemyId)
+    void window.api.setBuildSelection({ championId, role, selection: s })
+  }
+  useEffect(() => {
+    if (stale && championId !== undefined && role) {
+      chooseBuild(selKey, ZERO_SELECTION, enemyId)
+      void window.api.setBuildSelection({ championId, role, selection: ZERO_SELECTION })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stale, selKey, enemyId])
 
   useEffect(() => {
     if (championId === undefined) return
@@ -204,7 +241,7 @@ export function BuildPanel() {
     ])
       .then(([build, spells]) => {
         if (cancelled) return
-        setData({ build, spells })
+        setData({ build, spells, forKey: `${championId}|${role ?? ''}` })
         setStatus('ready')
       })
       .catch(() => {
@@ -214,11 +251,6 @@ export function BuildPanel() {
       cancelled = true
     }
   }, [championId, role, key, enemySignature, simEnemyId])
-
-  // A lista de opções muda quando o confronto entra: volta para a primeira (a do confronto, se houver)
-  useEffect(() => {
-    setSelection(ZERO_SELECTION)
-  }, [championId, role, data.build?.matchup?.enemyId])
 
   useEffect(() => {
     if (championId === undefined || !role) {
@@ -294,7 +326,7 @@ export function BuildPanel() {
             {focus.role && <ImportPanel championId={focus.championId} role={focus.role} build={build} forLocal={focus.forLocal} selection={selection} />}
             {build.matchup && <MatchupNote matchup={build.matchup} />}
             {situation && <SituationCard situation={situation} />}
-            <BuildOptionsView championId={focus.championId} build={build} spells={data.spells} highlightCore={situation?.variantCore} selection={selection} onSelect={setSelection} />
+            <BuildOptionsView championId={focus.championId} build={build} spells={data.spells} highlightCore={situation?.variantCore} selection={selection} onSelect={onSelect} />
           </>
         )}
       </div>

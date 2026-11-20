@@ -9,9 +9,11 @@ export interface BuildSelection {
   starting: number
   boots: number
   core: number
+  /** ordem das habilidades (opção da lista de habilidades) */
+  skills: number
 }
 
-export const ZERO_SELECTION: BuildSelection = { runes: 0, spells: 0, starting: 0, boots: 0, core: 0 }
+export const ZERO_SELECTION: BuildSelection = { runes: 0, spells: 0, starting: 0, boots: 0, core: 0, skills: 0 }
 
 const KEYS = Object.keys(ZERO_SELECTION) as (keyof BuildSelection)[]
 
@@ -39,5 +41,9 @@ export function applyBuildSelection(build: ChampionBuild, sel: BuildSelection): 
   const starting = pick(o.starting, sel.starting)?.value ?? build.items.starting
   const boot = pick(o.boots, sel.boots)?.value
   const core = pick(o.core, sel.core)?.value ?? build.items.core
-  return { ...build, runes, spells, items: { ...build.items, starting, boots: boot !== undefined ? [boot] : build.items.boots, core } }
+  const skills = pick(o.skills, sel.skills)?.value
+  // A build completa continua valendo: os itens tardios que não entraram nos principais escolhidos seguem depois deles
+  const late = (build.items.full ?? []).filter((id) => !build.items.core.includes(id) && !core.includes(id))
+  const full = build.items.full ? [...core, ...late].slice(0, 6) : undefined
+  return { ...build, runes, spells, ...(skills ? { skillOrder: skills } : {}), items: { ...build.items, starting, boots: boot !== undefined ? [boot] : build.items.boots, core, ...(full ? { full } : {}) } }
 }

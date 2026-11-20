@@ -73,3 +73,30 @@ describe('tela Meta: estatísticas', () => {
     expect(d.worst.map((m) => m.championId)).toContain(1)
   })
 })
+
+describe('taxa de ban e o tier', () => {
+  const ds = validateDataset({
+    schemaVersion: 1, source: 't', patch: '16.22', generatedAt: '',
+    bans: { matches: 1000, counts: { '1': 300, '3': 10 } },
+    champions: {
+      '1': { roles: { MIDDLE: { games: 400, wins: 240, matchups: {} } } }, // 0,4% da rota, mas banido em 30%
+      '2': { roles: { MIDDLE: { games: 99600, wins: 49800, matchups: {} } } },
+      '3': { roles: { MIDDLE: { games: 100, wins: 50, matchups: {} }, TOP: { games: 400, wins: 200, matchups: {} } } }
+    }
+  })
+  it('campeão muito banido deixa de contar como de nicho', () => {
+    const rows = tierRows(ds, 'MIDDLE')
+    const a = rows.find((r) => r.championId === 1)!
+    expect(a.banRate).toBeCloseTo(0.3)
+    expect(a.rare).toBe(false)
+    expect(gradeOf({ games: 400, wins: 240 }, 0.004).rare).toBe(true)
+    expect(gradeOf({ games: 400, wins: 240 }, 0.004, 0.3).rare).toBe(false)
+  })
+  it('o ban só vale para a rota principal do campeão', () => {
+    expect(tierRows(ds, 'MIDDLE').find((r) => r.championId === 3)!.banRate).toBeUndefined() // 20% das partidas dele no meio
+    expect(tierRows(ds, 'TOP').find((r) => r.championId === 3)!.banRate).toBeCloseTo(0.01)
+  })
+  it('meta sem bans não tem taxa', () => {
+    expect(tierRows(validateDataset({ ...JSON.parse(JSON.stringify(ds)), bans: undefined }), 'MIDDLE')[0].banRate).toBeUndefined()
+  })
+})

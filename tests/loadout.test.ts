@@ -199,4 +199,10 @@ describe('importar build para o cliente', () => {
     const set = itemSetFor({ ...input({ items: true }), build: { ...build, items: { ...build.items, starting: [], situational: [] } } }) as { blocks: { type: string }[] }
     expect(set.blocks.map((b) => b.type)).toEqual(['Botas', 'Itens principais, na ordem'])
   })
+
+  it('o conjunto de itens traz os itens que vêm depois dos principais', () => {
+    const set = itemSetFor({ ...input({ items: true }), build: { ...build, items: { ...build.items, full: [...build.items.core, 3135, 3102] } } }) as { blocks: { type: string; items: { id: string }[] }[] }
+    const late = set.blocks.find((b) => b.type === 'Depois dos principais')!
+    expect(late.items.map((i) => i.id)).toEqual(['3135', '3102'])
+  })
 })

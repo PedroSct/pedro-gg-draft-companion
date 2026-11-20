@@ -134,6 +134,25 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Build que acompanha você até a partida e itens situacionais de verdade (0.15.0)**: a build, as habilidades e os itens que você
+  escolhe na etapa de Bans/Picks agora **seguem para a tela do jogo** (overlay), o Plano de jogo e a importação para o cliente,
+  mesmo depois que a partida começa (o app guarda o último draft por 6 horas). A **ordem de habilidades** também faz parte da
+  escolha. A build principal passou de 3 para **6 itens** (principais + "Depois dos principais", do 4º ao 6º mais comprado).
+  O cartão **Itens para esta partida** olha o time inimigo e sugere **penetração, escudo, anticura, anti-escudo ("corta
+  escudo"), tenacidade, armadura, resistência mágica** e outros, respeitando o seu estilo (AD, AP ou tanque), e quando a
+  necessidade é alta sugere **trocar** um item da build principal ("Troque o item 3 por este"). A build completa só aparece
+  depois da próxima coleta de dados; a detecção de anticura e anti-escudo lê o texto dos itens do patch, e o relatório de
+  diagnóstico mostra quantos itens de cada tipo o app reconheceu. **Coleta**: agora guarda cada dupla **com as duas rotas** (as
+  Sinergias e o modo Grupo deixam de adivinhar a rota do parceiro) e a **taxa de ban** (a tela Meta ganhou a coluna **Ban**, e um
+  campeão muito banido, 5% ou mais, deixa de ser tratado como de nicho). Meta antigo continua funcionando, sem as novidades.
+- **Sinergias no Meta e modo Grupo no Draft (0.14.0)**: a tela Meta ganhou a visão **Sinergias**, com os melhores combos de cada
+  par de rotas (Atirador + Suporte, Meio + Selva, Topo + Meio, Topo + Selva e os outros seis), vitórias da dupla, **sinergia**
+  (o quanto a dupla rende além da soma dos dois sozinhos, em pontos percentuais) e jogos. Dá para **fixar um campeão** e ver só
+  os parceiros dele. A nota usa a mesma regra conservadora do tier (poucos jogos encolhem o número; menos de 30 jogos não entra
+  e abaixo de 100 o tier não passa de B). No Draft, o painel **Grupo** (etapas de Bans e Picks) deixa marcar quem joga com você:
+  **Duo, Trio, Squad ou Time fechado**. Ele mostra todas as relações entre os campeões do grupo (as rotas vêm do draft), uma
+  nota geral (combinação forte, boa, neutra ou fraca) com o melhor combo e o ponto fraco, e **quem encaixa em cada vaga
+  aberta** pelo conjunto já escolhido. Só lê e sugere. O cliente não diz quem é do seu grupo, então a marcação é manual.
 - **Tier List mais justa e dupla nos Picks (0.13.2)**: o tier agora leva em conta a **quantidade de jogos**, não só a taxa de
   vitória. A nota usa a vitória suavizada menos uma margem de erro (quanto menos partidas, maior a margem), e campeões de
   **nicho** (menos de 0,5% das partidas da rota ou menos de 100 jogos) ficam no máximo em B; só quem tem pelo menos 1,5% de

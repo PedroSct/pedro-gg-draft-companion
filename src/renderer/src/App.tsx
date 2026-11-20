@@ -13,6 +13,7 @@ import { IdleScreen } from './components/IdleScreen'
 import { GamePlan } from './components/GamePlan'
 import { TurnBanner } from './components/TurnBanner'
 import { MatchupSpotlight } from './components/MatchupSpotlight'
+import { GroupPanel } from './components/GroupPanel'
 import { ChampionSearch } from './components/ChampionSearch'
 import { UpdateBanner } from './components/UpdateBanner'
 import { Splash } from './components/Splash'
@@ -188,6 +189,7 @@ function DraftScreen() {
             <>
               <MatchupSpotlight />
               <BanSuggestions />
+              <GroupPanel />
               <ChampionSearch />
               <BansBar allies={draft.bans.allies} enemies={draft.bans.enemies} />
             </>
@@ -197,6 +199,7 @@ function DraftScreen() {
               <MatchupSpotlight compact points />
               <MetaCounters />
               <PickSuggestion />
+              <GroupPanel />
               <ChampionSearch />
               {preview != null && <BuildPanel />}
               <BansBar allies={draft.bans.allies} enemies={draft.bans.enemies} />

@@ -55,6 +55,15 @@ function parseRunes(raw: Json): Pick<ChampionBuild, 'runes' | 'spells'> {
   return out
 }
 
+function parseBans(raw: unknown): MetaDataset['bans'] | undefined {
+  if (!isRecord(raw) || typeof raw.matches !== 'number' || !(raw.matches > 0) || !isRecord(raw.counts)) return undefined
+  const counts: Record<string, number> = {}
+  for (const [id, n] of Object.entries(raw.counts)) {
+    if (/^\d+$/.test(id) && typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= raw.matches) counts[id] = n
+  }
+  return Object.keys(counts).length ? { matches: raw.matches, counts } : undefined
+}
+
 function parseProfile(raw: unknown): ChampionProfile | undefined {
   if (!isRecord(raw)) return undefined
   const n = (v: unknown, max: number): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? v : null)
@@ -157,6 +166,7 @@ function parseBuild(raw: unknown): ChampionBuild | undefined {
     starting: idList(raw.items.starting),
     boots: idList(raw.items.boots),
     core: idList(raw.items.core),
+    ...(idList(raw.items.full).length >= 4 ? { full: idList(raw.items.full).slice(0, 6) } : {}),
     situational
   }
   const runesSpells = parseRunes(raw)
@@ -205,6 +215,13 @@ export function validateDataset(raw: unknown): MetaDataset {
           synergies[mate] = ss
         }
       }
+      const pairs: Record<string, WinStats> = {}
+      if (isRecord(r.pairs)) {
+        for (const [key, s] of Object.entries(r.pairs)) {
+          const ps = asStats(s)
+          if (/^(TOP|JUNGLE|MIDDLE|BOTTOM|UTILITY):\d+$/.test(key) && ps) pairs[key] = ps // opcional: entrada ruim é ignorada
+        }
+      }
       const versus: Record<string, WinStats> = {}
       if (isRecord(r.versus)) {
         for (const [foe, s] of Object.entries(r.versus)) {
@@ -219,6 +236,7 @@ export function validateDataset(raw: unknown): MetaDataset {
         ...stats,
         matchups,
         ...(Object.keys(synergies).length ? { synergies } : {}),
+        ...(Object.keys(pairs).length ? { pairs } : {}),
         ...(Object.keys(versus).length ? { versus } : {}),
         ...(profile ? { profile } : {}),
         ...(build ? { build } : {}),
@@ -228,6 +246,7 @@ export function validateDataset(raw: unknown): MetaDataset {
     champions[id] = { roles }
   }
 
+  const bans = parseBans(raw.bans)
   return {
     schemaVersion: 1,
     source: typeof raw.source === 'string' ? raw.source.slice(0, 60) : 'unknown',
@@ -237,6 +256,7 @@ export function validateDataset(raw: unknown): MetaDataset {
     ...(Array.isArray(raw.regions)
       ? { regions: raw.regions.filter((x): x is string => typeof x === 'string' && /^[a-z0-9]{2,8}$/.test(x)).slice(0, 24) }
       : {}),
+    ...(bans ? { bans } : {}),
     champions
   }
 }

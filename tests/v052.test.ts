@@ -5,7 +5,8 @@ import { addMatch, finalize, isValidSkillSequence, itemRulesFrom, mergeStates, n
 import { validateDataset } from '../src/main/data/meta'
 import { banPhaseOpen, suggestBans } from '../src/main/data/bans'
 import { sanitizeSettingsPatch } from '../src/main/store/profiles'
-import { applyBuildSelection, sanitizeSelection } from '../src/shared/buildSelection'
+import { applyBuildSelection, sanitizeSelection, ZERO_SELECTION } from '../src/shared/buildSelection'
+import type { SkillKey } from '../src/shared/dataTypes'
 import { regionUrl, DEFAULT_META_URL } from '../src/shared/config'
 import { emptyPool } from '../src/shared/poolShare'
 import type { FriendProfile, MetaDataset, RoleMeta } from '../src/shared/dataTypes'
@@ -246,12 +247,16 @@ describe('opção escolhida para enviar ao LoL', () => {
       spells: [{ value: [4, 14] as [number, number], games: 70, wins: 35 }, { value: [4, 12] as [number, number], games: 30, wins: 16 }],
       starting: [{ value: [1055], games: 50, wins: 25 }, { value: [1056, 2003], games: 30, wins: 15 }],
       boots: [{ value: 3020, games: 50, wins: 25 }, { value: 3158, games: 30, wins: 14 }],
-      core: [{ value: [3089, 3157, 6653], games: 40, wins: 20 }, { value: [6653, 3089, 3157], games: 30, wins: 18 }]
+      core: [{ value: [3089, 3157, 6653], games: 40, wins: 20 }, { value: [6653, 3089, 3157], games: 30, wins: 18 }],
+      skills: [
+        { value: { priority: ['Q', 'W', 'E', 'R'] as SkillKey[] }, games: 50, wins: 26 },
+        { value: { priority: ['E', 'Q', 'W', 'R'] as SkillKey[], levels: ['E', 'Q', 'W', 'E'] as SkillKey[] }, games: 30, wins: 16 }
+      ]
     }
   }
 
   it('troca runas, feitiços, inicial, botas e principais pelas opções escolhidas', () => {
-    const b = applyBuildSelection(build, { runes: 1, spells: 1, starting: 1, boots: 1, core: 1 })
+    const b = applyBuildSelection(build, { runes: 1, spells: 1, starting: 1, boots: 1, core: 1, skills: 0 })
     expect(b.runes!.perkIds[0]).toBe(2)
     expect(b.spells).toEqual([4, 12])
     expect(b.items.starting).toEqual([1056, 2003])
@@ -259,14 +264,29 @@ describe('opção escolhida para enviar ao LoL', () => {
     expect(b.items.core).toEqual([6653, 3089, 3157])
   })
 
+  it('a ordem de habilidades escolhida passa para a build (e a padrão fica como está)', () => {
+    expect(applyBuildSelection(build, { ...ZERO_SELECTION, skills: 1 }).skillOrder).toEqual({ priority: ['E', 'Q', 'W', 'R'], levels: ['E', 'Q', 'W', 'E'] })
+    expect(applyBuildSelection(build, ZERO_SELECTION).skillOrder).toEqual({ priority: ['Q', 'W', 'E', 'R'] })
+    expect(sanitizeSelection({ skills: 1 }).skills).toBe(1)
+    expect(sanitizeSelection({ skills: -3 }).skills).toBe(0)
+  })
+
   it('índice fora da lista cai na opção mais usada e build sem opções fica como está', () => {
-    expect(applyBuildSelection(build, { runes: 9, spells: 0, starting: 0, boots: 0, core: 0 }).runes!.perkIds[0]).toBe(1)
+    expect(applyBuildSelection(build, { runes: 9, spells: 0, starting: 0, boots: 0, core: 0, skills: 0 }).runes!.perkIds[0]).toBe(1)
     const legacy = { runes: page(1), spells: [4, 14] as [number, number], items: { starting: [], boots: [], core: [3089], situational: [] } }
-    expect(applyBuildSelection(legacy, { runes: 1, spells: 1, starting: 1, boots: 1, core: 1 })).toBe(legacy)
+    expect(applyBuildSelection(legacy, { runes: 1, spells: 1, starting: 1, boots: 1, core: 1, skills: 0 })).toBe(legacy)
   })
 
   it('o main só aceita índices inteiros pequenos vindos da tela', () => {
-    expect(sanitizeSelection({ runes: 1, core: -1, boots: 2.5, spells: '1', starting: 99, x: 3 })).toEqual({ runes: 1, spells: 0, starting: 0, boots: 0, core: 0 })
-    expect(sanitizeSelection(null)).toEqual({ runes: 0, spells: 0, starting: 0, boots: 0, core: 0 })
+    expect(sanitizeSelection({ runes: 1, core: -1, boots: 2.5, spells: '1', starting: 99, x: 3 })).toEqual({ runes: 1, spells: 0, starting: 0, boots: 0, core: 0, skills: 0 })
+    expect(sanitizeSelection(null)).toEqual({ runes: 0, spells: 0, starting: 0, boots: 0, core: 0, skills: 0 })
+  })
+
+  it('a build completa acompanha os itens principais escolhidos', () => {
+    const withFull = { ...build, items: { ...build.items, full: [3089, 3157, 6653, 3135, 3102, 3026] } }
+    const b = applyBuildSelection(withFull, { ...ZERO_SELECTION, core: 1 }) // [6653, 3089, 3157]
+    expect(b.items.core).toEqual([6653, 3089, 3157])
+    expect(b.items.full).toEqual([6653, 3089, 3157, 3135, 3102, 3026])
+    expect(applyBuildSelection(withFull, ZERO_SELECTION).items.full).toEqual([3089, 3157, 6653, 3135, 3102, 3026])
   })
 })

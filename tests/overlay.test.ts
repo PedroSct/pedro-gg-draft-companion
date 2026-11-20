@@ -297,3 +297,12 @@ describe('conselho de compra pelo ouro', () => {
     expect(mid.advice?.buy[0].itemId).toBe(3802)
   })
 })
+
+describe('build completa no overlay', () => {
+  it('mostra o 4º ao 6º item depois dos principais', () => {
+    const full = { ...build, items: { ...build.items, full: [6655, 4645, 3089, 3135, 3102, 3026] } }
+    const s = computeOverlay({ championId: 103, role: 'MIDDLE', build: full, live: live({ items: [6655, 3020, 4645, 3089] }) })
+    expect(s.items.filter((i) => /^Item \d$/.test(i.label)).map((i) => i.label)).toEqual(['Item 1', 'Item 2', 'Item 3', 'Item 4', 'Item 5', 'Item 6'])
+    expect(s.nextItemId).toBe(3135)
+  })
+})

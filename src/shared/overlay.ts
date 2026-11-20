@@ -1,6 +1,7 @@
 // src/shared/overlay.ts
 // O que o painel dentro do jogo mostra: a próxima habilidade a evoluir e a sequência de itens da build, a partir
 // dos dados da partida em andamento (Live Client Data API da Riot: só o que o próprio jogador já vê).
+import type { AdviceKind } from './itemAdvice'
 import type { ChampionBuild, SkillKey } from './dataTypes'
 import type { Role } from './types'
 
@@ -44,7 +45,7 @@ export interface OverlayItemStep {
   label: string
   owned: boolean
   /** só nos situacionais escolhidos pelo time inimigo: o que o item resolve */
-  reason?: 'armor' | 'magic-resist' | 'penetration'
+  reason?: AdviceKind
 }
 
 /** O que vale comprar AGORA para o item principal, de acordo com o ouro (ex.: 1200 g → Capítulo Perdido). */
@@ -203,7 +204,7 @@ export interface MatchSituation {
   focus: 'armor' | 'magic-resist' | 'penetration' | null
   physical: number
   magic: number
-  picks: { itemId: number; reason: 'armor' | 'magic-resist' | 'penetration' }[]
+  picks: { itemId: number; reason: AdviceKind }[]
 }
 
 export interface OverlayInput {
@@ -239,6 +240,9 @@ export function computeOverlay(input: OverlayInput): OverlayState {
   if (boots !== undefined) steps.push({ itemId: boots, label: 'Botas', owned: owned.has(boots) })
   if (c2 !== undefined) steps.push({ itemId: c2, label: 'Item 2', owned: owned.has(c2) })
   if (c3 !== undefined) steps.push({ itemId: c3, label: 'Item 3', owned: owned.has(c3) })
+  // Build completa: o 4º ao 6º item (os mais comprados depois dos principais), quando os dados trazem
+  const later = (build.items.full ?? []).filter((id) => !build.items.core.includes(id))
+  later.slice(0, 3).forEach((id, i) => steps.push({ itemId: id, label: `Item ${4 + i}`, owned: owned.has(id) }))
   // Situacionais: primeiro os que o time inimigo desta partida pede, depois os mais comuns da build
   const sit = input.situation
   const wanted = sit?.picks ?? []

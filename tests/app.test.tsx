@@ -8,8 +8,10 @@ import { useApp } from '../src/renderer/src/store/useApp'
 import { recommend } from '../src/main/data/recommender'
 import { validateDataset } from '../src/main/data/meta'
 import { championDetail, tierRows } from '../src/main/data/metaStats'
+import { synergyPairs } from '../src/main/data/synergies'
+import { analyzeGroup } from '../src/main/data/group'
 import type { DraftPlayer, DraftState, LcuStatus } from '../src/shared/types'
-import type { AppSettings, BuildSituation, Catalog, FriendProfile, UpdateState } from '../src/shared/dataTypes'
+import type { AppSettings, BuildSituation, Catalog, FriendProfile, MetaSynergyRow, UpdateState } from '../src/shared/dataTypes'
 import type { DecodeResult } from '../src/shared/poolShare'
 import type { IdentityState, LolApi, ProfileInput } from '../src/shared/api'
 import type { CoachResult } from '../src/shared/coach'
@@ -224,6 +226,9 @@ function installApi(opts: { profiles?: FriendProfile[]; postGames?: { summary: P
         ? { source: 'https://x.test/meta.json', patch: opts.metaPatch, generatedAt: '', isSample: false, champions: 7 }
         : { source: 'sample', patch: 'sample', generatedAt: '', isSample: true, champions: 7 },
     getMetaTiers: async (role) => tierRows(dataset, role),
+    setBuildSelection: async () => undefined,
+    analyzeGroup: async ({ members, unavailable }) => analyzeGroup(dataset, members, unavailable),
+    getMetaSynergies: async ({ roleA, roleB, anchor, anchorRole, limit }) => synergyPairs(dataset, roleA, roleB, { anchor, anchorRole, limit }),
     getAccountStats: async () => ({ level: 312, tier: 'GOLD', division: 'II', lp: 45, wins: 52, losses: 48 }),
     getMetaDetail: async ({ championId, role }) => championDetail(dataset, championId, role),
     getBuildSituation: async () => situation,
@@ -440,9 +445,43 @@ describe('Companion App', () => {
         championId: 103,
         role: 'MIDDLE',
         parts: { runes: true, spells: true, items: false },
-        selection: { runes: 0, spells: 0, starting: 0, boots: 0, core: 0 }
+        selection: { runes: 0, spells: 0, starting: 0, boots: 0, core: 0, skills: 0 }
       }))
     expect(await within(panel).findByText(/Runas: Runas aplicadas/)).toBeInTheDocument()
+  })
+
+  it('a opção de habilidades escolhida vai para o app inteiro: sobrevive à troca de etapa e é enviada ao main', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    const saved: Parameters<LolApi['setBuildSelection']>[0][] = []
+    ;(fake.api as { setBuildSelection: LolApi['setBuildSelection'] }).setBuildSelection = async (req) => void saved.push(req)
+    const base = dataset.champions['103'].roles.MIDDLE!.build!
+    ;(fake.api as { getBuild: LolApi['getBuild'] }).getBuild = async () => ({
+      ...base,
+      options: {
+        games: 400,
+        timeline: 300,
+        skills: [
+          { value: { priority: ['Q', 'W', 'E', 'R'] }, games: 200, wins: 104 },
+          { value: { priority: ['E', 'Q', 'W', 'R'] }, games: 100, wins: 52 }
+        ]
+      }
+    })
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    // pick travado (etapa Build): marca a segunda ordem de habilidades
+    act(() => fake.pushDraft({ ...draftWithZed(), allies: [player(0, 0, 'none', 'TOP'), player(1, 103, 'locked', 'MIDDLE')] }))
+    await screen.findByRole('button', { name: /Build/, current: 'step' })
+    const first = await screen.findByRole('radiogroup', { name: 'Opções de habilidades' })
+    await user.click(within(first).getAllByRole('radio')[1])
+    await waitFor(() => expect(saved[saved.length - 1]).toMatchObject({ championId: 103, role: 'MIDDLE', selection: { skills: 1 } }))
+
+    // sai da etapa e volta: a tela de build é montada de novo e a escolha continua marcada
+    await user.click(screen.getByRole('button', { name: /Picks/ }))
+    await user.click(screen.getByRole('button', { name: /Build/ }))
+    const group = await screen.findByRole('radiogroup', { name: 'Opções de habilidades' })
+    expect(within(group).getAllByRole('radio')[1]).toHaveAttribute('aria-checked', 'true')
+    expect(saved[saved.length - 1].selection.skills).toBe(1)
   })
 
   it('o conjunto de itens só é enviado quando a pessoa marca "Itens"', async () => {
@@ -467,7 +506,16 @@ describe('Companion App', () => {
       enemyDamage: { physical: 0.8, magic: 0.2 },
       tankyEnemies: 0,
       focus: 'armor',
-      picks: [{ itemId: 3089, reason: 'armor' }],
+      picks: [{ itemId: 3089, reason: 'armor' }, { itemId: 3165, reason: 'anti-heal' }],
+      advice: [
+        { itemId: 3089, kind: 'armor', why: 'O time inimigo causa 80% de dano físico', general: false, replaces: 3157, slot: 3 },
+        { itemId: 3165, kind: 'anti-heal', why: 'Cura no time inimigo (Aatrox, Soraka)', general: true }
+      ],
+      needs: [
+        { kind: 'armor', level: 'alta', why: 'O time inimigo causa 80% de dano físico' },
+        { kind: 'anti-heal', level: 'média', why: 'Cura no time inimigo (Aatrox, Soraka)' },
+        { kind: 'anti-shield', level: 'média', why: 'Escudos no time inimigo (Janna, Lulu)' }
+      ],
       variantCore: null
     })
     render(<App />)
@@ -479,7 +527,11 @@ describe('Companion App', () => {
     const panel = await screen.findByRole('region', { name: 'Para esta partida' })
     expect(within(panel).getByText(/priorize armadura/)).toBeInTheDocument()
     expect(within(panel).getByText(/3 de 5 inimigos conhecidos/)).toBeInTheDocument()
-    expect(within(panel).getByText(/Boa aqui: armadura/)).toBeInTheDocument()
+    const list = within(panel).getByRole('list', { name: 'Itens para esta partida' })
+    expect(within(list).getByText(/Armadura: O time inimigo causa 80% de dano físico\. Troque .* \(item 3\) por este\./)).toBeInTheDocument()
+    expect(within(list).getByText(/Anticura: Cura no time inimigo \(Aatrox, Soraka\)\. Sugestão geral\./)).toBeInTheDocument()
+    // necessidade sem item na build ou no catálogo: avisa em vez de sumir
+    expect(within(panel).getByText(/Escudos no time inimigo \(Janna, Lulu\): sem item de corta escudo/)).toBeInTheDocument()
   })
 
   it('a aba Meta mostra o ranking da rota e o detalhe do campeão', async () => {
@@ -498,6 +550,85 @@ describe('Companion App', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Suporte' }))
     expect(await screen.findByText(/não têm campeões para esta rota/)).toBeInTheDocument()
+  })
+
+  it('a aba Meta tem a visão Sinergias: combos por par de rotas e campeão fixado', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    const calls: unknown[] = []
+    const row = (aId: number, bId: number, games = 400): MetaSynergyRow => ({ aId, bId, games, winrate: 0.56, synergy: 3.4, score: 1.2, tier: 'A', rare: games < 100 })
+    ;(fake.api as { getMetaSynergies: LolApi['getMetaSynergies'] }).getMetaSynergies = async (req) => {
+      calls.push(req)
+      return req.anchor ? [row(req.anchor, 54)] : [row(103, 112), row(238, 54, 50)]
+    }
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    await user.click(screen.getByRole('tab', { name: 'Meta' }))
+    await user.click(await screen.findByRole('tab', { name: 'Sinergias' }))
+
+    const list = await screen.findByRole('list', { name: 'Combos de Atirador + Suporte' })
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2)
+    expect(calls[0]).toMatchObject({ roleA: 'BOTTOM', roleB: 'UTILITY' })
+    // o combo de poucos jogos vem marcado
+    expect(within(list).getAllByText('*')).toHaveLength(1)
+
+    // outro par de rotas
+    await user.click(screen.getByRole('tab', { name: 'Selva + Meio' }))
+    expect(await screen.findByRole('list', { name: 'Combos de Selva + Meio' })).toBeInTheDocument()
+
+    // fixar um campeão pela busca
+    await user.type(screen.getByLabelText('Fixar um campeão'), 'ahri')
+    await user.click(within(await screen.findByRole('listbox', { name: 'Campeões encontrados' })).getByRole('button', { name: /Ahri/ }))
+    expect(await screen.findByText('Combos de')).toBeInTheDocument()
+    expect(calls[calls.length - 1]).toMatchObject({ roleA: 'JUNGLE', roleB: 'MIDDLE', anchor: 103, anchorRole: 'JUNGLE' })
+    await user.click(screen.getByRole('button', { name: 'Meio' }))
+    expect(calls[calls.length - 1]).toMatchObject({ anchor: 103, anchorRole: 'MIDDLE' })
+    await user.click(screen.getByRole('button', { name: 'Limpar' }))
+    expect(calls[calls.length - 1]).not.toHaveProperty('anchor', 103)
+  })
+
+  it('modo Grupo: marcar aliados mostra duo/trio/time fechado, as relações e quem encaixa na vaga aberta', async () => {
+    const user = userEvent.setup()
+    const fake = installApi()
+    const reqs: Parameters<LolApi['analyzeGroup']>[0][] = []
+    const row = (aId: number, bId: number): MetaSynergyRow => ({ aId, bId, games: 480, winrate: 0.57, synergy: 3.1, score: 1.4, tier: 'S', rare: false })
+    ;(fake.api as { analyzeGroup: LolApi['analyzeGroup'] }).analyzeGroup = async (req) => {
+      reqs.push(req)
+      return {
+        pairs: [{ aCell: 1, bCell: 0, aId: 103, bId: 86, aRole: 'MIDDLE', bRole: 'TOP', tentative: true, row: row(103, 86) }],
+        suggestions: [{ cellId: 2, role: 'UTILITY', picks: [{ championId: 89, score: 1.2, covered: 2, total: 2, with: [{ championId: 103, winrate: 0.58, games: 300, synergy: 2.5 }, { championId: 86, winrate: 0.55, games: 200, synergy: 1.1 }] }] }],
+        score: 1.4,
+        label: 'forte',
+        best: { aId: 103, bId: 86 },
+        weakest: null
+      }
+    }
+    render(<App />)
+    await screen.findByText('Conectado. Entre em uma fila.')
+    const d: DraftState = {
+      ...draftWithZed(),
+      enemies: [player(5, 0, 'none')],
+      allies: [player(0, 86, 'locked', 'TOP'), player(1, 103, 'hovering', 'MIDDLE'), player(2, 0, 'none', 'UTILITY')]
+    }
+    act(() => fake.pushDraft(d))
+    const panel = await screen.findByRole('region', { name: 'Modo Grupo' })
+    expect(within(panel).getByText(/Joga com amigos/)).toBeInTheDocument()
+    expect(reqs).toHaveLength(0) // solo: nada é analisado
+
+    await user.click(within(panel).getByRole('button', { name: /Top/ }))
+    expect(await within(panel).findByText('Duo')).toBeInTheDocument()
+    const rel = await within(panel).findByRole('list', { name: 'Relações do grupo' })
+    expect(within(rel).getByLabelText('Ahri com Garen')).toHaveTextContent('57,0%')
+    expect(within(panel).getByText('Combinação forte')).toBeInTheDocument()
+    expect(within(await within(panel).findByRole('list', { name: 'Sugestões para Sup' })).getByLabelText('Sugestão 1: Leona')).toHaveTextContent('com Ahri 58,0%')
+    expect(reqs[reqs.length - 1].members).toEqual(expect.arrayContaining([expect.objectContaining({ cellId: 0, role: 'TOP', championId: 86 }), expect.objectContaining({ cellId: 1, role: 'MIDDLE', championId: 103, tentative: true })]))
+    expect(reqs[reqs.length - 1].unavailable).toEqual(expect.arrayContaining([86, 103]))
+
+    await user.click(within(panel).getByRole('button', { name: 'Time fechado' }))
+    expect(await within(panel).findByText('Trio')).toBeInTheDocument()
+    await user.click(within(panel).getByRole('button', { name: 'Jogar solo' }))
+    expect(within(panel).getByText(/Joga com amigos/)).toBeInTheDocument()
+    expect(within(panel).queryByText('Trio')).not.toBeInTheDocument()
   })
 
   it('a aba Meta alterna para a Tier List, agrupa por faixa e abre o detalhe ao clicar', async () => {

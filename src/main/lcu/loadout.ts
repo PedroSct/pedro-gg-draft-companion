@@ -76,6 +76,7 @@ export function itemSetFor(input: LoadoutInput): Record<string, unknown> {
     block('Inicial', items.starting),
     block('Botas', items.boots.slice(0, 1)),
     block('Itens principais, na ordem', items.core),
+    block('Depois dos principais', (items.full ?? []).filter((id) => !items.core.includes(id))),
     block('Situacionais', items.situational.map((s) => s.itemId))
   ].filter((b) => b.items.length > 0)
   return {

@@ -4,12 +4,12 @@
 import type { DraftState, Role } from '../../shared/types'
 import { traitsOf } from '../../shared/traits'
 import type { BuildSituation, ChampionBuild, ChampionInfo, ItemInfo, MetaDataset } from '../../shared/dataTypes'
+import { adviseItems, type EnemyInput } from '../../shared/itemAdvice'
 
 /** A partir desta fatia o dano de um tipo domina e vale priorizar a defesa correspondente. */
 const DOMINANT_SHARE = 0.62
 /** Inimigo "tanque": durabilidade normalizada igual ou acima disto. */
 const TANKY = 0.6
-const MAX_PICKS = 3
 
 const has = (item: ItemInfo | undefined, tag: string): boolean => !!item?.tags?.includes(tag)
 
@@ -18,6 +18,8 @@ export function buildSituation(input: {
   draft: DraftState
   build: ChampionBuild | null
   championId: number
+  /** rota do seu campeão (melhora o perfil de dano) */
+  role?: Role | null
   champions: readonly ChampionInfo[]
   items: Readonly<Record<string, ItemInfo>>
 }): BuildSituation {
@@ -42,7 +44,7 @@ export function buildSituation(input: {
   const total = physical + magic
   const enemyDamage = known > 0 && total > 0 ? { physical: physical / total, magic: magic / total } : null
 
-  const out: BuildSituation = { enemiesKnown: known, enemyDamage, tankyEnemies: tanky, focus: null, picks: [], variantCore: null }
+  const out: BuildSituation = { enemiesKnown: known, enemyDamage, tankyEnemies: tanky, focus: null, picks: [], advice: [], needs: [], variantCore: null }
   if (!build || !enemyDamage || weight < 1) return out
 
   let focus: BuildSituation['focus'] = null
@@ -50,32 +52,55 @@ export function buildSituation(input: {
   else if (enemyDamage.magic >= DOMINANT_SHARE) focus = 'magic-resist'
   else if (tanky >= 2) focus = 'penetration'
   out.focus = focus
-  if (!focus) return out
 
-  const tagsFor = (id: number): 'armor' | 'magic-resist' | 'penetration' | null => {
-    const item = input.items[String(id)]
-    if (focus === 'armor') return has(item, 'Armor') ? 'armor' : null
-    if (focus === 'magic-resist') return has(item, 'SpellBlock') ? 'magic-resist' : null
-    return has(item, 'ArmorPenetration') || has(item, 'MagicPenetration') ? 'penetration' : null
-  }
-
-  // Candidatos: situacionais e itens das construções alternativas que não são o núcleo principal
+  // Itens que o próprio campeão já compra (situacionais e construções alternativas), fora da build principal
   const main = new Set(build.items.core)
-  const seen = new Set<number>()
-  const pool: number[] = []
-  for (const s of build.items.situational) pool.push(s.itemId)
-  for (const v of build.options?.core ?? []) for (const id of v.value) pool.push(id)
-  for (const v of build.variants ?? []) for (const id of v.core) pool.push(id)
-  for (const id of pool) {
-    if (seen.has(id) || main.has(id)) continue
-    seen.add(id)
-    const reason = tagsFor(id)
-    if (reason && out.picks.length < MAX_PICKS) out.picks.push({ itemId: id, reason })
+  const own: number[] = []
+  for (const s of build.items.situational) own.push(s.itemId)
+  for (const v of build.options?.core ?? []) for (const id of v.value) own.push(id)
+  for (const v of build.variants ?? []) for (const id of v.core) own.push(id)
+  const ownList = [...new Set(own)].filter((id) => !main.has(id))
+
+  // Quem está do outro lado e quem é você: o time inimigo define o que comprar, o seu estilo define qual item serve
+  const enemies: EnemyInput[] = []
+  for (const e of draft.enemies) {
+    if (e.championId <= 0) continue
+    const info = champMap.get(e.championId)
+    const t = traitsOf(dataset, champMap, e.championId, (e.role as Role | null) ?? null)
+    enemies.push({
+      key: info?.key ?? '',
+      name: info?.name ?? `Campeão ${e.championId}`,
+      tags: info?.tags ?? [],
+      physical: t.physical,
+      magic: t.magic,
+      true: t.true,
+      durability: t.durability,
+      cc: t.cc,
+      weight: e.status === 'locked' ? 1 : 0.5
+    })
   }
+  const mine = traitsOf(dataset, champMap, input.championId, input.role ?? null)
+  const result = adviseItems({
+    items: input.items,
+    enemies,
+    me: { physical: mine.physical, magic: mine.magic, durability: mine.durability, tags: champMap.get(input.championId)?.tags ?? [] },
+    own: ownList,
+    core: build.items.core
+  })
+  out.advice = result.advice
+  out.needs = result.needs
+  out.picks = result.advice.map((a) => ({ itemId: a.itemId, reason: a.kind }))
 
   // Construção alternativa que mais encaixa (a principal continua valendo se nenhuma ajudar mais)
+  const tagsFor = (id: number): boolean => {
+    const item = input.items[String(id)]
+    if (focus === 'armor') return has(item, 'Armor')
+    if (focus === 'magic-resist') return has(item, 'SpellBlock')
+    if (focus === 'penetration') return has(item, 'ArmorPenetration') || has(item, 'MagicPenetration')
+    return false
+  }
   const variants: number[][] = build.options?.core?.map((c) => c.value) ?? build.variants?.map((v) => v.core) ?? []
-  if (variants.length > 1) {
+  if (focus && variants.length > 1) {
     const score = (list: number[]): number => list.filter((id) => tagsFor(id)).length
     let best = 0
     let bestScore = score(variants[0])

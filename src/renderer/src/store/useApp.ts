@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { BuildSelection } from '../../../shared/buildSelection'
 import type { PgDetail, PgSummary } from '../../../shared/postgame'
 import type { DraftPlayer, DraftState, LcuStatus, Role } from '../../../shared/types'
 import type {
@@ -33,6 +34,10 @@ interface AppState {
   focusCellId: number | null
   /** rota escolhida à mão para amigos sem rota atribuída, por cellId */
   friendRoles: Record<number, Role>
+  /** aliados marcados como do seu grupo (duo, trio, squad, time fechado), por cellId; você não entra na lista */
+  groupCells: number[]
+  /** opções de build marcadas na tela, por "campeão|rota"; sobrevivem à troca de etapa do draft. enemyId = confronto para o qual a lista foi montada */
+  buildSelections: Record<string, { selection: BuildSelection; enemyId: number | null }>
   /** Rota escolhida à mão quando a fila não atribui posição (blind pick, normal). */
   roleOverride: Role | null
   /** Campeão da lista de alternativas que o usuário clicou para ver a build. */
@@ -81,6 +86,9 @@ interface AppState {
   setRoleOverride: (role: Role | null) => void
   setFocus: (cellId: number | null) => void
   setFriendRole: (cellId: number, role: Role | null) => void
+  toggleGroupCell: (cellId: number) => void
+  chooseBuild: (key: string, selection: BuildSelection, enemyId: number | null) => void
+  setGroupCells: (cellIds: number[]) => void
   claimProfile: (profileId: string) => Promise<void>
   setPreview: (championId: number | null) => void
   setSimEnemy: (championId: number | null) => void
@@ -184,6 +192,8 @@ export const useApp = create<AppState>()((set, get) => ({
   identity: null,
   focusCellId: null,
   friendRoles: {},
+  groupCells: [],
+  buildSelections: {},
   roleOverride: null,
   previewChampionId: null,
   simEnemyId: null,
@@ -306,7 +316,7 @@ export const useApp = create<AppState>()((set, get) => ({
       }),
       api.onDraftEnded(() => {
         recSeq++
-        set({ draft: null, recommendation: null, recs: {}, previewChampionId: null, simEnemyId: null, roleOverride: null, focusCellId: null, friendRoles: {} })
+        set({ draft: null, recommendation: null, recs: {}, previewChampionId: null, simEnemyId: null, roleOverride: null, focusCellId: null, friendRoles: {}, groupCells: [], buildSelections: {} })
       }),
       // Conta detectada ou perfil reconhecido: recarrega os perfis (o main pode ter aprendido o puuid).
       api.onIdentity((identity) => {
@@ -406,6 +416,13 @@ export const useApp = create<AppState>()((set, get) => ({
     const focus = selectFocusPlayer(get())
     set({ recommendation: focus ? (get().recs[focus.cellId] ?? null) : null })
   },
+
+  chooseBuild: (key, selection, enemyId) => set({ buildSelections: { ...get().buildSelections, [key]: { selection, enemyId } } }),
+  toggleGroupCell: (cellId) => {
+    const cur = get().groupCells
+    set({ groupCells: cur.includes(cellId) ? cur.filter((c) => c !== cellId) : [...cur, cellId] })
+  },
+  setGroupCells: (groupCells) => set({ groupCells }),
 
   setFriendRole: (cellId, role) => {
     const friendRoles = { ...get().friendRoles }

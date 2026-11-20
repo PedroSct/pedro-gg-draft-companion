@@ -23,6 +23,13 @@ export interface DataDragonOptions {
 type Json = Record<string, unknown>
 const isRecord = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
 const stripTags = (s: string): string => s.replace(/<[^>]*>/g, '')
+/** Resumo e descrição do item em texto corrido (o Data Dragon manda marcação HTML), com limite de tamanho. */
+const itemText = (it: Record<string, unknown>): string =>
+  stripTags(`${String(it.plaintext ?? '')}. ${String(it.description ?? '').replace(/<br\s*\/?>/gi, '. ')}`)
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 900)
 
 function infoOf(raw: unknown): Pick<ChampionInfo, 'info'> {
   if (!isRecord(raw)) return {}
@@ -155,6 +162,13 @@ export class DataDragon {
     for (const [id, it] of Object.entries(itemRaw.data)) {
       if (!isRecord(it) || !isRecord(it.image) || typeof it.name !== 'string') continue
       const gold = isRecord(it.gold) && typeof it.gold.total === 'number' ? it.gold.total : 0
+      // completo e comprável no Summoner's Rift (mapa 11); os de campeão específico ficam de fora
+      const into = Array.isArray(it.into) ? it.into : []
+      const buyable = !isRecord(it.gold) || it.gold.purchasable !== false
+      const onRift = !isRecord(it.maps) || it.maps['11'] !== false
+      const restricted = typeof it.requiredChampion === 'string' || typeof it.requiredAlly === 'string'
+      const isFinal = into.length === 0 && buyable && onRift && !restricted && it.inStore !== false && gold >= 2000
+      const text = isFinal ? itemText(it) : ''
       items[id] = {
         id: Number(id),
         name: it.name,
@@ -163,7 +177,9 @@ export class DataDragon {
         ...(Array.isArray(it.from) && it.from.length > 0
           ? { from: it.from.map((x) => Number(x)).filter((x) => Number.isInteger(x) && x > 0) }
           : {}),
-        ...(Array.isArray(it.tags) ? { tags: it.tags.filter((t): t is string => typeof t === 'string') } : {})
+        ...(Array.isArray(it.tags) ? { tags: it.tags.filter((t): t is string => typeof t === 'string') } : {}),
+        ...(isFinal ? { final: true } : {}),
+        ...(text ? { text } : {})
       }
     }
     const [runes, summoners] = await Promise.all([this.runesOf(version, locale), this.summonersOf(version, locale)])

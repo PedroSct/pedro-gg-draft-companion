@@ -52,4 +52,19 @@ describe('plano de jogo', () => {
     expect(buildGamePlan(null)).toBeNull()
     expect(buildGamePlan({ items: { starting: [], boots: [], core: [], situational: [] } })).toBeNull()
   })
+
+  it('a build completa entra no fim e os ajustes do time inimigo vão antes dos situacionais, com a troca sugerida', () => {
+    const b = build({ items: { starting: [1055], boots: [3020], core: [6655, 3157, 3089], full: [6655, 3157, 3089, 3135, 3102, 3026], situational: [{ itemId: 3165, when: 'contra cura' }] } })
+    const situation = {
+      enemiesKnown: 5, enemyDamage: { physical: 0.8, magic: 0.2 }, tankyEnemies: 3, focus: 'armor' as const,
+      picks: [{ itemId: 6694, reason: 'penetration' as const }], variantCore: null,
+      advice: [{ itemId: 6694, kind: 'penetration' as const, why: '3 inimigos com muita vida', general: true, replaces: 3089, slot: 3 }],
+      needs: [{ kind: 'anti-heal' as const, level: 'média' as const, why: 'Cura no time inimigo (Aatrox)' }]
+    }
+    const late = buildGamePlan(b, situation, 'MIDDLE')!.phases[2]
+    expect(late.items).toEqual([3089, 3135, 3102, 3026]) // 3º principal + 4º ao 6º
+    expect(late.situational[0]).toEqual({ itemId: 6694, when: 'Penetração: 3 inimigos com muita vida. Troque o item 3 por este' })
+    expect(late.situational[1].itemId).toBe(3165)
+    expect(late.notes.join(' ')).toMatch(/anticura/)
+  })
 })

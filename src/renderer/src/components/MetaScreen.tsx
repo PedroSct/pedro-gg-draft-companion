@@ -7,20 +7,13 @@ import { input } from '../lib/ui'
 import { ChampionIcon, useChampionName } from './Icons'
 import { BuildOptionsView } from './BuildOptionsView'
 import { DEFAULT_REGIONS, REGION_NAMES } from '../lib/regions'
+import { SynergyView } from './SynergyView'
+import { TierBadge, TIER_STYLE } from './TierBadge'
 
-const TIER_STYLE: Record<Tier, string> = {
-  S: 'text-gold border-gold/40',
-  A: 'text-good border-good/40',
-  B: 'text-ally border-ally/40',
-  C: 'text-mist border-line',
-  D: 'text-enemy border-enemy/40'
-}
+const GRID = 'grid-cols-[28px_minmax(0,1fr)_64px_64px_56px]'
+const GRID_BAN = 'grid-cols-[28px_minmax(0,1fr)_64px_64px_56px_56px]'
 
-function TierBadge({ tier }: { tier: Tier }) {
-  return <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border font-display text-sm font-bold ${TIER_STYLE[tier]}`}>{tier}</span>
-}
-
-function Row({ row, selected, onSelect }: { row: MetaTierRow; selected: boolean; onSelect: () => void }) {
+function Row({ row, selected, onSelect, showBan }: { row: MetaTierRow; selected: boolean; onSelect: () => void; showBan: boolean }) {
   const name = useChampionName(row.championId)
   return (
     <li>
@@ -28,7 +21,7 @@ function Row({ row, selected, onSelect }: { row: MetaTierRow; selected: boolean;
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
-        className={`grid w-full grid-cols-[28px_minmax(0,1fr)_64px_64px_56px] items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-panel ${
+        className={`grid w-full ${showBan ? GRID_BAN : GRID} items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-panel ${
           selected ? 'bg-raised' : 'border-b border-line'
         }`}
       >
@@ -48,6 +41,7 @@ function Row({ row, selected, onSelect }: { row: MetaTierRow; selected: boolean;
           {row.lowSample && <span className="text-gold">*</span>}
         </span>
         <span className="num text-right text-sm text-mist">{pct(row.presence)}</span>
+        {showBan && <span className="num text-right text-sm text-mist">{row.banRate !== undefined ? pct(row.banRate) : '—'}</span>}
         <span className="num text-right text-sm text-dim">{row.games.toLocaleString('pt-BR')}</span>
       </button>
     </li>
@@ -238,13 +232,13 @@ function TierList({ rows, selected, onSelect, label }: { rows: MetaTierRow[]; se
   )
 }
 
-type SortKey = 'tier' | 'winrate' | 'presence' | 'games'
+type SortKey = 'tier' | 'winrate' | 'presence' | 'bans' | 'games'
 const TIER_ORDER: Tier[] = ['S', 'A', 'B', 'C', 'D']
 const TIERS: Tier[] = ['S', 'A', 'B', 'C', 'D']
 
 function sortRows(rows: MetaTierRow[], key: SortKey, dir: 'desc' | 'asc'): MetaTierRow[] {
   const sign = dir === 'desc' ? 1 : -1
-  const value = (r: MetaTierRow): number => (key === 'tier' ? -TIER_ORDER.indexOf(r.tier) * 1000 + r.score : key === 'winrate' ? r.winrate : key === 'presence' ? r.presence : r.games)
+  const value = (r: MetaTierRow): number => (key === 'tier' ? -TIER_ORDER.indexOf(r.tier) * 1000 + r.score : key === 'winrate' ? r.winrate : key === 'presence' ? r.presence : key === 'bans' ? (r.banRate ?? 0) : r.games)
   return [...rows].sort((a, b) => sign * (value(b) - value(a)) || b.games - a.games || a.championId - b.championId)
 }
 
@@ -349,7 +343,7 @@ export function MetaScreen() {
   })
   const [tiers, setTiers] = useState<Tier[]>([])
   const [reliableOnly, setReliableOnly] = useState(false)
-  const [view, setView] = useState<'list' | 'tier'>('list')
+  const [view, setView] = useState<'list' | 'tier' | 'synergy'>('list')
   const [helpOpen, setHelpOpen] = useState(false)
 
   useEffect(() => {
@@ -367,12 +361,11 @@ export function MetaScreen() {
 
   const shown = useMemo(() => {
     const q = normalize(query)
-    const filtered = (rows ?? []).filter(
-      (r) => (!q || normalize(champById.get(r.championId)?.name ?? '').includes(q)) && (tiers.length === 0 || tiers.includes(r.tier)) && (!reliableOnly || !r.rare)
-    )
+    const filtered = (rows ?? []).filter((r) => (!q || normalize(champById.get(r.championId)?.name ?? '').includes(q)) && (tiers.length === 0 || tiers.includes(r.tier)) && (!reliableOnly || !r.rare))
     return sortRows(filtered, sort.key, sort.dir)
   }, [rows, query, champById, tiers, reliableOnly, sort])
 
+  const showBan = (rows ?? []).some((r) => r.banRate !== undefined)
   const onSort = (key: SortKey): void => setSort((cur) => (cur.key === key ? { key, dir: cur.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' }))
   const toggleTier = (t: Tier): void => setTiers((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]))
   const filtersOn = tiers.length > 0 || reliableOnly || query !== ''
@@ -380,22 +373,24 @@ export function MetaScreen() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex flex-wrap items-center gap-x-6" role="tablist" aria-label="Rota do ranking">
-          {ROLES.map((r) => (
-            <button
-              key={r}
-              type="button"
-              role="tab"
-              aria-selected={role === r}
-              onClick={() => setRole(r)}
-              className={`-mb-px border-b-2 py-2 text-[15px] ${role === r ? 'border-gold text-snow' : 'border-transparent text-mist hover:text-snow'}`}
-            >
-              {ROLE_LABEL[r]}
-            </button>
-          ))}
-        </div>
+        {view !== 'synergy' && (
+          <div className="flex flex-wrap items-center gap-x-6" role="tablist" aria-label="Rota do ranking">
+            {ROLES.map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="tab"
+                aria-selected={role === r}
+                onClick={() => setRole(r)}
+                className={`-mb-px border-b-2 py-2 text-[15px] ${role === r ? 'border-gold text-snow' : 'border-transparent text-mist hover:text-snow'}`}
+              >
+                {ROLE_LABEL[r]}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex overflow-hidden rounded-md border border-line" role="tablist" aria-label="Visão do ranking">
-          {(['list', 'tier'] as const).map((v) => (
+          {(['list', 'tier', 'synergy'] as const).map((v) => (
             <button
               key={v}
               type="button"
@@ -404,32 +399,36 @@ export function MetaScreen() {
               onClick={() => setView(v)}
               className={`px-3 py-1 text-sm ${view === v ? 'bg-raised text-snow' : 'text-mist hover:text-snow'}`}
             >
-              {v === 'list' ? 'Lista' : 'Tier List'}
+              {v === 'list' ? 'Lista' : v === 'tier' ? 'Tier List' : 'Sinergias'}
             </button>
           ))}
         </div>
         <RegionSelect />
-        <label htmlFor="meta-search" className="sr-only">
-          Buscar campeão no ranking
-        </label>
-        <div className="relative w-48 max-w-full">
-          <input id="meta-search" className={`${input} w-full pr-8`} placeholder="Buscar campeão" value={query} onChange={(e) => setQuery(e.target.value)} />
-          {query !== '' && (
-            <button
-              type="button"
-              aria-label="Limpar busca"
-              onClick={() => {
-                setQuery('')
-                document.getElementById('meta-search')?.focus()
-              }}
-              className="absolute right-1 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-sm text-mist hover:bg-raised hover:text-snow"
-            >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
-              </svg>
-            </button>
-          )}
-        </div>
+        {view !== 'synergy' && (
+          <>
+            <label htmlFor="meta-search" className="sr-only">
+              Buscar campeão no ranking
+            </label>
+            <div className="relative w-48 max-w-full">
+              <input id="meta-search" className={`${input} w-full pr-8`} placeholder="Buscar campeão" value={query} onChange={(e) => setQuery(e.target.value)} />
+              {query !== '' && (
+                <button
+                  type="button"
+                  aria-label="Limpar busca"
+                  onClick={() => {
+                    setQuery('')
+                    document.getElementById('meta-search')?.focus()
+                  }}
+                  className="absolute right-1 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-sm text-mist hover:bg-raised hover:text-snow"
+                >
+                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                    <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </>
+        )}
         {metaInfo && (
           <p className="ml-auto text-xs text-mist">
             {metaInfo.isSample ? 'Dados de amostra' : `Patch ${metaInfo.patch}`} · {metaInfo.champions} campeões
@@ -438,85 +437,92 @@ export function MetaScreen() {
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Filtros do ranking">
-        <div className="flex items-center gap-1.5" role="group" aria-label="Filtrar por tier">
-          <span className="text-xs text-mist">Tier</span>
-          {TIERS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              aria-pressed={tiers.includes(t)}
-              onClick={() => toggleTier(t)}
-              className={`grid h-6 w-6 place-items-center rounded-md border font-display text-sm font-bold ${tiers.includes(t) ? TIER_STYLE[t] : 'border-line text-dim hover:text-snow'}`}
-            >
-              {t}
+      {view === 'synergy' ? (
+        <SynergyView />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Filtros do ranking">
+            <div className="flex items-center gap-1.5" role="group" aria-label="Filtrar por tier">
+              <span className="text-xs text-mist">Tier</span>
+              {TIERS.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={tiers.includes(t)}
+                  onClick={() => toggleTier(t)}
+                  className={`grid h-6 w-6 place-items-center rounded-md border font-display text-sm font-bold ${tiers.includes(t) ? TIER_STYLE[t] : 'border-line text-dim hover:text-snow'}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-xs text-mist">
+              <input type="checkbox" className="h-4 w-4 accent-[var(--color-gold)]" checked={reliableOnly} onChange={(e) => setReliableOnly(e.target.checked)} />
+              Esconder campeões de nicho
+            </label>
+            {filtersOn && (
+              <button
+                type="button"
+                className="text-xs text-mist underline hover:text-snow"
+                onClick={() => {
+                  setTiers([])
+                  setReliableOnly(false)
+                  setQuery('')
+                }}
+              >
+                Limpar filtros
+              </button>
+            )}
+            <button type="button" className="text-xs text-mist underline hover:text-snow" aria-expanded={helpOpen} onClick={() => setHelpOpen((v) => !v)}>
+              Como o tier é calculado
             </button>
-          ))}
-        </div>
-        <label className="flex items-center gap-2 text-xs text-mist">
-          <input type="checkbox" className="h-4 w-4 accent-[var(--color-gold)]" checked={reliableOnly} onChange={(e) => setReliableOnly(e.target.checked)} />
-          Esconder campeões de nicho
-        </label>
-        {filtersOn && (
-          <button
-            type="button"
-            className="text-xs text-mist underline hover:text-snow"
-            onClick={() => {
-              setTiers([])
-              setReliableOnly(false)
-              setQuery('')
-            }}
-          >
-            Limpar filtros
-          </button>
-        )}
-        <button type="button" className="text-xs text-mist underline hover:text-snow" aria-expanded={helpOpen} onClick={() => setHelpOpen((v) => !v)}>
-          Como o tier é calculado
-        </button>
-        <span className="ml-auto text-xs text-dim">{rows ? `${shown.length} de ${rows.length}` : ''}</span>
-      </div>
-      {helpOpen && (
-        <p role="note" className="max-w-3xl text-xs leading-relaxed text-mist">
-          O tier parte da taxa de vitória e tira a margem de erro: com poucos jogos a nota encolhe para perto de 50%, então 150 jogos a 58% valem menos que 15 mil jogos a 53%. Vale para cima e para baixo. Além
-          disso, S exige que o campeão apareça em pelo menos 1,5% das partidas da rota, e quem aparece em menos de 0,5% (ou tem menos de 100 jogos) é de nicho e fica no máximo em B, porque quem joga muito um
-          campeão raro costuma vencer mais do que ele vale. Faixas: S a partir de +1,5 ponto, A +0,6, B de −0,6 a +0,6, C até −1,5, D abaixo disso.
-        </p>
-      )}
-
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)] gap-10 max-[1000px]:grid-cols-1 max-[1000px]:grid-rows-[minmax(180px,40%)_minmax(0,1fr)]">
-        <div className="flex min-h-0 flex-col">
-          {view === 'tier' ? (
-            rows === null ? (
-              <p className="text-mist">Carregando…</p>
-            ) : (
-              <TierList rows={shown} selected={selected} onSelect={setSelected} label={`Tier List de ${ROLE_LABEL[role]}`} />
-            )
-          ) : (
-            <>
-              <div className="grid grid-cols-[28px_minmax(0,1fr)_64px_64px_56px] gap-x-3 border-b border-line px-2.5 pb-2">
-                <HeaderCell label="Tier" sortKey="tier" current={sort.key} dir={sort.dir} onSort={onSort} className="-ml-1" />
-                <span className="text-[11px] text-dim">Campeão</span>
-                <HeaderCell label="Vitórias" sortKey="winrate" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />
-                <HeaderCell label="Presença" sortKey="presence" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />
-                <HeaderCell label="Jogos" sortKey="games" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />
-              </div>
-              {rows === null ? (
-                <p className="text-mist">Carregando…</p>
-              ) : rows.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-line p-4 text-mist">Os dados de meta não têm campeões para esta rota.</p>
-              ) : (
-                <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1" aria-label={`Ranking de ${ROLE_LABEL[role]}`}>
-                  {shown.map((r) => (
-                    <Row key={r.championId} row={r} selected={selected === r.championId} onSelect={() => setSelected(r.championId)} />
-                  ))}
-                  {shown.length === 0 && <li className="p-3 text-sm text-mist">Nenhum campeão com esses filtros.</li>}
-                </ul>
-              )}
-            </>
+            <span className="ml-auto text-xs text-dim">{rows ? `${shown.length} de ${rows.length}` : ''}</span>
+          </div>
+          {helpOpen && (
+            <p role="note" className="max-w-3xl text-xs leading-relaxed text-mist">
+              O tier parte da taxa de vitória e tira a margem de erro: com poucos jogos a nota encolhe para perto de 50%, então 150 jogos a 58% valem menos que 15 mil jogos a 53%. Vale para cima e
+              para baixo. Além disso, S exige que o campeão apareça em pelo menos 1,5% das partidas da rota, e quem aparece em menos de 0,5% (ou tem menos de 100 jogos) é de nicho e fica no máximo em
+              B, porque quem joga muito um campeão raro costuma vencer mais do que ele vale. Faixas: S a partir de +1,5 ponto, A +0,6, B de −0,6 a +0,6, C até −1,5, D abaixo disso.
+            </p>
           )}
-        </div>
-        {selected !== null ? <Detail championId={selected} role={role} /> : <div className="rounded-2xl border border-dashed border-line" />}
-      </div>
+
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)] gap-10 max-[1000px]:grid-cols-1 max-[1000px]:grid-rows-[minmax(180px,40%)_minmax(0,1fr)]">
+            <div className="flex min-h-0 flex-col">
+              {view === 'tier' ? (
+                rows === null ? (
+                  <p className="text-mist">Carregando…</p>
+                ) : (
+                  <TierList rows={shown} selected={selected} onSelect={setSelected} label={`Tier List de ${ROLE_LABEL[role]}`} />
+                )
+              ) : (
+                <>
+                  <div className={`grid ${showBan ? GRID_BAN : GRID} gap-x-3 border-b border-line px-2.5 pb-2`}>
+                    <HeaderCell label="Tier" sortKey="tier" current={sort.key} dir={sort.dir} onSort={onSort} className="-ml-1" />
+                    <span className="text-[11px] text-dim">Campeão</span>
+                    <HeaderCell label="Vitórias" sortKey="winrate" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />
+                    <HeaderCell label="Presença" sortKey="presence" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />
+                    {showBan && <HeaderCell label="Ban" sortKey="bans" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />}
+                    <HeaderCell label="Jogos" sortKey="games" current={sort.key} dir={sort.dir} onSort={onSort} className="justify-end" />
+                  </div>
+                  {rows === null ? (
+                    <p className="text-mist">Carregando…</p>
+                  ) : rows.length === 0 ? (
+                    <p className="rounded-2xl border border-dashed border-line p-4 text-mist">Os dados de meta não têm campeões para esta rota.</p>
+                  ) : (
+                    <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1" aria-label={`Ranking de ${ROLE_LABEL[role]}`}>
+                      {shown.map((r) => (
+                        <Row key={r.championId} row={r} selected={selected === r.championId} showBan={showBan} onSelect={() => setSelected(r.championId)} />
+                      ))}
+                      {shown.length === 0 && <li className="p-3 text-sm text-mist">Nenhum campeão com esses filtros.</li>}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+            {selected !== null ? <Detail championId={selected} role={role} /> : <div className="rounded-2xl border border-dashed border-line" />}
+          </div>
+        </>
+      )}
     </div>
   )
 }

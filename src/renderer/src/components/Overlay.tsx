@@ -8,7 +8,7 @@ const MAX: Record<(typeof KEYS)[number], number> = { Q: 5, W: 5, E: 5, R: 3 }
 const NO_DRAG = { WebkitAppRegion: 'no-drag' } as CSSProperties
 const DRAG = { WebkitAppRegion: 'drag' } as CSSProperties
 
-const REASON_SHORT = { armor: 'Armad.', 'magic-resist': 'RM', penetration: 'Pen.' } as const
+const REASON_SHORT = { armor: 'Armad.', 'magic-resist': 'RM', penetration: 'Pen.', 'anti-heal': 'Anticura', 'anti-shield': 'Anti-esc.', shield: 'Escudo', tenacity: 'Tenac.' } as const
 const FOCUS_TEXT = { armor: 'priorize armadura', 'magic-resist': 'priorize resistência mágica', penetration: 'muitos tanques: priorize penetração' } as const
 const fmtTime = (s: number): string => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const fmtGold = (n: number): string => n.toLocaleString('pt-BR')

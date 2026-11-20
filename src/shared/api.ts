@@ -16,6 +16,8 @@ import type {
   FriendProfile,
   MetaChampionDetail,
   MetaInfo,
+  GroupAnalysis,
+  MetaSynergyRow,
   MetaTierRow,
   LaneMatchup,
   Recommendation,
@@ -148,8 +150,15 @@ export interface LolApi {
   onGameflow(cb: (phase: string) => void): Unsubscribe
   /** Melhores picks do meta contra o inimigo da sua rota, fora da sua Pool. */
   getMetaCounters(req: { profileId?: string }): Promise<MetaCounter[]>
+  /** Melhores combos entre duas rotas (ex.: BOTTOM + UTILITY); com `anchor` lista só os parceiros daquele campeão (na rota `anchorRole`, por padrão a primeira). */
+  getMetaSynergies(req: { roleA: Role; roleB: Role; anchor?: number; anchorRole?: Role; limit?: number }): Promise<MetaSynergyRow[]>
+  /** Modo Grupo: relações entre os campeões do grupo (rotas vindas do draft) e quem encaixa nas vagas abertas. Vazio sem dados reais. */
+  analyzeGroup(req: { members: { cellId: number; role: Role; championId: number; tentative?: boolean }[]; unavailable?: number[] }): Promise<GroupAnalysis>
   getMetaDetail(req: { championId: number; role: Role }): Promise<MetaChampionDetail | null>
-  getBuild(req: { championId: number; role: Role; enemyId?: number | null }): Promise<ChampionBuild | null>
+  /** `chosen`: aplica as opções que você marcou na tela de build (itens, runas, habilidades) em vez das mais usadas. */
+  getBuild(req: { championId: number; role: Role; enemyId?: number | null; chosen?: boolean }): Promise<ChampionBuild | null>
+  /** Guarda as opções de build que você marcou (só índices), para o overlay e a tela do jogo usarem a mesma escolha. */
+  setBuildSelection(req: { championId: number; role: Role; selection: BuildSelection }): Promise<void>
   /** Ajustes da build para o time inimigo atual; null fora do draft. */
   getBuildSituation(req: { championId: number; role: Role }): Promise<BuildSituation | null>
   importMeta(): Promise<ImportMetaResult>

@@ -97,6 +97,27 @@ describe('coleta: perfil, contra o time inimigo e variantes', () => {
     // sem habilidades válidas não há build publicável: o teste só olha o contador
   })
 
+  it('publica a build completa: os 3 principais e os itens que vêm depois, na ordem de compra', () => {
+    const full = itemRulesFrom({
+      data: Object.fromEntries(
+        [3089, 3157, 6653, 3135, 3165, 3102, 3026, 3020].map((id) => [String(id), id === 3020 ? { gold: { total: 1100 }, tags: ['Boots'], from: ['1001'], maps: { '11': true } } : { gold: { total: 3000, purchasable: true }, tags: [], from: ['1026'], maps: { '11': true } }])
+      )
+    })
+    const s = newState('16.21')
+    const buy = (items: number[]): RawEvent[] => items.map((itemId, k) => ({ type: 'ITEM_PURCHASED', participantId: 1, itemId, timestamp: 100_000 * (k + 1) }))
+    const timeline = (items: number[]) => ({ info: { frames: [{ events: buy(items) }] } })
+    for (let n = 0; n < 12; n++) addMatch(s, match(() => ({})), timeline([3020, 3089, 3157, 6653, 3135, 3165, 3102, 3026]), full)
+    addMatch(s, match(() => ({})), timeline([3020, 3089, 3157, 6653, 3026]), full) // item raro no 4º slot: fica de fora
+    const ds = finalize(s, { minGames: 1, minMatchupGames: 1, minBuildSamples: 1, source: 't', generatedAt: '' })
+    const items = ds.champions['1'].roles.TOP!.build!.items
+    expect(items.core).toEqual([3089, 3157, 6653])
+    expect(items.full).toEqual([3089, 3157, 6653, 3135, 3165, 3102]) // 6 itens; o 7º (3026) não entra
+    // o arquivo passa na validação do app e a junção de coletas soma os itens tardios
+    expect(validateDataset(JSON.parse(JSON.stringify(ds))).champions['1'].roles.TOP!.build!.items.full).toEqual(items.full)
+    const { merged } = mergeStates([s, s])
+    expect(merged.champions['1'].TOP!.build.late!['3135']).toEqual({ count: 24, posSum: 72 })
+  })
+
   it('junta dois servidores somando as contagens e ignora outro patch', () => {
     const a = newState('16.21')
     const b = newState('16.21')

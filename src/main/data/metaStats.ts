@@ -29,6 +29,8 @@ const smooth = (s: WinStats, prior = PRIOR_GAMES): number => (s.wins + prior / 2
 export const RARE_PRESENCE = 0.005
 /** S só para quem também é bastante jogado na rota: vitória alta com pouco uso não prova que o campeão é o melhor. */
 export const TOP_PRESENCE = 0.015
+/** A partir desta taxa de ban o campeão deixa de ser tratado como de nicho no tier. */
+export const NICHE_BAN_RATE = 0.05
 const TIER_S = 1.5
 const TIER_A = 0.6
 
@@ -60,9 +62,11 @@ export interface Grade {
 }
 
 /** Tier de um campeão numa rota: pontuação conservadora + quanto ele é jogado (presence = fração das partidas da rota). */
-export function gradeOf(s: WinStats, presence: number): Grade {
+export function gradeOf(s: WinStats, presence: number, banRate = 0): Grade {
   const raw = tierScore(s)
-  const rare = s.games < MIN_GAMES_FOR_TIER || presence < RARE_PRESENCE
+  // campeão muito banido não é "de nicho": some do jogo porque o proibem, não porque ninguém o escolhe
+  const niche = presence < RARE_PRESENCE && banRate < NICHE_BAN_RATE
+  const rare = s.games < MIN_GAMES_FOR_TIER || niche
   let score = raw
   if (rare) score = Math.max(-(TIER_A - 0.01), Math.min(TIER_A - 0.01, raw))
   else if (presence < TOP_PRESENCE) score = Math.min(raw, TIER_S - 0.01)
@@ -92,6 +96,13 @@ export function rolePresence(ds: MetaDataset, championId: number | string, role:
   return m && total > 0 ? m.games / total : 0
 }
 
+/** Fração das partidas em que o campeão foi banido; undefined se o meta não traz bans. */
+export function banRateOf(ds: MetaDataset, championId: number | string): number | undefined {
+  const b = ds.bans
+  if (!b || !(b.matches > 0)) return undefined
+  return Math.min(1, (b.counts[String(championId)] ?? 0) / b.matches)
+}
+
 /** Ranking da rota: melhores primeiro (pelo winrate suavizado, então amostras pequenas não dominam). */
 export function tierRows(ds: MetaDataset, role: Role): MetaTierRow[] {
   const total = roleTotal(ds, role)
@@ -101,13 +112,18 @@ export function tierRows(ds: MetaDataset, role: Role): MetaTierRow[] {
     if (!m || m.games <= 0) continue
     const delta = (smooth(m, TIER_PRIOR_GAMES) - 0.5) * 100
     const presence = total > 0 ? m.games / total : 0
-    const g = gradeOf(m, presence)
+    // o ban não tem rota: vale para a rota em que o campeão mais joga (a partir de metade das partidas dele)
+    let champGames = 0
+    for (const r of Object.values(c.roles)) champGames += r?.games ?? 0
+    const ban = champGames > 0 && m.games / champGames >= 0.5 ? banRateOf(ds, id) : undefined
+    const g = gradeOf(m, presence, ban ?? 0)
     rows.push({
       championId: Number(id),
       games: m.games,
       winrate: m.wins / m.games,
       delta,
       presence,
+      ...(ban !== undefined ? { banRate: ban } : {}),
       score: g.score,
       tier: g.tier,
       hasBuild: !!m.build,

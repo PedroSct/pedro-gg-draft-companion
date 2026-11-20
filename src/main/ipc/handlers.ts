@@ -10,10 +10,13 @@ import { MetaStore, MetaUpdateError } from '../data/meta'
 import { laneEnemyOf, recommend } from '../data/recommender'
 import { buildSituation } from '../data/situation'
 import { banPhaseOpen, suggestBans } from '../data/bans'
-import { applyBuildSelection, sanitizeSelection, type BuildSelection } from '../../shared/buildSelection'
+import { applyBuildSelection, sanitizeSelection, ZERO_SELECTION, type BuildSelection } from '../../shared/buildSelection'
 import { championDetail, rolesOf, tierRows } from '../data/metaStats'
+import { synergyPairs } from '../data/synergies'
+import { analyzeGroup, type GroupMemberInput } from '../data/group'
 import { readAccount, suggestPoolFromAccount } from '../lcu/accountPool'
 import { analyzeCoach, type CoachResult } from '../../shared/coach'
+import { classifyCatalog } from '../../shared/itemAdvice'
 import { ROLES, type ChampionInfo, type ItemInfo } from '../../shared/dataTypes'
 import { DEFAULT_META_URL, DEFAULT_UPDATE_REPO, regionUrl } from '../../shared/config'
 import { UpdateService, pickAutoUpdater, type UpdaterLike } from '../updater'
@@ -92,11 +95,14 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   }
   // Rota e campeão do último draft: o overlay usa quando o jogo não informa a rota.
   const lastPickFile = path.join(userData, 'lastpick.json')
+  // Opções de build marcadas na tela (só índices), por campeão e rota: valem para o overlay e para a tela do jogo.
+  const lastSelections = new Map<string, BuildSelection>()
   const readLastPick = (): { championId: number; role: Role } | null => {
     try {
-      const raw = JSON.parse(readFileSync(lastPickFile, 'utf8')) as { championId?: unknown; role?: unknown; at?: unknown }
+      const raw = JSON.parse(readFileSync(lastPickFile, 'utf8')) as { championId?: unknown; role?: unknown; at?: unknown; selection?: unknown }
       const fresh = typeof raw.at === 'number' && Date.now() - raw.at < 6 * 3600_000 // partida de mais de 6 h atrás não vale
       if (fresh && typeof raw.championId === 'number' && raw.championId > 0 && (ROLES as readonly string[]).includes(String(raw.role))) {
+        if (raw.selection) lastSelections.set(`${raw.championId}|${String(raw.role)}`, sanitizeSelection(raw.selection))
         return { championId: raw.championId, role: raw.role as Role }
       }
     } catch {
@@ -109,14 +115,28 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   const saveLastPickFile = (): void => {
     try {
       mkdirSync(path.dirname(lastPickFile), { recursive: true })
-      writeFileSync(lastPickFile, JSON.stringify({ ...lastPick, at: Date.now() }))
+      const sel = lastPick ? lastSelections.get(`${lastPick.championId}|${lastPick.role}`) : undefined
+      writeFileSync(lastPickFile, JSON.stringify({ ...lastPick, ...(sel ? { selection: sel } : {}), at: Date.now() }))
     } catch {
       /* só conveniência */
     }
   }
+  // O último draft visto: depois que o jogo começa o cliente fecha a seleção, mas a build desta partida ainda precisa do confronto e do time inimigo.
+  let lastSeenDraft: { draft: DraftState; at: number } | null = null
+  const SEEN_MAX_MS = 6 * 3600_000
+  let draftEnded = false
+  const gameDraft = (): DraftState | null => {
+    const live = annotatedDraft()
+    if (live) return live
+    return lastSeenDraft && Date.now() - lastSeenDraft.at < SEEN_MAX_MS ? lastSeenDraft.draft : null
+  }
   const pushDraft = (): void => {
     const d = annotatedDraft()
     if (d) {
+      // seleção nova: as opções de build marcadas na partida anterior não valem mais
+      if (draftEnded || !lastSeenDraft || Date.now() - lastSeenDraft.at > SEEN_MAX_MS) lastSelections.clear()
+      draftEnded = false
+      lastSeenDraft = { draft: d, at: Date.now() }
       send(IPC.DRAFT_UPDATE, d)
       const me = d.allies.find((a) => a.cellId === d.localPlayerCellId)
       if (me && me.championId > 0 && d.localRole && (lastPick?.championId !== me.championId || lastPick.role !== d.localRole)) {
@@ -130,7 +150,10 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     send(IPC.IDENTITY_UPDATE, identityState())
     pushDraft()
   })
-  lcu.on('draft-ended', () => send(IPC.DRAFT_ENDED))
+  lcu.on('draft-ended', () => {
+    draftEnded = true
+    send(IPC.DRAFT_ENDED)
+  })
 
   // Aceitar a partida encontrada (opcional, desligado por padrão)
   const diag = new Diagnostics(path.join(userData, 'logs', 'diagnostico.log'))
@@ -231,7 +254,15 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
       `Última tentativa de aceite: ${diag.getAccept() ? `${diag.getAccept()?.ok ? 'ok' : 'falhou'} (HTTP ${diag.getAccept()?.status})` : 'nenhuma'}`,
       `Overlay: ${overlay.getStatus()}`,
       `Atalhos do overlay: ${overlay.getShortcutStatus()}`,
-      `Perfis: ${profiles.list().length}`
+      `Perfis: ${profiles.list().length}`,
+      `Itens reconhecidos para a partida: ${
+        Object.keys(itemInfos).length > 0
+          ? (() => {
+              const c = classifyCatalog(itemInfos)
+              return `${c.finals} finais, ${c.antiHeal} anticura, ${c.antiShield} anti-escudo, ${c.shield} com escudo, ${c.tenacity} com tenacidade`
+            })()
+          : 'catálogo ainda não carregado'
+      }`
     ])
   }
   handle(IPC.DIAG_REPORT, () => diagReport())
@@ -329,6 +360,27 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     const ds = meta.get()
     return ds && ROLES.includes(role as Role) ? tierRows(ds, role as Role) : []
   })
+  handle(IPC.META_SYNERGIES, (raw) => {
+    const req = isRecord(raw) ? raw : {}
+    const ds = meta.get()
+    if (!ds || !ROLES.includes(req.roleA as Role) || !ROLES.includes(req.roleB as Role)) return []
+    const anchor = typeof req.anchor === 'number' ? req.anchor : undefined
+    const anchorRole = ROLES.includes(req.anchorRole as Role) ? (req.anchorRole as Role) : undefined
+    return synergyPairs(ds, req.roleA as Role, req.roleB as Role, { anchor, anchorRole, limit: typeof req.limit === 'number' ? Math.min(200, Math.max(1, req.limit)) : undefined })
+  })
+  handle(IPC.GROUP_ANALYZE, (raw) => {
+    const req = isRecord(raw) ? raw : {}
+    const ds = meta.get()
+    const empty = { pairs: [], suggestions: [], score: null, label: null, best: null, weakest: null }
+    if (!ds || ds.isSample || !Array.isArray(req.members)) return empty
+    const members: GroupMemberInput[] = []
+    for (const m of req.members.slice(0, 5)) {
+      if (!isRecord(m) || typeof m.cellId !== 'number' || typeof m.championId !== 'number' || !ROLES.includes(m.role as Role)) continue
+      members.push({ cellId: m.cellId, role: m.role as Role, championId: m.championId, tentative: m.tentative === true })
+    }
+    const unavailable = Array.isArray(req.unavailable) ? req.unavailable.filter((x): x is number => typeof x === 'number').slice(0, 40) : []
+    return analyzeGroup(ds, members, unavailable)
+  })
   handle(IPC.META_DETAIL, (raw) => {
     const req = isRecord(raw) ? raw : {}
     const ds = meta.get()
@@ -337,7 +389,7 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   })
   /** Oponente de rota desta partida (para trocar as runas e feitiços pelos do confronto); null se não é certo. */
   const laneEnemy = (role: Role): number | null => {
-    const d = annotatedDraft()
+    const d = gameDraft()
     const ds = meta.get()
     return d && ds ? laneEnemyOf(d, ds, role) : null
   }
@@ -346,7 +398,16 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
     const role = req.role as Role
     if (typeof req.championId !== 'number' || !ROLES.includes(role)) return null
     const sim = typeof req.enemyId === 'number' && req.enemyId > 0 ? req.enemyId : null
-    return meta.getBuild(req.championId, role, sim ?? laneEnemy(role))
+    const base = meta.getBuild(req.championId, role, sim ?? laneEnemy(role))
+    // chosen: as opções marcadas na tela de build (a mesma escolha do overlay e da importação)
+    return base && req.chosen === true ? applyBuildSelection(base, lastSelections.get(`${req.championId}|${role}`) ?? ZERO_SELECTION) : base
+  })
+  handle(IPC.BUILD_SELECT, (raw) => {
+    const req = isRecord(raw) ? raw : {}
+    const role = req.role as Role
+    if (typeof req.championId !== 'number' || !ROLES.includes(role)) return
+    lastSelections.set(`${req.championId}|${role}`, sanitizeSelection(req.selection))
+    if (lastPick && lastPick.championId === req.championId && lastPick.role === role) saveLastPickFile()
   })
   // ---- Confronto de rota: oponente (do draft, ou o simulado pela busca), dupla da bot lane e pontos fortes/fracos
   handle(IPC.DRAFT_MATCHUP, async (raw) => {
@@ -423,7 +484,6 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   })
   handle(IPC.META_PATCH_ACK, () => writeSeen())
   // ---- Overlay dentro do jogo (opcional): próxima habilidade e itens da build, lidos da API oficial da partida
-  const lastSelections = new Map<string, BuildSelection>()
   const keyToId = (key: string): number | null => {
     for (const [id, k] of champKeys) if (k.toLowerCase() === key.toLowerCase()) return id
     return null
@@ -433,7 +493,9 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
       getSettings: () => profiles.getSettings(),
       situation: (championId, role, enemyIds) => {
         const draft = { enemies: enemyIds.map((id, i) => ({ cellId: 5 + i, championId: id, status: 'locked', role: null })), allies: [] } as unknown as DraftState
-        const s = buildSituation({ dataset: meta.get(), draft, build: meta.getBuild(championId, role), championId, champions: champInfos, items: itemInfos })
+        const base = meta.getBuild(championId, role)
+        const chosen = base ? applyBuildSelection(base, lastSelections.get(`${championId}|${role}`) ?? ZERO_SELECTION) : null
+        const s = buildSituation({ dataset: meta.get(), draft, build: chosen, championId, role, champions: champInfos, items: itemInfos })
         if (!s.enemyDamage) return null
         return { focus: s.focus, physical: s.enemyDamage.physical, magic: s.enemyDamage.magic, picks: s.picks }
       },
@@ -505,14 +567,16 @@ export async function registerIpc(win: BrowserWindow, devUrl?: string): Promise<
   handle(IPC.META_BUILD_SITUATION, async (raw) => {
     const req = isRecord(raw) ? raw : {}
     const role = req.role as Role
-    const draft = annotatedDraft()
+    const draft = gameDraft()
     if (!draft || typeof req.championId !== 'number' || !ROLES.includes(role)) return null
     await warmChampionKeys()
+    const base = meta.getBuild(req.championId, role)
     return buildSituation({
       dataset: meta.get(),
       draft,
-      build: meta.getBuild(req.championId, role),
+      build: base ? applyBuildSelection(base, lastSelections.get(`${req.championId}|${role}`) ?? ZERO_SELECTION) : null,
       championId: req.championId,
+      role,
       champions: champInfos,
       items: itemInfos
     })

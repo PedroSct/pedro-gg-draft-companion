@@ -2,6 +2,7 @@
 // Só usa o que já está nos dados de meta (ordem de habilidades, itens iniciais, botas, itens principais e situacionais);
 // não inventa dicas. É leitura: o app não joga nem decide nada pela pessoa.
 import type { BuildSituation, ChampionBuild, SituationalItem, SkillKey } from './dataTypes'
+import { KIND_LABEL } from './itemAdvice'
 import type { Role } from './types'
 
 export interface PlanSkill {
@@ -114,14 +115,25 @@ export function buildGamePlan(build: ChampionBuild | null | undefined, situation
     title: 'Fim',
     levels: 'níveis 12 a 18',
     skills: skillsBetween(levels, SPLIT.mid + 1, 18),
-    items: core.slice(2),
-    situational: build.items.situational.slice(0, 4),
+    // 3º principal e, havendo, o 4º ao 6º item da build completa
+    items: [...core.slice(2), ...(build.items.full ?? []).filter((id) => !build.items.core.includes(id) && !core.includes(id))].slice(0, 4),
+    situational: [
+      // o que o time inimigo desta partida pede vem primeiro; depois os situacionais mais comuns do campeão
+      ...(situation?.advice ?? []).map((a) => ({ itemId: a.itemId, when: `${KIND_LABEL[a.kind]}: ${a.why}${a.replaces ? `. Troque o item ${a.slot} por este` : ''}` })),
+      ...build.items.situational.filter((s) => !(situation?.advice ?? []).some((a) => a.itemId === s.itemId))
+    ].slice(0, 6),
     notes: [],
     tips: role ? ROLE_TIPS[role].late : []
   }
   if (situation?.focus === 'armor') late.notes.push('O inimigo causa quase só dano físico: priorize armadura.')
   if (situation?.focus === 'magic-resist') late.notes.push('O inimigo causa quase só dano mágico: priorize resistência mágica.')
   if (situation?.focus === 'penetration') late.notes.push('O inimigo tem vários tanques: priorize penetração.')
+  for (const n of situation?.needs ?? []) {
+    if (n.kind === 'anti-heal') late.notes.push('O inimigo se cura muito: leve um item de anticura.')
+    if (n.kind === 'anti-shield') late.notes.push('O inimigo usa escudos: um item que corta escudo ajuda.')
+    if (n.kind === 'shield') late.notes.push('Dano explosivo no time inimigo: um escudo ou item de sobrevivência ajuda.')
+    if (n.kind === 'tenacity') late.notes.push('Muito controle de grupo no inimigo: considere tenacidade ou purificação.')
+  }
 
   const empty = (p: PlanPhase): boolean => p.skills.length === 0 && p.items.length === 0 && p.situational.length === 0 && p.notes.length === 0
   const phases = [early, mid, late].filter((p) => !empty(p))

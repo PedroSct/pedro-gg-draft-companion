@@ -163,7 +163,7 @@ export function GamePlan({ championId, role, compact = false }: { championId: nu
     let cancelled = false
     setDone(false)
     Promise.all([
-      window.api.getBuild({ championId, role }).catch(() => null),
+      window.api.getBuild({ championId, role, chosen: true }).catch(() => null),
       window.api.getBuildSituation({ championId, role }).catch(() => null),
       key ? window.api.getSpells(key).catch(() => [] as SpellInfo[]) : Promise.resolve([] as SpellInfo[])
     ]).then(([b, s, sp]) => {

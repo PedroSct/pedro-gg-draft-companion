@@ -1,6 +1,7 @@
 // src/shared/dataTypes.ts
 // Tipos do Módulo 3: perfis, meta (matchups/builds), Data Dragon e recomendação.
 import type { Role } from './types'
+import type { AdviceKind, ItemAdvice } from './itemAdvice'
 
 export const ROLES: readonly Role[] = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY']
 
@@ -166,6 +167,8 @@ export interface ChampionBuild {
     starting: number[]
     boots: number[]
     core: number[]
+    /** build completa (até 6 itens: os principais e os que vêm depois, na ordem média de compra); ausente em dados anteriores à 0.15.0 */
+    full?: number[]
     situational: SituationalItem[]
   }
 }
@@ -185,6 +188,8 @@ export interface RoleMeta extends WinStats {
   matchups: Record<string, WinStats>
   /** chave = championId de um aliado (em qualquer rota): partidas em que os dois jogaram no mesmo time */
   synergies?: Record<string, WinStats>
+  /** chave = "ROTA:championId" do aliado: a dupla com as duas rotas conhecidas (mais exata que `synergies`; ausente em meta antigo) */
+  pairs?: Record<string, WinStats>
   /** chave = campeão do time inimigo (em qualquer rota): partidas em que enfrentaram este campeão */
   versus?: Record<string, WinStats>
   /** dano, tanque e CC reais do campeão nesta rota */
@@ -200,6 +205,8 @@ export interface MetaDataset {
   generatedAt: string
   /** servidores que entraram nas estatísticas (ex.: ['br1','kr']) */
   regions?: string[]
+  /** bans: partidas com a lista de bans e quantas vezes cada campeão foi banido (ausente em meta antigo) */
+  bans?: { matches: number; counts: Record<string, number> }
   /** chave = championId (string) */
   champions: Record<string, { roles: Partial<Record<Role, RoleMeta>> }>
 }
@@ -235,6 +242,10 @@ export interface ItemInfo {
   from?: number[]
   /** categorias do Data Dragon (ex.: 'Armor', 'SpellBlock', 'ArmorPenetration'); ausente em caches antigos */
   tags?: string[]
+  /** item completo (não vira outro item) e à venda no Summoner's Rift: pode ser recomendado; ausente em caches antigos */
+  final?: boolean
+  /** texto do item (resumo e passivas, sem marcação), só nos itens completos: usado para achar anticura e anti-escudo */
+  text?: string
 }
 
 export interface SpellInfo {
@@ -337,8 +348,12 @@ export interface BuildSituation {
   /** inimigos com muito tanque */
   tankyEnemies: number
   focus: 'armor' | 'magic-resist' | 'penetration' | null
-  /** itens do próprio campeão (situacionais e variantes) que atendem ao foco */
-  picks: { itemId: number; reason: 'armor' | 'magic-resist' | 'penetration' }[]
+  /** itens recomendados para esta partida (os mesmos de `advice`, sem os detalhes) */
+  picks: { itemId: number; reason: AdviceKind }[]
+  /** itens recomendados com o motivo, se vêm do catálogo geral e, quando a necessidade é grande, qual item principal trocar */
+  advice: ItemAdvice[]
+  /** o que o time inimigo pede (armadura, penetração, anticura, anti-escudo...), mesmo sem item para sugerir */
+  needs: { kind: AdviceKind; level: 'alta' | 'média'; why: string }[]
   /** os 3 itens da construção alternativa que melhor encaixa; null = a principal */
   variantCore: number[] | null
 }
@@ -450,12 +465,69 @@ export interface MetaTierRow {
   score: number
   /** participação do campeão nas partidas da rota (0..1) */
   presence: number
+  /** fração das partidas em que o campeão foi banido (0..1); ausente quando o meta não traz bans */
+  banRate?: number
   tier: Tier
   hasBuild: boolean
   /** poucos jogos: o tier fica em B e os números ainda oscilam */
   lowSample: boolean
   /** pouco jogado na rota (menos de 0,5% das partidas) ou poucas partidas: o tier fica limitado a B */
   rare: boolean
+}
+
+/** Um combo entre duas rotas: o campeão A (na primeira rota pedida) com o campeão B (na segunda). */
+export interface MetaSynergyRow {
+  aId: number
+  bId: number
+  games: number
+  /** vitórias da dupla (0..1), bruto */
+  winrate: number
+  /** quanto a dupla rende além da soma dos dois sozinhos, em pontos (já suavizado) */
+  synergy: number
+  /** nota conservadora em pontos acima de 50% (poucos jogos encolhem para 0) */
+  score: number
+  tier: Tier
+  /** menos de 100 jogos: o tier não passa de B e o número ainda oscila */
+  rare: boolean
+}
+
+/** Uma dupla dentro do grupo (as rotas vêm do draft). `row` é null quando o dado não tem partidas suficientes dos dois juntos. */
+export interface GroupPair {
+  aCell: number
+  bCell: number
+  aId: number
+  bId: number
+  aRole: Role
+  bRole: Role
+  /** algum dos dois ainda está só marcado (pode mudar) */
+  tentative: boolean
+  row: MetaSynergyRow | null
+}
+
+/** Quem encaixa numa vaga aberta do grupo, pelo conjunto de campeões já escolhidos. */
+export interface GroupSlotSuggestion {
+  cellId: number
+  role: Role
+  picks: {
+    championId: number
+    /** média da nota dos combos com o grupo (pares sem dado contam zero) */
+    score: number
+    /** com quantos do grupo há dado / quantos tem o grupo */
+    covered: number
+    total: number
+    with: { championId: number; winrate: number; games: number; synergy: number }[]
+  }[]
+}
+
+export interface GroupAnalysis {
+  pairs: GroupPair[]
+  suggestions: GroupSlotSuggestion[]
+  /** média da nota dos combos do grupo; null sem nenhum par com dado */
+  score: number | null
+  label: 'forte' | 'boa' | 'neutra' | 'fraca' | null
+  best: { aId: number; bId: number } | null
+  /** só quando o pior combo está abaixo do aceitável */
+  weakest: { aId: number; bId: number } | null
 }
 
 export interface MetaMatchupRow {

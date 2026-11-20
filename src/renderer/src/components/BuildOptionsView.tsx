@@ -176,25 +176,24 @@ export function BuildOptionsView({
   const [inner, setInner] = useState<BuildSelection>(ZERO_SELECTION)
   const sel = selection ?? inner
   const touchedCore = useRef(false)
-  const [skillIdx, setSkillIdx] = useState(0)
   const choose = (patch: Partial<BuildSelection>): void => {
     const next = { ...sel, ...patch }
     setInner(next)
     onSelect?.(next)
   }
 
-  // Outro campeão/rota (build nova): volta para a opção mais usada.
+  // Outro campeão ou confronto (as listas mudam): sem seleção controlada pelo pai, volta para a opção mais usada.
+  // Com seleção controlada, quem guarda e zera a escolha é o pai (ela sobrevive à troca de etapa do draft).
+  const enemyKey = build.matchup?.enemyId ?? 0
   useEffect(() => {
     touchedCore.current = false
     setInner(ZERO_SELECTION)
-    setSkillIdx(0)
-    onSelect?.(ZERO_SELECTION)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [build])
+  }, [championId, enemyKey])
 
   // Se uma construção encaixa melhor no time inimigo, ela já vem marcada (até a pessoa escolher outra).
   useEffect(() => {
-    if (!highlightKey || !o?.core || touchedCore.current) return
+    if (!highlightKey || !o?.core || touchedCore.current || sel.core !== 0) return
     const at = o.core.findIndex((c) => c.value.join(',') === highlightKey)
     if (at > 0) {
       const next = { ...sel, core: at }
@@ -261,7 +260,7 @@ export function BuildOptionsView({
       ) : o?.skills ? (
         <div className="flex flex-col gap-2">
           <h3 className="text-sm text-mist">Ordem das habilidades</h3>
-          <Choice label="Opções de habilidades" options={o.skills} total={o.timeline} index={skillIdx} onIndex={setSkillIdx} render={(v) => <SkillOrder build={skillBuild(v)} spells={spells} hideTitle />} />
+          <Choice label="Opções de habilidades" options={o.skills} total={o.timeline} index={sel.skills} onIndex={(i) => choose({ skills: i })} render={(v) => <SkillOrder build={skillBuild(v)} spells={spells} hideTitle />} />
         </div>
       ) : (
         build.skillOrder ? (
@@ -300,6 +299,9 @@ export function BuildOptionsView({
         ) : (
           <ItemRow title="Principais, na ordem de compra" ids={build.items.core} chain />
         )}
+        {(build.items.full ?? []).some((id) => !build.items.core.includes(id)) && (
+          <ItemRow title="Depois dos principais (4º ao 6º item mais comprado)" ids={(build.items.full ?? []).filter((id) => !build.items.core.includes(id))} chain />
+        )}
         {build.items.situational.length > 0 && (
           <div>
             <h4 className="mb-1.5 text-xs text-mist">Situacionais</h4>
@@ -310,7 +312,7 @@ export function BuildOptionsView({
             </ul>
           </div>
         )}
-        {o && <p className="text-[11px] text-dim">Escolha = fatia das partidas do campeão; o segundo número é a taxa de vitória. * = menos de {FEW_GAMES} partidas. A opção marcada é a que “Enviar para o LoL” usa.</p>}
+        {o && <p className="text-[11px] text-dim">Escolha = fatia das partidas do campeão; o segundo número é a taxa de vitória. * = menos de {FEW_GAMES} partidas. A opção marcada vale também para o overlay, para o plano de jogo e para “Enviar para o LoL”.</p>}
       </div>
     </>
   )
