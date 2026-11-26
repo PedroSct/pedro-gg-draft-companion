@@ -3,6 +3,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { writeJsonAtomic } from '../store/fsJson'
+import { isRiftGame } from '../../shared/poolImport'
 import { summarize, type PgDetail, type PgSummary, type MatchReport, type Analysis } from '../../shared/postgame'
 
 const MAX_ITEMS = 40
@@ -32,7 +33,7 @@ export class PostGameStore {
         ? (list.filter(
             (i): i is Item =>
               typeof i === 'object' && i !== null && typeof (i as Item).report?.gameId === 'number' && typeof (i as Item).analysis?.score === 'number'
-          ) as Item[])
+          ) as Item[]).filter((i) => isRiftGame(i.report.queueId ?? 0, i.report.mode)) // versões antigas guardaram ARAM e outros modos
         : []
     } catch {
       this.items = [] // arquivo ausente ou corrompido: começa vazio

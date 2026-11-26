@@ -1,6 +1,6 @@
 // src/main/lcu/accountPool.ts
 // Lê do cliente do LoL (só leitura) as partidas recentes e a maestria da conta logada e monta a sugestão de Pool.
-import { buildPoolSuggestion, COUNTED_QUEUES, type AccountGame, type MasteryEntry, type PoolSuggestResult } from '../../shared/poolImport'
+import { buildPoolSuggestion, COUNTED_QUEUES, MIN_GAME_SECONDS, type AccountGame, type MasteryEntry, type PoolSuggestResult } from '../../shared/poolImport'
 import { toRole } from '../postgame/normalize'
 import type { Role } from '../../shared/types'
 
@@ -29,6 +29,8 @@ export function parseGame(raw: unknown): AccountGame | null {
   const queue = num(raw.queueId)
   if (queue !== 0 && !COUNTED_QUEUES.has(queue)) return null
   if (queue === 0) return null // sem fila identificada: melhor não contar
+  const duration = num(raw.gameDuration)
+  if (duration > 0 && duration < MIN_GAME_SECONDS) return null // remake ou saída antes dos 5 minutos
   const parts = Array.isArray(raw.participants) ? raw.participants : []
   const p = parts.find(isObj)
   if (!p) return null
@@ -37,7 +39,7 @@ export function parseGame(raw: unknown): AccountGame | null {
   const stats = isObj(p.stats) ? p.stats : {}
   const tl = isObj(p.timeline) ? p.timeline : {}
   const win = typeof stats.win === 'boolean' ? stats.win : String(stats.win ?? '').toLowerCase() === 'win'
-  return { championId, role: toRole(tl.role, tl.lane), win }
+  return { gameId: num(raw.gameId) || undefined, championId, role: toRole(tl.role, tl.lane), win }
 }
 
 export function parseMastery(data: unknown): MasteryEntry[] {
@@ -61,6 +63,7 @@ export async function readAccount(get: Get): Promise<AccountRead> {
   const account = typeof d.gameName === 'string' && d.gameName ? `${d.gameName}${typeof d.tagLine === 'string' && d.tagLine ? '#' + d.tagLine : ''}` : null
 
   const games: AccountGame[] = []
+  const seen = new Set<number>()
   let pages = 0
   for (let page = 0; page < MAX_PAGES; page++) {
     const res = await get(HISTORY(page * PAGE)).catch(() => null)
@@ -69,6 +72,11 @@ export async function readAccount(get: Get): Promise<AccountRead> {
     pages++
     for (const g of raw) {
       const parsed = parseGame(g)
+      // as páginas do histórico podem repetir a partida da fronteira: a mesma não conta duas vezes
+      if (parsed && parsed.gameId) {
+        if (seen.has(parsed.gameId)) continue
+        seen.add(parsed.gameId)
+      }
       if (parsed) games.push(parsed)
     }
     if (raw.length < PAGE) break

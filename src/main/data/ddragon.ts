@@ -165,7 +165,8 @@ export class DataDragon {
       // completo e comprável no Summoner's Rift (mapa 11); os de campeão específico ficam de fora
       const into = Array.isArray(it.into) ? it.into : []
       const buyable = !isRecord(it.gold) || it.gold.purchasable !== false
-      const onRift = !isRecord(it.maps) || it.maps['11'] !== false
+      // só vale o que o Data Dragon marca como da Summoner's Rift (mapa 11); itens de Arena, ARAM etc. ficam de fora
+      const onRift = (!isRecord(it.maps) || it.maps['11'] === true) && Number(id) < 100000
       const restricted = typeof it.requiredChampion === 'string' || typeof it.requiredAlly === 'string'
       const isFinal = into.length === 0 && buyable && onRift && !restricted && it.inStore !== false && gold >= 2000
       const text = isFinal ? itemText(it) : ''

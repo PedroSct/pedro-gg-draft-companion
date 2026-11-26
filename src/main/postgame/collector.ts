@@ -1,6 +1,7 @@
 // src/main/postgame/collector.ts
 // Quando a partida termina, busca no cliente do LoL o placar final, os detalhes e a timeline,
 // monta o relatório, analisa e guarda. Não usa chave de API da Riot: tudo vem do cliente local.
+import { isRiftGame, MIN_GAME_SECONDS } from '../../shared/poolImport'
 import { analyzeMatch, type PgFetchResult, type PgSummary } from '../../shared/postgame'
 import { findGameIds, normalizeMatch, type Identity } from './normalize'
 import type { PostGameStore } from './store'
@@ -68,8 +69,15 @@ export class PostGameCollector {
       for (const p of LIST_PATHS) {
         const res = await this.safeGet(p)
         if (!res || res.status !== 200) continue
-        const ids = findGameIds(res.data, 1)
-        if (ids.length > 0) return this.build(ids[0], true)
+        // a mais recente pode ser ARAM ou outro modo: segue para a próxima que seja da Summoner's Rift
+        const ids = findGameIds(res.data, 10)
+        let last: PgFetchResult | null = null
+        for (const id of ids) {
+          const r = await this.build(id, true)
+          if (r.ok || !r.skipped) return r
+          last = r
+        }
+        if (last) return { ok: false, message: 'As últimas partidas são de outros modos (ARAM, Arena...) ou remakes. Jogue uma da Summoner\'s Rift para analisar.' }
       }
       return { ok: false, message: 'Não encontrei partidas no histórico do cliente. Abra o League of Legends e tente de novo.' }
     })
@@ -133,6 +141,12 @@ export class PostGameCollector {
     const report = normalizeMatch(raw, { champKeyOf: this.d.champKeyOf })
     if (!report) return { ok: false, gameId, message: 'O cliente não entregou os dados desta partida.' }
     if (report.gameId === 0) report.gameId = gameId
+    if (!isRiftGame(report.queueId, report.mode)) {
+      return { ok: false, gameId, skipped: true, message: 'Só analiso partidas da Summoner\'s Rift (normal, ranqueada, partida rápida e Clash). Esta foi de outro modo.' }
+    }
+    if (report.durationSec > 0 && report.durationSec < MIN_GAME_SECONDS) {
+      return { ok: false, gameId, skipped: true, message: 'Partida com menos de 5 minutos (remake): não entra na análise.' }
+    }
     const analysis = analyzeMatch(report)
     if (!analysis) return { ok: false, gameId, message: 'Não consegui identificar você nesta partida.' }
 

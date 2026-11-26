@@ -568,6 +568,8 @@ export interface PgDetail {
 export interface PgFetchResult {
   ok: boolean
   gameId?: number
+  /** a partida foi lida mas não entra na análise (outro modo ou remake) */
+  skipped?: boolean
   message: string
 }
 

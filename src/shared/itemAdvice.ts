@@ -50,6 +50,8 @@ export interface AdviceInput {
   own: readonly number[]
   /** build principal escolhida, na ordem */
   core: readonly number[]
+  /** itens que aparecem nas builds de partidas reais da Rift (meta): só estes podem ser sugeridos (barra itens de outros modos); vazio = sem esse filtro */
+  rift?: ReadonlySet<number>
 }
 
 export interface AdviceResult {
@@ -122,7 +124,10 @@ const pct = (x: number): string => `${Math.round(x * 100)}%`
 const names = (list: readonly EnemyInput[]): string => list.map((e) => e.name).join(', ')
 
 /** Itens do catálogo que podem ser recomendados (completos, do Summoner's Rift, não botas). */
-const candidates = (items: Readonly<Record<string, ItemInfo>>): ItemInfo[] => Object.values(items).filter((it) => it.final && !hasTag(it, 'Boots') && !hasTag(it, 'Consumable') && !hasTag(it, 'Trinket'))
+/** Com poucos itens conhecidos o filtro da Rift não vale (meta pequeno ou de amostra). */
+export const MIN_RIFT_ITEMS = 40
+const candidates = (items: Readonly<Record<string, ItemInfo>>, rift?: ReadonlySet<number>): ItemInfo[] =>
+  Object.values(items).filter((it) => it.final && !hasTag(it, 'Boots') && !hasTag(it, 'Consumable') && !hasTag(it, 'Trinket') && (!rift || rift.size < MIN_RIFT_ITEMS || rift.has(it.id)))
 
 export function adviseItems(input: AdviceInput): AdviceResult {
   const { enemies, me } = input
@@ -156,7 +161,7 @@ export function adviseItems(input: AdviceInput): AdviceResult {
 
   // --- itens para cada necessidade
   const coreItems = input.core.map((id) => input.items[String(id)])
-  const pool = candidates(input.items)
+  const pool = candidates(input.items, input.rift)
   const ownSet = new Set(input.own)
   const advice: ItemAdvice[] = []
   const used = new Set<number>(input.core)

@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   acceptMatch,
+  choosePatch,
+  comparePatch,
   addMatch,
   extractPurchases,
   finalize,
@@ -24,7 +26,7 @@ import {
   type RawMatch
 } from '../tools/meta/aggregate'
 import { RiotAuthError, RiotClient } from '../tools/meta/riot'
-import { buildMeta, type BuildMetaOptions } from '../tools/meta/run'
+import { buildMeta, pruneOldStates, type BuildMetaOptions } from '../tools/meta/run'
 import { validateDataset } from '../src/main/data/meta'
 
 const FULL = 'QWEQQRQEQEREEWWRWW' // 18 níveis válidos: Q maxa primeiro, depois E, depois W
@@ -677,5 +679,31 @@ describe('dupla com as duas rotas e taxa de ban', () => {
     // checkpoint antigo (sem pairs/bans) entra sem quebrar
     const old = newState('16.20')
     expect(mergeStates([old, a]).merged.banMatches).toBe(1)
+  })
+})
+
+describe('troca de patch no meta publicado', () => {
+  it('compara patches por número', () => {
+    expect(comparePatch('16.9', '16.22')).toBeLessThan(0)
+    expect(comparePatch('17.1', '16.22')).toBeGreaterThan(0)
+    expect(comparePatch('16.22', '16.22')).toBe(0)
+  })
+
+  it('o patch novo assume assim que tem partidas suficientes, mesmo com menos que o antigo', () => {
+    const old = { patch: '16.22', matches: 370_000 }
+    expect(choosePatch([old, { patch: '16.23', matches: 20_000 }])).toBe('16.23')
+    expect(choosePatch([{ patch: '16.23', matches: 9_000 }, old])).toBe('16.22') // novo ainda fino: o antigo segura
+    expect(choosePatch([{ patch: '16.23', matches: 4_000 }, { patch: '16.23', matches: 12_000 }, old])).toBe('16.23') // soma dos servidores
+    expect(choosePatch([{ patch: '16.23', matches: 500 }, { patch: '16.22', matches: 800 }])).toBe('16.23') // nenhum chega: o mais novo
+    expect(choosePatch([{ patch: '16.9', matches: 50_000 }, { patch: '16.10', matches: 50_000 }])).toBe('16.10')
+  })
+
+  it('apaga as coletas com mais de um patch de atraso e guarda o anterior', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'prune-'))
+    const { writeFileSync, readdirSync } = await import('node:fs')
+    for (const p of ['16.20', '16.21', '16.22', '16.23']) writeFileSync(join(dir, `state-v3-br1-${p}.json`), '{}')
+    writeFileSync(join(dir, 'state-v3-kr-16.19.json'), '{}') // outro servidor: não mexe
+    await pruneOldStates(dir, 'br1', '16.23')
+    expect(readdirSync(dir).sort()).toEqual(['state-v3-br1-16.22.json', 'state-v3-br1-16.23.json', 'state-v3-kr-16.19.json'])
   })
 })

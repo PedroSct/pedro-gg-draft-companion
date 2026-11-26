@@ -11,6 +11,8 @@ export const MIN_SYNERGY_GAMES = 30
 export const SOLID_SYNERGY_GAMES = 100
 /** O parceiro precisa jogar a rota pedida em pelo menos essa fração das suas partidas (o dado guarda o aliado sem a rota dele). */
 export const PARTNER_ROLE_SHARE = 0.5
+/** `pairs` só vale no lugar da tabela antiga se tiver ao menos esta fração dos jogos dela (checkpoint antigo = cobertura parcial). */
+const PAIRS_COVERAGE = 0.6
 const PAIR_PRIOR = 100
 const TIER_CAP = 0.59
 
@@ -84,25 +86,27 @@ export function partnersOf(ds: MetaDataset, championId: number, role: Role, mate
   const meta = ds.champions[String(championId)]?.roles[role]
   if (!meta || role === mateRole) return []
   const out: MetaSynergyRow[] = []
-  // meta novo: a dupla já vem com as duas rotas, sem precisar adivinhar a rota do parceiro
+  // meta novo: a dupla já vem com as duas rotas. Mas uma coleta retomada de um checkpoint antigo só tem `pairs` das partidas novas:
+  // por isso a tabela antiga (sem rota do parceiro) ainda vale quando a rota do parceiro é a principal e `pairs` traz bem menos jogos.
+  const exact = new Map<number, WinStats>()
+  const prefix = `${mateRole}:`
   if (meta.pairs) {
-    const prefix = `${mateRole}:`
     for (const [key, s] of Object.entries(meta.pairs)) {
-      if (!key.startsWith(prefix) || s.games < minGames) continue
+      if (!key.startsWith(prefix)) continue
       const mateId = Number(key.slice(prefix.length))
-      if (!Number.isFinite(mateId) || mateId === championId) continue
-      const row = rowOf(ds, championId, role, mateId, mateRole, s, anchorIsA)
-      if (row) out.push(row)
+      if (Number.isFinite(mateId) && mateId !== championId) exact.set(mateId, s)
     }
-    return out
   }
-  const table = meta.synergies
-  if (!table) return []
-  for (const [id, s] of Object.entries(table)) {
-    if (s.games < minGames) continue
-    const mateId = Number(id)
+  const table = meta.synergies ?? {}
+  const ids = new Set<number>([...exact.keys(), ...Object.keys(table).map(Number)])
+  for (const mateId of ids) {
     if (!Number.isFinite(mateId) || mateId === championId) continue
-    if (roleShare(ds, mateId, mateRole) < PARTNER_ROLE_SHARE) continue
+    const p = exact.get(mateId)
+    const legacy = table[String(mateId)]
+    const legacyOk = !!legacy && roleShare(ds, mateId, mateRole) >= PARTNER_ROLE_SHARE
+    const useExact = !!p && (!legacyOk || p.games >= legacy!.games * PAIRS_COVERAGE)
+    const s = useExact ? p : legacyOk ? legacy : undefined
+    if (!s || s.games < minGames) continue
     const row = rowOf(ds, championId, role, mateId, mateRole, s, anchorIsA)
     if (row) out.push(row)
   }
@@ -135,12 +139,16 @@ export function synergyPairs(ds: MetaDataset, roleA: Role, roleB: Role, opts: { 
 export function pairRow(ds: MetaDataset, aId: number, aRole: Role, bId: number, bRole: Role, minGames = 10): MetaSynergyRow | null {
   const exactA = ds.champions[String(aId)]?.roles[aRole]?.pairs?.[`${bRole}:${bId}`]
   const exactB = ds.champions[String(bId)]?.roles[bRole]?.pairs?.[`${aRole}:${aId}`]
-  const exact = [exactA, exactB].filter((x): x is WinStats => !!x && x.games >= minGames)
-  if (exact.length > 0) return rowOf(ds, aId, aRole, bId, bRole, exact.reduce((m, x) => (x.games < m.games ? x : m)), true)
   const sA = ds.champions[String(aId)]?.roles[aRole]?.synergies?.[String(bId)]
   const sB = ds.champions[String(bId)]?.roles[bRole]?.synergies?.[String(aId)]
-  const ok = [sA, sB].filter((x): x is WinStats => !!x && x.games >= minGames)
-  if (ok.length === 0) return null
-  const s = ok.reduce((m, x) => (x.games < m.games ? x : m))
+  const fewest = (list: (WinStats | undefined)[]): WinStats | undefined => {
+    const ok = list.filter((x): x is WinStats => !!x && x.games >= minGames)
+    return ok.length ? ok.reduce((m, x) => (x.games < m.games ? x : m)) : undefined
+  }
+  const exact = fewest([exactA, exactB])
+  const legacy = fewest([sA, sB])
+  // a tabela antiga mistura partidas em que o parceiro estava em outra rota; só vale no lugar de `pairs` se esta cobrir pouco (coleta retomada)
+  const s = exact && (!legacy || exact.games >= legacy.games * PAIRS_COVERAGE) ? exact : (legacy ?? exact)
+  if (!s) return null
   return rowOf(ds, aId, aRole, bId, bRole, s, true)
 }

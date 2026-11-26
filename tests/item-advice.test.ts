@@ -99,4 +99,17 @@ describe('itens para a partida', () => {
     expect(c.shield).toBe(1)
     expect(c.tenacity).toBe(1)
   })
+
+  it('itens que não aparecem nas builds da Rift (Arena e outros modos) nunca são sugeridos', () => {
+    const arena = item(443000, ['Damage', 'ArmorPenetration']) // melhor que o 100 no papel, mas só existe em outro modo
+    const withArena: Record<string, ItemInfo> = { ...items, '443000': { ...arena, goldTotal: 3600 } }
+    const enemies = [tank('A'), tank('B'), tank('C'), foe('D'), foe('E')]
+    const riftIds = new Set<number>(Array.from({ length: 60 }, (_, i) => i + 1).concat([100, 101, 102, 103, 105, 106, 107, 108]))
+    const r = adviseItems({ items: withArena, enemies, me: me(), own: [], core: [1, 2, 3], rift: riftIds })
+    expect(r.advice.map((a) => a.itemId)).not.toContain(443000)
+    expect(r.advice.find((a) => a.kind === 'penetration')?.itemId).toBe(100)
+    // meta pequeno (menos de 40 itens conhecidos): o filtro não vale e nada some por engano
+    const few = adviseItems({ items: withArena, enemies, me: me(), own: [], core: [1, 2, 3], rift: new Set([100]) })
+    expect(few.advice.find((a) => a.kind === 'penetration')).toBeDefined()
+  })
 })

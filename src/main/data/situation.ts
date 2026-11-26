@@ -11,6 +11,24 @@ const DOMINANT_SHARE = 0.62
 /** Inimigo "tanque": durabilidade normalizada igual ou acima disto. */
 const TANKY = 0.6
 
+const riftCache = new WeakMap<MetaDataset, Set<number>>()
+/** Todo item que aparece em alguma build do meta: o meta vem só de partidas ranqueadas da Rift, então isto exclui itens de Arena e outros modos. */
+export function riftItemsOf(ds: MetaDataset | null): Set<number> {
+  if (!ds) return new Set()
+  const hit = riftCache.get(ds)
+  if (hit) return hit
+  const out = new Set<number>()
+  for (const c of Object.values(ds.champions)) {
+    for (const r of Object.values(c.roles)) {
+      const b = r?.build
+      if (!b) continue
+      for (const id of [...b.items.core, ...(b.items.full ?? []), ...b.items.situational.map((s) => s.itemId), ...(b.variants ?? []).flatMap((v) => v.core), ...(b.options?.core ?? []).flatMap((o) => o.value)]) out.add(id)
+    }
+  }
+  riftCache.set(ds, out)
+  return out
+}
+
 const has = (item: ItemInfo | undefined, tag: string): boolean => !!item?.tags?.includes(tag)
 
 export function buildSituation(input: {
@@ -85,7 +103,8 @@ export function buildSituation(input: {
     enemies,
     me: { physical: mine.physical, magic: mine.magic, durability: mine.durability, tags: champMap.get(input.championId)?.tags ?? [] },
     own: ownList,
-    core: build.items.core
+    core: build.items.core,
+    rift: riftItemsOf(dataset)
   })
   out.advice = result.advice
   out.needs = result.needs

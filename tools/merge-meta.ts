@@ -9,7 +9,7 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { validateDataset } from '../src/main/data/meta'
 import { writeJsonAtomic } from '../src/main/store/fsJson'
-import { finalize, mergeStates, type AggState } from './meta/aggregate'
+import { choosePatch, finalize, mergeStates, MIN_PATCH_MATCHES, type AggState } from './meta/aggregate'
 
 const { values: v, positionals } = parseArgs({
   args: process.argv.slice(2).filter((a) => a !== '--'),
@@ -20,7 +20,8 @@ const { values: v, positionals } = parseArgs({
     'min-matchup-games': { type: 'string', default: '3' },
     'min-pair-games': { type: 'string', default: '6' },
     'per-region': { type: 'boolean', default: false },
-    'min-build-samples': { type: 'string', default: '15' }
+    'min-build-samples': { type: 'string', default: '15' },
+    'min-patch-matches': { type: 'string', default: String(MIN_PATCH_MATCHES) }
   }
 })
 
@@ -51,10 +52,9 @@ function main(): void {
     console.error('Nenhuma coleta utilizável.')
     process.exit(1)
   }
-  // Usa o patch mais frequente entre as coletas (normalmente é o mesmo em todas).
-  const counts = new Map<string, number>()
-  for (const l of loaded) counts.set(l.agg.patch, (counts.get(l.agg.patch) ?? 0) + l.agg.matches)
-  const patch = [...counts].sort((a, b) => b[1] - a[1])[0][0]
+  // Usa o patch mais novo que já tem partidas suficientes (o antigo não segura o meta só por ter mais partidas acumuladas).
+  const patch = choosePatch(loaded.map((l) => ({ patch: l.agg.patch, matches: l.agg.matches })), Number(v['min-patch-matches']))
+  console.error(`Patch do meta: ${patch}`)
   loaded.sort((a, b) => (a.agg.patch === patch ? 0 : 1) - (b.agg.patch === patch ? 0 : 1))
   const { merged, used, skipped } = mergeStates(loaded.map((l) => l.agg))
   for (const i of skipped) console.error(`Patch diferente (${loaded[i].agg.patch} ≠ ${patch}), ignorado: ${loaded[i].file}`)

@@ -14,6 +14,7 @@ import {
   itemRulesFrom,
   newState,
   patchOf,
+  comparePatch,
   type AggState,
   type ItemRules,
   type RawMatch,
@@ -107,6 +108,25 @@ function shuffle<T>(items: T[], seed: number): T[] {
   return a
 }
 
+/** Guarda só o patch atual e o anterior (o anterior segura o meta até o novo ter partidas suficientes); apaga os mais velhos. */
+export async function pruneOldStates(dir: string, platform: string, patch: string, log: (m: string) => void = () => undefined): Promise<void> {
+  let files: string[] = []
+  try {
+    files = await fs.readdir(dir)
+  } catch {
+    return
+  }
+  const found = files
+    .map((f) => ({ f, m: new RegExp(`^state-v3-${platform}-(\\d+\\.\\d+)\\.json$`).exec(f) }))
+    .filter((x): x is { f: string; m: RegExpExecArray } => x.m !== null)
+    .map((x) => ({ f: x.f, patch: x.m[1] }))
+  const older = found.filter((x) => patchOlder(x.patch, patch)).sort((a, b) => comparePatch(b.patch, a.patch))
+  for (const x of older.slice(1)) {
+    await fs.rm(path.join(dir, x.f), { force: true })
+    log(`Coleta antiga apagada: ${x.f}`)
+  }
+}
+
 export async function buildMeta(o: BuildMetaOptions): Promise<MetaDataset> {
   const log = o.log ?? (() => undefined)
   const fetchFn = o.fetchFn ?? fetch
@@ -126,6 +146,7 @@ export async function buildMeta(o: BuildMetaOptions): Promise<MetaDataset> {
   // ---- Checkpoint
   await fs.mkdir(o.workDir, { recursive: true })
   const stateFile = path.join(o.workDir, `state-v3-${o.platform}-${patch}.json`)
+  await pruneOldStates(o.workDir, o.platform, patch, log)
   const saved = await readJson<RunState>(stateFile)
   const run: RunState =
     saved && saved.agg?.patch === patch

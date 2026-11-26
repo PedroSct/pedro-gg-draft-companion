@@ -106,7 +106,7 @@ describe('coleta: perfil, contra o time inimigo e variantes', () => {
     const s = newState('16.21')
     const buy = (items: number[]): RawEvent[] => items.map((itemId, k) => ({ type: 'ITEM_PURCHASED', participantId: 1, itemId, timestamp: 100_000 * (k + 1) }))
     const timeline = (items: number[]) => ({ info: { frames: [{ events: buy(items) }] } })
-    for (let n = 0; n < 12; n++) addMatch(s, match(() => ({})), timeline([3020, 3089, 3157, 6653, 3135, 3165, 3102, 3026]), full)
+    for (let n = 0; n < 30; n++) addMatch(s, match(() => ({})), timeline([3020, 3089, 3157, 6653, 3135, 3165, 3102, 3026]), full)
     addMatch(s, match(() => ({})), timeline([3020, 3089, 3157, 6653, 3026]), full) // item raro no 4º slot: fica de fora
     const ds = finalize(s, { minGames: 1, minMatchupGames: 1, minBuildSamples: 1, source: 't', generatedAt: '' })
     const items = ds.champions['1'].roles.TOP!.build!.items
@@ -115,7 +115,16 @@ describe('coleta: perfil, contra o time inimigo e variantes', () => {
     // o arquivo passa na validação do app e a junção de coletas soma os itens tardios
     expect(validateDataset(JSON.parse(JSON.stringify(ds))).champions['1'].roles.TOP!.build!.items.full).toEqual(items.full)
     const { merged } = mergeStates([s, s])
-    expect(merged.champions['1'].TOP!.build.late!['3135']).toEqual({ count: 24, posSum: 72 })
+    expect(merged.champions['1'].TOP!.build.late!['3135']).toEqual({ count: 60, posSum: 180 })
+  })
+
+  it('checkpoint antigo: poucas partidas com itens tardios não publicam build completa', () => {
+    const rules2 = itemRulesFrom({ data: Object.fromEntries([3089, 3157, 6653, 3135].map((id) => [String(id), { gold: { total: 3000, purchasable: true }, tags: [], from: ['1026'], maps: { '11': true } }])) })
+    const s = newState('16.21')
+    const buy = (items: number[]): RawEvent[] => items.map((itemId, k) => ({ type: 'ITEM_PURCHASED', participantId: 1, itemId, timestamp: 100_000 * (k + 1) }))
+    for (let n = 0; n < 5; n++) addMatch(s, match(() => ({})), { info: { frames: [{ events: buy([3089, 3157, 6653, 3135]) }] } }, rules2)
+    const ds = finalize(s, { minGames: 1, minMatchupGames: 1, minBuildSamples: 1, source: 't', generatedAt: '' })
+    expect(ds.champions['1'].roles.TOP!.build!.items.full).toBeUndefined()
   })
 
   it('junta dois servidores somando as contagens e ignora outro patch', () => {

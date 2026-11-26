@@ -62,6 +62,8 @@ export const FULL_BUILD_SIZE = 6
 /** Bans mínimos para o campeão aparecer na taxa de ban (abaixo disso é ruído e só incha o arquivo). */
 export const MIN_BAN_COUNT = 3
 const FULL_MIN_SHARE = 0.08
+/** Vitórias mínimas com a lista de itens tardios para publicar a build completa. */
+const MIN_LATE_SAMPLES = 20
 
 export interface CoreStat {
   count: number
@@ -95,6 +97,8 @@ export interface BuildAgg {
   other: Counter
   /** itens completados depois do 3º (4º ao 6º): quantas vezes e em que posição, para montar a build completa (ausente em checkpoints antigos) */
   late?: Record<string, CoreStat>
+  /** vitórias contadas junto de `late` (o divisor da fatia de cada item): checkpoints antigos só ganham `late` nas partidas novas */
+  lateSamples?: number
   /** "estiloPrincipal|estiloSecundário|p1,p2,…,p9" → vitórias (ausente em checkpoints antigos) */
   runes?: Counter
   /** "feitiçoA,feitiçoB" (ordenados) → vitórias */
@@ -593,6 +597,7 @@ export function addMatch(state: AggState, match: RawMatch, timeline: RawTimeline
     // Só as vitórias: build padrão (importar para o cliente)
     if (!p.win) continue
     build.samples++
+    build.lateSamples = (build.lateSamples ?? 0) + 1
     if (seq && seq.length >= MIN_LEVELS_FOR_BUILD) {
       const priority = priorityOf(seq)
       bump(build.priority, priority)
@@ -830,8 +835,9 @@ function buildFrom(b: BuildAgg, minSamples: number, games: number): ChampionBuil
   if (topCore && topCore.games >= lite) core = topCore.value
   situational = situational.filter((x) => !core.includes(x.itemId))
   // Build completa: os 3 principais + os itens mais comprados depois deles (4º ao 6º), na ordem média de compra
+  const lateSamples = b.lateSamples ?? 0
   const lateItems = Object.entries(b.late ?? {})
-    .filter(([id, st]) => !core.includes(Number(id)) && !boots.includes(Number(id)) && b.samples > 0 && st.count / b.samples >= FULL_MIN_SHARE)
+    .filter(([id, st]) => !core.includes(Number(id)) && !boots.includes(Number(id)) && lateSamples >= MIN_LATE_SAMPLES && st.count / lateSamples >= FULL_MIN_SHARE)
     .sort((x, y) => y[1].count - x[1].count || Number(x[0]) - Number(y[0]))
     .slice(0, FULL_BUILD_SIZE - core.length)
     .sort((x, y) => x[1].posSum / x[1].count - y[1].posSum / y[1].count || Number(x[0]) - Number(y[0]))
@@ -881,6 +887,29 @@ const addStats = (into: Record<string, WinStats>, from: Record<string, WinStats>
 }
 const addCounter = (into: Counter, from: Counter | undefined): void => {
   for (const [k, v] of Object.entries(from ?? {})) bump(into, k, v)
+}
+
+/** Compara patches "16.9" < "16.22" < "17.1" (por número, não por texto). */
+export function comparePatch(a: string, b: string): number {
+  const num = (v: string): number[] => v.split('.').map((n) => Number(n) || 0)
+  const [a1 = 0, a2 = 0] = num(a)
+  const [b1 = 0, b2 = 0] = num(b)
+  return a1 - b1 || a2 - b2
+}
+
+/** Partidas globais mínimas para o patch novo substituir o anterior no meta publicado. */
+export const MIN_PATCH_MATCHES = 15000
+
+/**
+ * Patch que vai para o meta: o MAIS NOVO que já tem partidas suficientes. Antes valia o patch com mais partidas, e o antigo
+ * (acumulado por dias) ganhava do novo por uma semana inteira. Se nenhum patch chega ao mínimo, vale o mais novo.
+ */
+export function choosePatch(states: { patch: string; matches: number }[], minMatches = MIN_PATCH_MATCHES): string {
+  const totals = new Map<string, number>()
+  for (const s of states) totals.set(s.patch, (totals.get(s.patch) ?? 0) + s.matches)
+  const patches = [...totals.keys()].sort((a, b) => comparePatch(b, a))
+  if (patches.length === 0) throw new Error('Nenhuma coleta para escolher o patch')
+  return patches.find((p) => (totals.get(p) ?? 0) >= minMatches) ?? patches[0]
 }
 
 /**
@@ -942,6 +971,7 @@ export function mergeStates(states: AggState[]): { merged: AggState; used: numbe
           x.count += c.count
           x.posSum += c.posSum
         }
+        if (from.lateSamples) b.lateSamples = (b.lateSamples ?? 0) + from.lateSamples
         for (const [id, c] of Object.entries(from.late ?? {})) {
           const x = ((b.late ??= {})[id] ??= { count: 0, posSum: 0 })
           x.count += c.count

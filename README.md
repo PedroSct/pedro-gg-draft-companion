@@ -134,6 +134,15 @@ Abra o League of Legends e entre numa seleção de campeões: o indicador do top
   pelos do confronto (a opção geral continua na lista) e o botão de importar para o cliente já leva essa escolha. Sem
   amostra suficiente, nada muda. Só vale para partidas coletadas depois desta versão: rode o workflow para começar a
   juntar, e os confrontos mais comuns são os primeiros a ganhar dados.
+- **Correções de modos e de patch (0.15.1)**: (1) **itens de outros modos** (Arena etc.) não entram mais nas sugestões da partida:
+  só valem itens marcados como Summoner's Rift no Data Dragon que aparecem em builds reais do meta. (2) O **Pós-jogo** analisa só
+  partidas da Summoner's Rift (normal, ranqueada, partida rápida e Clash): ARAM, Arena e remakes (menos de 5 min) ficam de fora, e o
+  histórico antigo com esses modos some da lista; "Analisar última partida" pula para a mais recente que valha. (3) O **Treino** e a
+  importação da Pool não contam mais a mesma partida duas vezes (a fronteira entre páginas do histórico repetia uma) nem remakes.
+  (4) **Meta preso no patch antigo**: a junção das coletas escolhia o patch com mais partidas acumuladas, então o patch novo só
+  entrava depois de uma semana; agora o meta publicado passa para o patch mais novo assim que ele soma 15 mil partidas (ajustável com
+  `--min-patch-matches`), e as coletas com mais de um patch de atraso são apagadas. Também: a build completa e as duplas só usam o que
+  foi coletado de fato (coleta retomada de checkpoint antigo não distorce as fatias).
 - **Build que acompanha você até a partida e itens situacionais de verdade (0.15.0)**: a build, as habilidades e os itens que você
   escolhe na etapa de Bans/Picks agora **seguem para a tela do jogo** (overlay), o Plano de jogo e a importação para o cliente,
   mesmo depois que a partida começa (o app guarda o último draft por 6 horas). A **ordem de habilidades** também faz parte da

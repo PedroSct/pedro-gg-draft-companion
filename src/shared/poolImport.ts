@@ -6,6 +6,8 @@ import type { Role } from './types'
 
 /** Uma partida recente da conta (já filtrada para filas normais e ranqueadas). */
 export interface AccountGame {
+  /** id da partida no cliente (para não contar a mesma duas vezes); 0 = desconhecido */
+  gameId?: number
   championId: number
   role: Role | null
   win: boolean
@@ -39,6 +41,15 @@ export interface PoolSuggestion {
 
 /** Filas que contam: normal às cegas e draft, ranqueadas solo e flex, partida rápida. ARAM, bots e modos rotativos ficam de fora. */
 export const COUNTED_QUEUES = new Set([400, 420, 430, 440, 490])
+
+/** Filas da Summoner's Rift que o Pós-jogo analisa: as acima mais o Clash. Sem fila identificada (0), só vale o modo clássico. */
+export function isRiftGame(queueId: number, mode?: string): boolean {
+  if (queueId > 0) return COUNTED_QUEUES.has(queueId) || queueId === 700
+  return (mode ?? '').toUpperCase() === 'CLASSIC'
+}
+
+/** Partidas com menos que isto (em segundos) são remake ou desistência antes dos 5 minutos: não contam como jogadas. */
+export const MIN_GAME_SECONDS = 300
 
 /** Mínimo de pontos de maestria para sugerir um campeão sem partidas recentes na rota. */
 const MASTERY_ONLY_MIN = 40_000
